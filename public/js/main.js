@@ -659,6 +659,7 @@ window.confirmPayment = async function(tournamentId) {
 const activeListeners = { tournaments: null, calendar: null };
 
 function cleanupListeners() {
+    if (unsubNotifications) { unsubNotifications(); unsubNotifications = null; }
     if (activeListeners.tournaments) { activeListeners.tournaments(); activeListeners.tournaments = null; }
     if (activeListeners.calendar)    { activeListeners.calendar();    activeListeners.calendar    = null; }
     if (unsubNotifications)          { unsubNotifications();          unsubNotifications = null; }
@@ -713,6 +714,9 @@ function startFirebaseListeners() {
 // Startup
 setupUI();
 
+startFirebaseListeners();
+
+// 2. Modify the auth state to only handle private data (notifications)
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
@@ -722,17 +726,21 @@ onAuthStateChanged(auth, async (user) => {
             const userDoc = await getDoc(doc(db, "users", user.uid));
             if (userDoc.exists()) {
                 userProfile = userDoc.data();
-                log("User profile loaded:", userProfile);
             }
         } catch (e) {
-            error("Error loading profile:", e);
+            console.error("Error loading profile:", e);
         }
 
-        startFirebaseListeners();
+        // Only start PRIVATE listeners here
         initNotifications();
 
     } else {
-        cleanupListeners();
+        // Only clean up PRIVATE listeners on logout
+        if (unsubNotifications) { 
+            unsubNotifications(); 
+            unsubNotifications = null; 
+        }
+        
         currentUser = null;
         userProfile = null;
         isLoggedIn  = false;
