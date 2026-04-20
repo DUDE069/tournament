@@ -17,6 +17,10 @@
 <!-- NAVBAR with Notification -->
 <header class="navbar">
     <h1 class="logo">Enter the Arena</h1>
+
+    <button class="mobile-menu-toggle" onclick="toggleMobileMenu()" aria-label="Menu">
+  ☰
+</button>
     <nav style="display: flex; align-items: center; gap: 25px;">
         <a href="#" onclick="scrollToSection('home', this)">Home</a>
         <a href="#" onclick="scrollToSection('tournaments', this)">Tournaments</a>
@@ -34,6 +38,8 @@
             <span class="notif-badge hidden" id="notifBadge">0</span>
           </button>
           
+          
+
           <div class="notif-panel hidden" id="notifPanel">
             <div class="notif-panel-header">
               <span>Notifications</span>

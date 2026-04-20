@@ -1853,6 +1853,19 @@ function showPopup(type, message, buttonText = null, action = null) {
     });
 }
 
+// Mobile menu toggle
+window.toggleMobileMenu = function() {
+  const nav = document.querySelector('.navbar nav');
+  const currentDisplay = window.getComputedStyle(nav).display;
+  
+  if (currentDisplay === 'none' || nav.style.display === 'none') {
+    nav.style.display = 'flex';
+  } else {
+    nav.style.display = 'none';
+  }
+};
+
+
 // ===============================
 // GLOBAL EXPORTS
 // ===============================
