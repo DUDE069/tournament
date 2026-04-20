@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NPC Esports - Admin Panel</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0f0f0f; 
+      color: #fff; 
+      font-family: 'Segoe UI', Arial, sans-serif; 
+      padding: 20px;
+    }
+    h1 { color: #00ff88; margin-bottom: 20px; border-bottom: 2px solid #00ff88; padding-bottom: 10px; }
+    h2 { color: #4a90e2; margin: 20px 0 15px 0; }
+    
+    .login-section { max-width: 400px; margin: 100px auto; text-align: center; }
+    .login-section input { 
+      width: 100%; 
+      padding: 12px; 
+      margin: 10px 0; 
+      border: 1px solid #333; 
+      background: #1a1a1a; 
+      color: #fff;
+      border-radius: 4px;
+    }
+    .login-section button { 
+      width: 100%; 
+      padding: 12px; 
+      background: #00ff88; 
+      color: #000; 
+      border: none; 
+      cursor: pointer;
+      font-weight: bold;
+      border-radius: 4px;
+      margin-top: 10px;
+    }
+    
+    .admin-panel { display: none; }
+    
+    .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
+    .tab { 
+      padding: 10px 20px; 
+      background: #1a1a1a; 
+      border: none; 
+      color: #fff; 
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .tab.active { background: #00ff88; color: #000; }
+    
+    .section { display: none; }
+    .section.active { display: block; }
+    
+    /* Tournament Styles */
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 5px; color: #888; }
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 10px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      color: #fff;
+      border-radius: 4px;
+    }
+    .btn-submit { 
+      background: #00ff88; 
+      color: #000; 
+      padding: 12px 24px; 
+      border: none; 
+      cursor: pointer;
+      font-weight: bold;
+      border-radius: 4px;
+    }
+    .btn-delete { 
+      background: #ff4444; 
+      color: #fff; 
+      padding: 5px 15px; 
+      border: none; 
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    
+    .item-list { margin-top: 20px; }
+    .item-card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    /* Calendar Admin Styles */
+    .calendar-form {
+      background: #1a1a1a;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 30px;
+      border: 1px solid #333;
+    }
+    .date-input { width: 200px !important; }
+    
+    .event-preview {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      margin-right: 10px;
+      vertical-align: middle;
+    }
+    .event-upcoming { background: #4a90e2; }
+    .event-special { background: #ffd700; }
+    .event-completed { background: #666; }
+    .event-today { background: #00ff88; }
+    
+    .color-picker {
+      display: flex;
+      gap: 10px;
+      margin-top: 5px;
+    }
+    .color-option {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+    .color-option.selected { border-color: #fff; }
+    
+    .calendar-events-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 15px;
+    }
+    .event-card {
+      background: #1a1a1a;
+      border-left: 4px solid;
+      padding: 15px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN SECTION -->
+  <div class="login-section" id="loginSection">
+    <h1>NPC Admin Login</h1>
+    <input type="email" id="adminEmail" placeholder="Admin Email">
+    <input type="password" id="adminPass" placeholder="Password">
+    <button onclick="adminLogin()">Login</button>
+    <p style="margin-top: 20px; color: #666; font-size: 14px;">Secure Admin Access Only</p>
+  </div>
+
+  <!-- ADMIN PANEL -->
+  <div class="admin-panel" id="adminPanel">
+    <h1>🎮 NPC Esports Admin Panel</h1>
+    
+    <div class="tabs">
+    <button class="tab active" onclick="showTab('tournaments')">🏆 Tournaments</button>
+    <button class="tab" onclick="showTab('calendar')">📅 Calendar</button>
+    <button class="tab" onclick="showTab('verifications')">✅ Verifications</button> <!-- NEW -->
+    <button class="tab" onclick="logout()" style="margin-left: auto; background: #ff4444;">Logout</button>
+</div>
+
+<!-- Add this section -->
+<div class="section" id="verificationsSection">
+    <h2>Pending Team Verifications</h2>
+    <div id="verificationList" style="margin-top: 20px;">
+        <p>Loading...</p>
+    </div>
+</div>
+
+
+    <!-- TOURNAMENTS SECTION -->
+    <div class="section active" id="tournamentsSection">
+      <h2>Add New Tournament</h2>
+      <div style="max-width: 600px;">
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="tournamentTitle" placeholder="e.g., Free Fire Pro League">
+        </div>
+        <div class="form-group">
+          <label>Entry Fee (₹)</label>
+          <input type="number" id="tournamentFee" placeholder="e.g., 50">
+        </div>
+        <div class="form-group">
+          <label>Mode</label>
+          <select id="tournamentMode">
+            <option value="Solo">Solo</option>
+            <option value="Duo">Duo</option>
+            <option value="Squad">Squad</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Category</label>
+          <select id="tournamentCategory">
+            <option value="ongoing">Ongoing</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="limited">Limited</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Duration (minutes)</label>
+          <input type="number" id="tournamentDuration" value="60" placeholder="Registration duration in minutes">
+        </div>
+        <div class="form-group">
+          <label>Prize Pool (1st/2nd/3rd)</label>
+          <div style="display: flex; gap: 10px;">
+            <input type="number" id="prizeFirst" placeholder="1st Prize" style="flex: 1;">
+            <input type="number" id="prizeSecond" placeholder="2nd Prize" style="flex: 1;">
+            <input type="number" id="prizeThird" placeholder="3rd Prize" style="flex: 1;">
+          </div>
+        </div>
+        <button class="btn-submit" onclick="addTournament()">+ Add Tournament</button>
+      </div>
+
+      <h2>Existing Tournaments</h2>
+      <div class="item-list" id="tournamentList"></div>
+    </div>
+
+    <!-- CALENDAR SECTION -->
+    <div class="section" id="calendarSection">
+      <h2>Add Calendar Event</h2>
+      <div class="calendar-form">
+        <div class="form-group">
+          <label>Select Date</label>
+          <input type="date" id="eventDate" class="date-input">
+        </div>
+        <div class="form-group">
+          <label>Event Title</label>
+          <input type="text" id="eventTitle" placeholder="e.g., Mega Championship ₹5000">
+        </div>
+        <div class="form-group">
+          <label>Event Type (Color)</label>
+          <div class="color-picker" id="colorPicker">
+            <div class="color-option event-upcoming selected" onclick="selectColor('upcoming', this)" title="Upcoming"></div>
+            <div class="color-option event-special" onclick="selectColor('special', this)" style="background: #ffd700;" title="Special Event"></div>
+            <div class="color-option event-completed" onclick="selectColor('completed', this)" title="Completed"></div>
+            <div class="color-option event-today" onclick="selectColor('today', this)" title="Today/Tournament Day"></div>
+          </div>
+          <input type="hidden" id="eventType" value="upcoming">
+        </div>
+        <div class="form-group">
+          <label>Prize Amount (₹) - Shows in tooltip</label>
+          <input type="number" id="eventPrize" placeholder="e.g., 5000">
+        </div>
+        <div class="form-group">
+          <label>Description (Optional)</label>
+          <input type="text" id="eventDesc" placeholder="Short description for tooltip">
+        </div>
+        <button class="btn-submit" onclick="addCalendarEvent()">+ Add Calendar Event</button>
+      </div>
+
+      <h2>Manage Calendar Events</h2>
+      <div class="calendar-events-list" id="calendarEventsList"></div>
+    </div>
+
+  </div>
+
+
+
+
+  
+  <script type="module" src="admin.js"></script>
+</body>
+</html>

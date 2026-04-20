@@ -1,0 +1,22 @@
+{
+  "tournaments": [
+    {
+      "name": "Free Fire Squad",
+      "fee": 20,
+      "status": "Live"
+    }
+  ],
+  "leaderboard": [
+    {
+      "team": "NPC Warriors",
+      "wins": 5
+    }
+  ],
+  "calendar": [
+    {
+      "date": 16,
+      "type": "upcoming",
+      "info": "Match ₹100"
+    }
+  ]
+}
