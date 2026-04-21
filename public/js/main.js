@@ -2834,8 +2834,7 @@ window.toggleMobileMenu = function() {
 // PHASE 2: SOUND NOTIFICATION SYSTEM
 // ===============================
 
-// Create audio context for notification sounds
-const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
 
 // Simple beep sound using Web Audio API
 function playNotificationSound(type = 'default') {
