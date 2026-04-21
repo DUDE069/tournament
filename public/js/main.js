@@ -36,9 +36,11 @@ let selectedRole        = "";
 let tournaments         = [];
 let currentUser         = null;
 let userProfile         = null;
+let profileLoadPromise  = null; // NEW: Track profile loading
 let calendarEvents      = [];
 let currentCalendarDate = new Date();
-let unsubNotifications  = null;   // single notification listener handle
+let unsubNotifications  = null;
+
 
 // ===============================
 // PROFILE CLICK HANDLER
@@ -722,24 +724,39 @@ onAuthStateChanged(auth, async (user) => {
         currentUser = user;
         isLoggedIn  = true;
 
-        try {
-            const userDoc = await getDoc(doc(db, "users", user.uid));
-            if (userDoc.exists()) {
-                userProfile = userDoc.data();
+        // NEW: Create loading promise that dashboard can await
+        profileLoadPromise = (async () => {
+            try {
+                const userDoc = await getDoc(doc(db, "users", user.uid));
+                if (userDoc.exists()) {
+                    userProfile = userDoc.data();
+                    console.log("[AUTH] Profile loaded:", userProfile.email);
+                } else {
+                    console.warn("[AUTH] User doc not found");
+                    userProfile = null;
+                }
+            } catch (e) {
+                console.error("[AUTH] Error loading profile:", e);
+                userProfile = null;
             }
+        })();
+
+        try {
+            await profileLoadPromise;
         } catch (e) {
-            console.error("Error loading profile:", e);
+            console.error("[AUTH] Profile load failed:", e);
         }
 
         // Only start PRIVATE listeners here
         initNotifications();
 
     } else {
-        // Only clean up PRIVATE listeners on logout
+        // Cleanup
         if (unsubNotifications) { 
             unsubNotifications(); 
             unsubNotifications = null; 
         }
+        if (profileLoadPromise) profileLoadPromise = null;
         
         currentUser = null;
         userProfile = null;
@@ -749,6 +766,7 @@ onAuthStateChanged(auth, async (user) => {
     const loginBtn = document.getElementById("loginBtn");
     if (loginBtn) loginBtn.innerText = user ? "Profile" : "Login";
 });
+
 
 // ===============================
 // TIMER SYSTEM
@@ -819,6 +837,14 @@ async function createAccount() {
     if (pass !== confirm)  { showMessage("Passwords do not match"); return; }
     if (age < 12 || age > 60) { showMessage("Age must be between 12 and 60"); return; }
 
+    // Show loading state
+    const createBtn = document.querySelector('#createView button[onclick="createAccount()"]');
+    const originalText = createBtn?.textContent;
+    if (createBtn) {
+        createBtn.disabled = true;
+        createBtn.textContent = "Creating Account...";
+    }
+
     try {
         const userCred = await createUserWithEmailAndPassword(auth, email, pass);
         const user     = userCred.user;
@@ -838,7 +864,7 @@ async function createAccount() {
 
         if (selectedRole === "leader") {
             const teamName = document.getElementById("teamNameInput")?.value.trim();
-            const teamCode = document.getElementById("generatedCode")?.textContent?.replace("Code: ", "");
+            const teamCode = document.getElementById("generatedCode")?.textContent?.replace("Code: ", "").trim();
 
             if (!teamName || !teamCode) {
                 showMessage("Enter team name and generate code");
@@ -847,13 +873,15 @@ async function createAccount() {
             }
 
             const teamId = "team_" + Math.random().toString(36).substr(2, 9);
+            
+            // Create team first
             await setDoc(doc(db, "teams", teamId), {
                 teamId, teamName,
                 leaderId:   uid,
                 leaderName: email.split('@')[0],
                 code:       teamCode,
                 members:    [uid],
-                maxMembers: 4,
+                maxMembers: 5, // Changed to 5 for 4+1 squad
                 createdAt:  serverTimestamp()
             });
 
@@ -861,40 +889,92 @@ async function createAccount() {
             userData.teamId   = teamId;
             userData.teamName = teamName;
             userData.teamCode = teamCode;
+            userData.role     = "leader";
 
         } else if (selectedRole === "join") {
-            const enteredCode = document.getElementById("joinCode")?.value.trim();
-            if (!enteredCode) { showMessage("Enter team code"); await user.delete(); return; }
+            const enteredCode = document.getElementById("joinCode")?.value.trim().toUpperCase(); // Normalize
+            
+            if (!enteredCode) { 
+                showMessage("Enter team code"); 
+                await user.delete(); 
+                return; 
+            }
 
+            // Query for team with matching code
             const teamsQuery = query(collection(db, "teams"), where("code", "==", enteredCode));
             const teamSnap   = await getDocs(teamsQuery);
 
-            if (teamSnap.empty) { showMessage("Invalid team code"); await user.delete(); return; }
+            if (teamSnap.empty) { 
+                showMessage("Invalid team code. Please check with your team leader."); 
+                await user.delete(); 
+                if (createBtn) {
+                    createBtn.disabled = false;
+                    createBtn.textContent = originalText;
+                }
+                return; 
+            }
 
             const teamDoc  = teamSnap.docs[0];
             const teamData = teamDoc.data();
 
-            if (teamData.members.length >= 4) {
-                showMessage("Team is full (4/4 members)");
+            // Validate team isn't full
+            const currentMembers = teamData.members || [];
+            if (currentMembers.length >= (teamData.maxMembers || 5)) {
+                showMessage("Team is full. Maximum 5 members allowed.");
                 await user.delete();
+                if (createBtn) {
+                    createBtn.disabled = false;
+                    createBtn.textContent = originalText;
+                }
                 return;
             }
 
-            await updateDoc(doc(db, "teams", teamData.teamId), { members: arrayUnion(uid) });
+            // Add user to team
+            await updateDoc(doc(db, "teams", teamData.teamId), { 
+                members: arrayUnion(uid) 
+            });
 
             userData.teamId   = teamData.teamId;
             userData.teamName = teamData.teamName;
+            userData.teamCode = enteredCode;
             userData.role     = "member";
+            
+            // Store for welcome message
             localStorage.setItem("welcomeTeam", teamData.teamName);
         }
 
+        // Create user document
         await setDoc(doc(db, "users", uid), userData);
-        showMessage("Account created! Please login.");
+        
+        // Success
+        showMessage("Account created successfully!");
+        closeModal();
+        
+        // Show team welcome if applicable
+        if (selectedRole === "join") {
+            const welcomeTeam = localStorage.getItem("welcomeTeam");
+            if (welcomeTeam) {
+                setTimeout(() => {
+                    showMessage(`Welcome to team "${welcomeTeam}"!`);
+                    localStorage.removeItem("welcomeTeam");
+                }, 500);
+            }
+        } else if (selectedRole === "leader") {
+            setTimeout(() => {
+                showMessage(`Team "${userData.teamName}" created! Share code: ${userData.teamCode}`);
+            }, 500);
+        }
+
         backToLogin();
 
     } catch (err) {
         console.error("Registration error:", err);
-        showMessage(err.message);
+        showMessage("Error: " + err.message);
+    } finally {
+        if (createBtn) {
+            createBtn.disabled = false;
+            createBtn.textContent = originalText || "Create Account";
+        }
     }
 }
 
@@ -955,9 +1035,9 @@ function generateTeamCode() {
 }
 
 // ===============================
-// DASHBOARD SYSTEM
+// DASHBOARD SYSTEM (MOBILE FIXED)
 // ===============================
-function openDashboard(type) {
+async function openDashboard(type) {
     if (!currentUser) { openLogin(); return; }
 
     const popup   = document.getElementById("dashboardPopup");
@@ -966,144 +1046,174 @@ function openDashboard(type) {
 
     popup.classList.add("active");
 
-    if (!userProfile) {
+    // MOBILE FIX: Wait for profile with timeout to prevent infinite loading
+    if (!userProfile && profileLoadPromise) {
         content.innerHTML = `
             <div style="text-align:center;padding:40px;">
                 <div style="width:40px;height:40px;border:4px solid #333;border-top:4px solid #00ff88;
                     border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 20px;"></div>
                 <p>Loading profile...</p>
             </div>`;
-        setTimeout(() => openDashboard(type), 1000);
+        
+        try {
+            // Wait max 5 seconds for profile
+            await Promise.race([
+                profileLoadPromise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000))
+            ]);
+        } catch (e) {
+            console.error("Profile load timeout:", e);
+        }
+    }
+
+    // If still no profile, show error with retry
+    if (!userProfile) {
+        content.innerHTML = `
+            <div style="text-align:center;padding:40px;">
+                <div style="font-size:48px;margin-bottom:15px;">⚠️</div>
+                <h3 style="color:#ff4444;margin-bottom:10px;">Failed to Load Profile</h3>
+                <p style="color:#888;margin-bottom:20px;">Network error or session expired.</p>
+                <button onclick="location.reload()" 
+                    style="padding:12px 24px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;margin-right:10px;">
+                    Refresh Page
+                </button>
+                <button onclick="logout()" 
+                    style="padding:12px 24px;background:#ff4444;color:#fff;border:none;border-radius:6px;cursor:pointer;">
+                    Logout
+                </button>
+            </div>`;
         return;
     }
 
+    // Profile loaded successfully - continue with existing logic
     if (type === "profile") {
-        const isAdmin    = userProfile?.isAdmin === true;
-        const roleBadge  = userProfile?.isLeader ? "👑 Team Leader"
-                         : userProfile?.role === 'member' ? "👥 Team Member" : "👤 Viewer";
-
-        let teamSection = '';
-        if (userProfile?.teamId) {
-            teamSection = userProfile?.isLeader ? `
-                <div style="margin:15px 0;padding:15px;background:#1a2a1a;border-radius:8px;border:1px solid #00ff88;">
-                    <h4 style="color:#00ff88;margin:0 0 10px;">Your Team (Leader)</h4>
-                    <p style="margin:5px 0;font-size:18px;color:#fff;"><strong>${userProfile.teamName || 'N/A'}</strong></p>
-                    <p style="margin:5px 0;color:#888;font-size:13px;">
-                        Team Code: <span style="color:#ffd700;font-family:monospace;">${userProfile.teamCode || 'N/A'}</span>
-                    </p>
-                </div>` : `
-                <div style="margin:15px 0;padding:15px;background:#1a1a2a;border-radius:8px;">
-                    <h4 style="color:#4a90e2;margin:0 0 10px;">Team Membership</h4>
-                    <p style="margin:5px 0;font-size:16px;color:#fff;"><strong>${userProfile.teamName || 'N/A'}</strong></p>
-                    <p style="margin:5px 0;color:#888;font-size:13px;">Role: Squad Member</p>
-                </div>`;
-        } else {
-            teamSection = `
-                <div style="margin:15px 0;padding:15px;background:#2a1a1a;border-radius:8px;border:1px solid #ff4444;">
-                    <h4 style="color:#ff4444;margin:0 0 10px;">No Team</h4>
-                    <p style="color:#888;font-size:13px;">Join a team to participate in tournaments</p>
-                    <button onclick="closeDashboard();openLogin();showCreate();"
-                        style="background:#ff4444;color:#fff;border:none;padding:8px 16px;
-                               border-radius:4px;margin-top:10px;cursor:pointer;">Create Team</button>
-                </div>`;
-        }
-
-        content.innerHTML = `
-            <h2 style="color:#00ff88;margin-bottom:20px;">My Profile</h2>
-
-            <div style="display:flex;align-items:center;gap:15px;margin-bottom:25px;padding:20px;
-                background:linear-gradient(135deg,#1a1a1a 0%,#2a2a2a 100%);
-                border-radius:12px;border:1px solid #333;">
-                <div style="width:60px;height:60px;background:#00ff88;border-radius:50%;
-                    display:flex;align-items:center;justify-content:center;
-                    font-size:24px;color:#000;font-weight:bold;">
-                    ${(userProfile.email || 'U').charAt(0).toUpperCase()}
-                </div>
-                <div>
-                    <h3 style="margin:0;color:#fff;">${userProfile.email?.split('@')[0] || 'User'}</h3>
-                    <span style="background:${userProfile.isLeader ? '#ffd700' : userProfile.role === 'member' ? '#4a90e2' : '#666'};
-                        color:#000;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;">
-                        ${roleBadge}
-                    </span>
-                    ${isAdmin ? '<span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;margin-left:5px;">ADMIN</span>' : ''}
-                </div>
-            </div>
-
-            <div style="display:grid;gap:15px;">
-                <div style="padding:15px;background:#1a1a1a;border-radius:8px;border:1px solid #333;">
-                    <h4 style="color:#888;margin:0 0 15px;font-size:14px;text-transform:uppercase;">
-                        Account Details
-                    </h4>
-                    <div style="display:grid;gap:10px;color:#ccc;">
-                        <p style="margin:0;"><strong style="color:#fff;">Email:</strong> ${userProfile.email || 'N/A'}</p>
-                        <p style="margin:0;"><strong style="color:#fff;">Age:</strong> ${userProfile.age || 'N/A'} years</p>
-                        <p style="margin:0;"><strong style="color:#fff;">Account Type:</strong> ${userProfile.role || 'Viewer'}</p>
-                        <p style="margin:0;"><strong style="color:#fff;">Joined:</strong>
-                            ${userProfile.createdAt ? new Date(userProfile.createdAt.toDate()).toLocaleDateString() : 'N/A'}
-                        </p>
-                    </div>
-                </div>
-
-                ${teamSection}
-
-                <div style="padding:15px;background:#1a1a1a;border-radius:8px;border:1px solid #333;">
-                    <h4 style="color:#888;margin:0 0 15px;font-size:14px;text-transform:uppercase;">
-                        Statistics
-                    </h4>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
-                        <div style="text-align:center;padding:15px;background:#0f0f0f;border-radius:6px;">
-                            <div style="font-size:24px;color:#00ff88;font-weight:bold;">
-                                ${userProfile.stats?.tournamentsWon || 0}
-                            </div>
-                            <div style="font-size:12px;color:#666;margin-top:5px;">Tournaments Won</div>
-                        </div>
-                        <div style="text-align:center;padding:15px;background:#0f0f0f;border-radius:6px;">
-                            <div style="font-size:24px;color:#4a90e2;font-weight:bold;">
-                                ${userProfile.stats?.tournamentsJoined || 0}
-                            </div>
-                            <div style="font-size:12px;color:#666;margin-top:5px;">Matches Played</div>
-                        </div>
-                    </div>
-                </div>
-
-                ${isAdmin ? `
-                <div style="padding:15px;background:#2a1a1a;border-radius:8px;border:1px solid #ff6b35;">
-                    <h4 style="color:#ff6b35;margin:0 0 10px;">Admin Controls</h4>
-                    <button onclick="openAddTournamentForm()"
-                        style="background:#ff6b35;color:#000;border:none;padding:10px;
-                               width:100%;border-radius:6px;cursor:pointer;font-weight:bold;">
-                        + Add New Tournament
-                    </button>
-                </div>` : ''}
-
-                <div style="display:flex;gap:10px;margin-top:10px;">
-                    <button onclick="changePassword()"
-                        style="background:#4a90e2;color:#fff;border:none;padding:12px;
-                               flex:1;border-radius:6px;cursor:pointer;">Change Password</button>
-                    <button onclick="logout()"
-                        style="background:#ff4444;color:#fff;border:none;padding:12px;
-                               flex:1;border-radius:6px;cursor:pointer;">Logout</button>
-                </div>
-            </div>`;
-    }
-
-    if (type === "tournaments") {
+        renderProfileTab(content);
+    } else if (type === "tournaments") {
         content.innerHTML = `
             <h2 style="color:#00ff88;">My Tournaments</h2>
             <p style="color:#666;margin-top:20px;">Feature coming in next update...</p>`;
-    }
-
-    if (type === "performance") {
+    } else if (type === "performance") {
+        renderPerformanceTab(content);
+    } else if (type === "matches") {
         content.innerHTML = `
-            <h2 style="color:#00ff88;">Performance</h2>
+            <h2 style="color:#00ff88;">Upcoming Matches</h2>
             <div style="margin-top:20px;padding:20px;background:#1a1a1a;border-radius:8px;">
-                <p style="color:#fff;font-size:18px;">
-                    Total Wins: <strong style="color:#00ff88;">${userProfile?.stats?.tournamentsWon || 0}</strong>
-                </p>
-                <p style="color:#888;margin-top:10px;">Detailed stats coming soon...</p>
+                <p style="color:#888;">No upcoming matches scheduled.</p>
             </div>`;
     }
 }
+
+// Helper: Render Profile (extracted for clarity)
+function renderProfileTab(content) {
+    const isAdmin    = userProfile?.isAdmin === true;
+    const roleBadge  = userProfile?.isLeader ? "👑 Team Leader"
+                     : userProfile?.role === 'member' ? "👥 Team Member" : "👤 Viewer";
+
+    let teamSection = '';
+    if (userProfile?.teamId) {
+        teamSection = userProfile?.isLeader ? `
+            <div style="margin:15px 0;padding:15px;background:#1a2a1a;border-radius:8px;border:1px solid #00ff88;">
+                <h4 style="color:#00ff88;margin:0 0 10px;">Your Team (Leader)</h4>
+                <p style="margin:5px 0;font-size:18px;color:#fff;"><strong>${userProfile.teamName || 'N/A'}</strong></p>
+                <p style="margin:5px 0;color:#888;font-size:13px;">
+                    Team Code: <span style="color:#ffd700;font-family:monospace;">${userProfile.teamCode || 'N/A'}</span>
+                </p>
+                <button onclick="navigator.clipboard.writeText('${userProfile.teamCode}');showMessage('Code copied!')" 
+                    style="margin-top:10px;padding:6px 12px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">
+                    Copy Code
+                </button>
+            </div>` : `
+            <div style="margin:15px 0;padding:15px;background:#1a1a2a;border-radius:8px;">
+                <h4 style="color:#4a90e2;margin:0 0 10px;">Team Membership</h4>
+                <p style="margin:5px 0;font-size:16px;color:#fff;"><strong>${userProfile.teamName || 'N/A'}</strong></p>
+                <p style="margin:5px 0;color:#888;font-size:13px;">Role: Squad Member</p>
+                <p style="margin:5px 0;color:#666;font-size:12px;">Code: ${userProfile.teamCode || 'N/A'}</p>
+            </div>`;
+    } else {
+        teamSection = `
+            <div style="margin:15px 0;padding:15px;background:#2a1a1a;border-radius:8px;border:1px solid #ff4444;">
+                <h4 style="color:#ff4444;margin:0 0 10px;">No Team</h4>
+                <p style="color:#888;font-size:13px;">Join a team to participate in tournaments</p>
+                <button onclick="closeDashboard();openLogin();showCreate();selectRole('leader', document.querySelector('.role-card:nth-child(2)'));"
+                    style="background:#ff4444;color:#fff;border:none;padding:8px 16px;border-radius:4px;margin-top:10px;cursor:pointer;">Create Team</button>
+            </div>`;
+    }
+
+    content.innerHTML = `
+        <h2 style="color:#00ff88;margin-bottom:20px;">My Profile</h2>
+
+        <div style="display:flex;align-items:center;gap:15px;margin-bottom:25px;padding:20px;
+            background:linear-gradient(135deg,#1a1a1a 0%,#2a2a2a 100%);border-radius:12px;border:1px solid #333;">
+            <div style="width:60px;height:60px;background:#00ff88;border-radius:50%;display:flex;align-items:center;justify-content:center;
+                font-size:24px;color:#000;font-weight:bold;">
+                ${(userProfile.email || 'U').charAt(0).toUpperCase()}
+            </div>
+            <div style="flex:1;min-width:0;">
+                <h3 style="margin:0;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${userProfile.email?.split('@')[0] || 'User'}</h3>
+                <span style="display:inline-block;background:${userProfile.isLeader ? '#ffd700' : userProfile.role === 'member' ? '#4a90e2' : '#666'};
+                    color:#000;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;margin-top:5px;">
+                    ${roleBadge}
+                </span>
+                ${isAdmin ? '<span style="background:#ff4444;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;margin-left:5px;">ADMIN</span>' : ''}
+            </div>
+        </div>
+
+        <div style="display:grid;gap:15px;">
+            <div style="padding:15px;background:#1a1a1a;border-radius:8px;border:1px solid #333;">
+                <h4 style="color:#888;margin:0 0 15px;font-size:14px;text-transform:uppercase;">Account Details</h4>
+                <div style="display:grid;gap:10px;color:#ccc;">
+                    <p style="margin:0;font-size:14px;word-break:break-all;"><strong style="color:#fff;">Email:</strong> ${userProfile.email || 'N/A'}</p>
+                    <p style="margin:0;"><strong style="color:#fff;">Age:</strong> ${userProfile.age || 'N/A'} years</p>
+                    <p style="margin:0;"><strong style="color:#fff;">Account Type:</strong> ${userProfile.role || 'Viewer'}</p>
+                    <p style="margin:0;"><strong style="color:#fff;">Joined:</strong>
+                        ${userProfile.createdAt ? new Date(userProfile.createdAt.toDate?.() || userProfile.createdAt).toLocaleDateString() : 'N/A'}
+                    </p>
+                </div>
+            </div>
+
+            ${teamSection}
+
+            <div style="padding:15px;background:#1a1a1a;border-radius:8px;border:1px solid #333;">
+                <h4 style="color:#888;margin:0 0 15px;font-size:14px;text-transform:uppercase;">Statistics</h4>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+                    <div style="text-align:center;padding:15px;background:#0f0f0f;border-radius:6px;">
+                        <div style="font-size:24px;color:#00ff88;font-weight:bold;">${userProfile.stats?.tournamentsWon || 0}</div>
+                        <div style="font-size:12px;color:#666;margin-top:5px;">Tournaments Won</div>
+                    </div>
+                    <div style="text-align:center;padding:15px;background:#0f0f0f;border-radius:6px;">
+                        <div style="font-size:24px;color:#4a90e2;font-weight:bold;">${userProfile.stats?.tournamentsJoined || 0}</div>
+                        <div style="font-size:12px;color:#666;margin-top:5px;">Matches Played</div>
+                    </div>
+                </div>
+            </div>
+
+            ${isAdmin ? `
+            <div style="padding:15px;background:#2a1a1a;border-radius:8px;border:1px solid #ff6b35;">
+                <h4 style="color:#ff6b35;margin:0 0 10px;">Admin Controls</h4>
+                <button onclick="openAddTournamentForm()"
+                    style="background:#ff6b35;color:#000;border:none;padding:10px;width:100%;border-radius:6px;cursor:pointer;font-weight:bold;">
+                    + Add New Tournament
+                </button>
+            </div>` : ''}
+
+            <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
+                <button onclick="changePassword()"
+                    style="background:#4a90e2;color:#fff;border:none;padding:12px;flex:1;border-radius:6px;cursor:pointer;min-width:120px;">Change Password</button>
+                <button onclick="logout()"
+                    style="background:#ff4444;color:#fff;border:none;padding:12px;flex:1;border-radius:6px;cursor:pointer;min-width:120px;">Logout</button>
+            </div>
+        </div>`;
+}
+
+function renderPerformanceTab(content) {
+    content.innerHTML = `
+        <h2 style="color:#00ff88;">Performance</h2>
+        <div style="margin-top:20px;padding:20px;background:#1a1a1a;border-radius:8px;">
+            <p style="color:#fff;font-size:18px;">Total Wins: <strong style="color:#00ff88;">${userProfile?.stats?.tournamentsWon || 0}</strong></p>
+            <p style="color:#888;margin-top:10px;">Detailed stats coming soon...</p>
+        </div>`;
+}
+
 
 function closeDashboard() {
     document.getElementById("dashboardPopup")?.classList.remove("active");
@@ -1769,10 +1879,18 @@ async function showApprovedReviewInterface(tournamentId, userId) {
 
 // Modify closeJoinModal to clean up the review notice if present
 window.closeJoinModal = function() {
-    document.getElementById('joinTournamentModal').style.display = 'none';
-    document.getElementById('uidCheckingOverlay').style.display = 'none';
-    document.getElementById('processingOverlay').style.display = 'none';
-    document.getElementById('viewerBlocker').style.display = 'none';
+    const modal = document.getElementById('joinTournamentModal');
+    if (modal) modal.style.display = 'none';
+    
+    const uidOverlay = document.getElementById('uidCheckingOverlay');
+    if (uidOverlay) uidOverlay.style.display = 'none';
+    
+    const procOverlay = document.getElementById('processingOverlay');
+    if (procOverlay) procOverlay.style.display = 'none';
+    
+    const blocker = document.getElementById('viewerBlocker');
+    if (blocker) blocker.style.display = 'none';
+    
     document.body.style.overflow = 'auto';
     
     // Remove review notice if exists
@@ -1785,10 +1903,10 @@ window.closeJoinModal = function() {
         submitBtn.disabled = false;
         submitBtn.textContent = 'Submit for Verification →';
         submitBtn.style.background = '#00ff88';
-        submitBtn.onclick = null; // Remove the payment redirect
+        submitBtn.onclick = null;
     }
     
-    // Reset fields to editable (for next time)
+    // Reset fields to editable
     ["uidPlayer1", "uidPlayer2", "uidPlayer3", "uidPlayer4", "uidPlayer5", "joinPhone", "joinBackupEmail"].forEach(id => {
         const el = document.getElementById(id);
         if (el) {
@@ -1799,13 +1917,16 @@ window.closeJoinModal = function() {
         }
     });
     
-    document.getElementById('registrationContainer').style.display = 'none';
+    const regContainer = document.getElementById('registrationContainer');
+    if (regContainer) regContainer.style.display = 'none';
+    
     window.currentJoiningTournament = null;
     if (window.headerTimerInterval) {
         clearInterval(window.headerTimerInterval);
         window.headerTimerInterval = null;
     }
 };
+
 
 // ===============================
 // CUSTOM POPUP
@@ -1827,7 +1948,7 @@ function showPopup(type, message, buttonText = null, action = null) {
                 </div>
 
                 <h2 style="color:${type === 'success' ? '#00ff88' : '#ff4444'};margin:0 0 12px;">
-                    ${type === 'success' ? 'summited!' : 'error'}
+                    ${type === 'success' ? 'summitted!' : 'Error'}
                 </h2>
 
                 <p style="color:#aaa;line-height:1.5;margin:0 0 ${buttonText ? '20px' : '0'};">

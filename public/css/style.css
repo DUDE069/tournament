@@ -820,11 +820,14 @@ section {
     .navbar nav a { font-size: 13px; padding: 6px 10px; }
 
     /* Notification */
-    .notif-bell-wrapper {
-        position: fixed !important;
-        top: 15px; right: 15px;
-        z-index: 1000;
-    }
+    /* KEEP BELL IN NAVBAR FLOW */
+.notif-bell-wrapper {
+    position: relative !important; /* Not fixed */
+    top: auto !important;
+    right: auto !important;
+    display: inline-block;
+    order: 99; /* Move to end of nav items if needed */
+}
 
     .notif-panel {
         position: fixed !important;
@@ -900,4 +903,145 @@ section {
     .calendar-days div, .calendar-grid .day { font-size: 11px; padding: 6px 1px; }
     #joinTournamentModal nav { flex-direction: column !important; padding: 10px !important; }
     #joinTournamentModal nav > div:last-child { display: none; }
+}
+
+/* MOBILE DASHBOARD FIX - Add at bottom of style.css */
+@media (max-width: 768px) {
+    .dashboard-popup.active {
+        align-items: flex-start !important;
+        padding-top: 20px;
+        overflow-y: auto;
+    }
+    .dashboard-popup .popup-content {
+        width: 95% !important;
+        max-height: 90vh;
+        overflow-y: auto;
+        margin: 0 auto;
+    }
+    .dash-card {
+        min-height: 80px;
+    }
+    .notif-bell-wrapper {
+        position: relative;
+    }
+    .notif-panel {
+        position: fixed !important;
+        top: 60px !important;
+        right: 10px !important;
+        left: 10px !important;
+        width: auto !important;
+        max-width: none !important;
+    }
+    
+    /* Dashboard */
+    .dashboard-box {
+        flex-direction: column !important; 
+        align-items: center !important; 
+        padding: 0 15px;
+    }
+    .dash-card { 
+        width: 100% !important; 
+        max-width: 400px; 
+        margin-bottom: 15px !important; 
+    }
+
+    /* Calendar Fix */
+    .calendar-box { 
+        padding: 15px; 
+        overflow-x: auto; 
+    }
+    .calendar-ui { 
+        min-width: 350px; 
+    }
+    .calendar-header { 
+        flex-direction: column; 
+        gap: 10px; 
+    }
+    .calendar-header button { 
+        width: 100%; 
+    }
+    .calendar-days div, .calendar-grid .day { 
+        font-size: 12px; 
+        padding: 8px 2px; 
+    }
+
+    /* Leaderboard Scroll */
+    .leaderboard-box { 
+        overflow-x: auto; 
+        margin: 0 15px; 
+        -webkit-overflow-scrolling: touch; 
+    }
+    .leaderboard-table { 
+        min-width: 600px; 
+    }
+
+    /* Join Modal */
+    #registrationContainer > div[style*="grid-template-columns: 60% 40%"] {
+        display: flex !important; 
+        flex-direction: column !important; 
+        gap: 20px !important;
+    }
+    #registrationContainer > div > div {
+        width: 100% !important; 
+        position: relative !important; 
+        top: 0 !important;
+    }
+    #registrationContainer > div > div:last-child { 
+        order: -1; 
+        position: relative !important; 
+    }
+    #registrationContainer h2 { 
+        font-size: 1.2rem !important; 
+    }
+    #tournamentJoinForm input, #tournamentJoinForm button {
+        width: 100% !important; 
+        box-sizing: border-box;
+    }
+
+    /* Login Modal */
+    .modal-card { 
+        width: 90% !important; 
+        margin: 20px; 
+        max-height: 85vh; 
+        overflow-y: auto; 
+    }
+    .role-options { 
+        flex-direction: column !important; 
+    }
+    .role-card { 
+        width: 100% !important; 
+    }
+}
+
+/* SMALL MOBILE */
+@media screen and (max-width: 480px) {
+    .navbar .logo { 
+        font-size: 1.1rem; 
+    }
+    .card-container .card { 
+        min-width: 260px !important; 
+    }
+    .calendar-days div, .calendar-grid .day { 
+        font-size: 11px; 
+        padding: 6px 1px; 
+    }
+    #joinTournamentModal nav { 
+        flex-direction: column !important; 
+        padding: 10px !important; 
+    }
+    #joinTournamentModal nav > div:last-child { 
+        display: none; 
+    }
+}
+
+/* Touch optimization */
+button, .dash-card, .role-card {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    touch-action: manipulation;
+}
+
+/* Smooth scrolling */
+.card-container {
+    -webkit-overflow-scrolling: touch;
 }
