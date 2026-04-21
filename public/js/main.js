@@ -226,6 +226,13 @@ function renderTournaments() {
                 <button class="join-btn" onclick="handleJoin('${t.id}')" ${joinDisabled} style="${joinStyle}">
                     ${hasStarted ? "Closed" : "Join Now"}
                 </button>`;
+                // ✅ ADD THE NEW CODE RIGHT HERE, before the closing } of the ongoing block
+    if (t.status === 'completed') {
+        buttonHTML = `
+            <button class="join-btn" onclick="showTournamentResults('${t.id}')"
+                style="background: #ffd700; border-color: #ffd700; color: #000;">
+                🏆 See Results
+            </button>`;}
 
         } else if (t.category === "upcoming") {
             // UPCOMING LOGIC (NEW)
@@ -244,6 +251,7 @@ function renderTournaments() {
                     style="background: #3b82f6; border-color: #3b82f6;">
                     Register Team
                 </button>`;
+                
                 
             cardStyle = 'border-left: 4px solid #3b82f6;';
 
@@ -1140,16 +1148,7 @@ async function checkCompletedTournaments() {
     });
 }
 
-// Modify renderTournaments to show "See Results" for completed
-// Add this inside renderTournaments, in the ongoing section:
 
-if (t.category === "ongoing" && t.status === 'completed') {
-    buttonHTML = `
-        <button class="join-btn" onclick="showTournamentResults('${t.id}')"
-            style="background: #ffd700; border-color: #ffd700; color: #000;">
-            🏆 See Results
-        </button>`;
-}
 
 window.showTournamentResults = async function(tournamentId) {
     const tournament = tournaments.find(t => t.id === tournamentId);
@@ -2883,6 +2882,9 @@ function playNotificationSound(type = 'default') {
         oscillator.stop(audioContext.currentTime + 0.3);
     }
 }
+
+document.getElementById("loginBtn")?.addEventListener("click", handleProfileClick);
+
 
 // ===============================
 // GLOBAL EXPORTS
