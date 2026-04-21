@@ -580,6 +580,39 @@ window.showTab = function (tabName) {
   }
 };
 
+// ===============================
+// ADMIN SOUND ALERTS
+// ===============================
+
+const adminAudio = new (window.AudioContext || window.webkitAudioContext)();
+
+function playAdminAlert() {
+    if (adminAudio.state === 'suspended') adminAudio.resume();
+    
+    // Admin "ding" - distinct from user sound
+    const osc = adminAudio.createOscillator();
+    const gain = adminAudio.createGain();
+    
+    osc.connect(gain);
+    gain.connect(adminAudio.destination);
+    
+    osc.frequency.setValueAtTime(1200, adminAudio.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(600, adminAudio.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.5, adminAudio.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, adminAudio.currentTime + 0.5);
+    
+    osc.start(adminAudio.currentTime);
+    osc.stop(adminAudio.currentTime + 0.5);
+}
+
+// Play sound when new verification arrives (add to loadVerifications)
+// Inside the onSnapshot callback, when snapshot.docChanges() has 'added':
+if (change.type === "added" && change.doc.data().status === "pending") {
+    playAdminAlert();
+}
+
+
+
 // ============================================================================
 //  6. AUTH ACTIONS
 // ============================================================================

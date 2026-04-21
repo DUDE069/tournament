@@ -965,6 +965,279 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 
+
+// ===============================
+// PHASE 2: AUTO-PROMOTION & PAYMENT REMINDER SYSTEM
+// ===============================
+
+// Check every 5 minutes for tournaments that need to be promoted
+setInterval(checkTournamentPromotions, 300000); // 5 minutes
+checkTournamentPromotions(); // Run immediately on load
+
+async function checkTournamentPromotions() {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    tournaments.forEach(async (t) => {
+        if (!t.eventDate) return;
+        
+        const eventDate = new Date(t.eventDate);
+        const diffHours = (eventDate - now) / (1000 * 60 * 60);
+        
+        // PROMOTION: If today is tournament date and status is still 'upcoming'
+        if (t.category === 'upcoming' && t.eventDate === today && diffHours <= 0) {
+            // Move to ongoing (in reality, you'd update Firestore, here we simulate)
+            console.log(`[AUTO] Promoting tournament ${t.id} to ongoing`);
+            
+            // Update local state
+            t.category = 'ongoing';
+            t.status = 'live';
+            t.endTime = eventDate.getTime() + (2 * 60 * 60 * 1000); // 2 hours duration
+            
+            // Notify registered teams that tournament is starting NOW
+            notifyRegisteredTeams(t.id, 'tournament_starting');
+            
+            renderTournaments();
+        }
+        
+        // PAYMENT REMINDER: If 24-48 hours before tournament and not paid
+        if (t.category === 'upcoming' && diffHours <= 48 && diffHours > 0) {
+            remindPendingPayments(t.id, t.eventDate);
+        }
+    });
+}
+
+// Check user's upcoming registrations for payment reminders
+async function remindPendingPayments(tournamentId, eventDate) {
+    if (!currentUser) return;
+    
+    const userRegRef = doc(db, "users", currentUser.uid, "upcomingRegistrations", tournamentId);
+    const regSnap = await getDoc(userRegRef);
+    
+    if (regSnap.exists()) {
+        const data = regSnap.data();
+        if (data.status === 'approved' && !data.paymentReminderSent) {
+            // Show payment reminder popup
+            showPopup(
+                "warning",
+                `⏰ Payment Reminder!\n\nTournament: ${data.title}\nDate: ${new Date(eventDate).toLocaleDateString()}\n\nYou need to pay the entry fee within 24 hours to confirm your spot.`, 
+                "Pay Now →",
+                async () => {
+                    document.getElementById('customPopup')?.remove();
+                    // Open payment interface for upcoming
+                    openUpcomingPaymentInterface(tournamentId);
+                }
+            );
+            
+            // Mark as reminded
+            await updateDoc(userRegRef, { paymentReminderSent: true });
+            
+            // Add notification
+            await addDoc(collection(db, "users", currentUser.uid, "notifications"), {
+                type: "payment_reminder",
+                title: "Payment Required - Tournament Tomorrow",
+                message: `Pay entry fee now for "${data.title}" to confirm your participation.`,
+                tournamentId: tournamentId,
+                read: false,
+                createdAt: serverTimestamp()
+            });
+        }
+    }
+}
+
+// Special payment interface for upcoming tournaments (before match day)
+window.openUpcomingPaymentInterface = async function(tournamentId) {
+    const tournament = tournaments.find(t => t.id === tournamentId);
+    if (!tournament) return;
+    
+    // Create a simpler payment modal for upcoming (pre-payment)
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="upcomingPaymentModal" style="position:fixed;top:0;left:0;width:100%;height:100%;
+            background:rgba(0,0,0,0.95);z-index:6000;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#1a1a1a;padding:30px;border-radius:12px;max-width:400px;width:90%;border:2px solid #ffd700;">
+                <h2 style="color:#ffd700;margin-bottom:20px;">Confirm Tournament Entry</h2>
+                <p style="color:#fff;margin-bottom:10px;">Tournament: <strong>${tournament.title}</strong></p>
+                <p style="color:#888;margin-bottom:20px;">Date: ${new Date(tournament.eventDate).toLocaleDateString()}</p>
+                
+                <div style="background:#0f0f0f;padding:15px;border-radius:8px;margin-bottom:20px;">
+                    <p style="color:#666;margin:0;">Entry Fee</p>
+                    <p style="color:#ffd700;font-size:28px;font-weight:bold;margin:5px 0;">₹${tournament.entryFee}</p>
+                    <p style="color:#ff4444;font-size:12px;">⚠️ Non-refundable after payment</p>
+                </div>
+                
+                <div style="display:flex;gap:10px;">
+                    <button onclick="processUpcomingPayment('${tournamentId}')" 
+                        style="flex:1;padding:12px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">
+                        Pay & Confirm
+                    </button>
+                    <button onclick="document.getElementById('upcomingPaymentModal').remove()" 
+                        style="flex:1;padding:12px;background:#333;color:#fff;border:none;border-radius:6px;cursor:pointer;">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    `);
+};
+
+window.processUpcomingPayment = async function(tournamentId) {
+    // Simulate payment processing
+    const btn = document.querySelector('#upcomingPaymentModal button');
+    btn.textContent = "Processing...";
+    btn.disabled = true;
+    
+    try {
+        // Update user's registration status
+        await updateDoc(doc(db, "users", currentUser.uid, "upcomingRegistrations", tournamentId), {
+            paymentStatus: "paid",
+            paidAt: serverTimestamp()
+        });
+        
+        document.getElementById('upcomingPaymentModal').remove();
+        showPopup("success", "Payment successful! Your spot is confirmed.", "Great!", () => {
+            document.getElementById('customPopup')?.remove();
+        });
+        
+    } catch (e) {
+        showMessage("Payment failed. Please try again.");
+    }
+};
+
+
+// ===============================
+// PHASE 2: RESULTS & ARCHIVE SYSTEM
+// ===============================
+
+// Check for completed tournaments (2 hours after end time)
+setInterval(checkCompletedTournaments, 600000); // Every 10 minutes
+
+async function checkCompletedTournaments() {
+    const now = Date.now();
+    
+    tournaments.forEach(async (t) => {
+        if (t.category === 'ongoing' && t.endTime) {
+            const hoursSinceEnd = (now - t.endTime) / (1000 * 60 * 60);
+            
+            // If 2 hours passed, mark as completed and show results
+            if (hoursSinceEnd >= 2 && !t.resultsShown) {
+                t.status = 'completed';
+                t.resultsShown = true;
+                
+                // Notify admin to enter results if not already done
+                if (userProfile?.isAdmin && !t.resultsEntered) {
+                    showAdminResultsPrompt(t.id);
+                }
+            }
+        }
+    });
+}
+
+// Modify renderTournaments to show "See Results" for completed
+// Add this inside renderTournaments, in the ongoing section:
+
+if (t.category === "ongoing" && t.status === 'completed') {
+    buttonHTML = `
+        <button class="join-btn" onclick="showTournamentResults('${t.id}')"
+            style="background: #ffd700; border-color: #ffd700; color: #000;">
+            🏆 See Results
+        </button>`;
+}
+
+window.showTournamentResults = async function(tournamentId) {
+    const tournament = tournaments.find(t => t.id === tournamentId);
+    if (!tournament?.winners) {
+        showMessage("Results not available yet. Check back soon!");
+        return;
+    }
+    
+    const w = tournament.winners;
+    
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="resultsModal" style="position:fixed;top:0;left:0;width:100%;height:100%;
+            background:rgba(0,0,0,0.95);z-index:7000;overflow-y:auto;">
+            <div style="max-width:800px;margin:50px auto;padding:30px;">
+                <div style="background:linear-gradient(135deg,#1a1a2a 0%,#0f0f1f 100%);border-radius:16px;padding:40px;border:2px solid #ffd700;text-align:center;">
+                    <h1 style="color:#ffd700;font-size:48px;margin-bottom:30px;">🏆 Tournament Results</h1>
+                    
+                    <h2 style="color:#fff;margin-bottom:40px;">${tournament.title}</h2>
+                    
+                    <div style="display:grid;gap:20px;margin-bottom:40px;">
+                        <div style="background:rgba(255,215,0,0.1);border:2px solid #ffd700;padding:20px;border-radius:12px;">
+                            <div style="font-size:64px;margin-bottom:10px;">🥇</div>
+                            <h3 style="color:#ffd700;margin:0;">Winner</h3>
+                            <p style="color:#fff;font-size:24px;font-weight:bold;">${w.firstPlace?.teamName || 'TBA'}</p>
+                            <p style="color:#00ff88;font-size:20px;">₹${tournament.prize?.first || 0}</p>
+                        </div>
+                        
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+                            <div style="background:rgba(192,192,192,0.1);border:2px solid #c0c0c0;padding:20px;border-radius:12px;">
+                                <div style="font-size:48px;">🥈</div>
+                                <h4 style="color:#c0c0c0;margin:10px 0;">2nd Place</h4>
+                                <p style="color:#fff;font-weight:bold;">${w.secondPlace?.teamName || 'TBA'}</p>
+                                <p style="color:#aaa;">₹${tournament.prize?.second || 0}</p>
+                            </div>
+                            <div style="background:rgba(205,127,50,0.1);border:2px solid #cd7f32;padding:20px;border-radius:12px;">
+                                <div style="font-size:48px;">🥉</div>
+                                <h4 style="color:#cd7f32;margin:10px 0;">3rd Place</h4>
+                                <p style="color:#fff;font-weight:bold;">${w.thirdPlace?.teamName || 'TBA'}</p>
+                                <p style="color:#aaa;">₹${tournament.prize?.third || 0}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="background:#1a1a1a;padding:20px;border-radius:8px;text-align:left;margin-bottom:30px;">
+                        <h4 style="color:#888;margin-bottom:15px;">Match Statistics</h4>
+                        <p style="color:#aaa;">Total Teams Participated: ${w.totalTeams || 'N/A'}</p>
+                        <p style="color:#aaa;">Date: ${new Date(tournament.eventDate || tournament.endTime).toLocaleDateString()}</p>
+                    </div>
+                    
+                    <button onclick="document.getElementById('resultsModal').remove()" 
+                        style="padding:12px 40px;background:#333;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:16px;">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    `);
+};
+
+// Admin function to enter results (add to admin.js too)
+window.showAdminResultsPrompt = function(tournamentId) {
+    showPopup(
+        "success",
+        "Tournament completed! Please enter the results and winners.", 
+        "Enter Results →",
+        () => {
+            document.getElementById('customPopup')?.remove();
+            openResultsEditor(tournamentId);
+        }
+    );
+};
+
+window.openResultsEditor = function(tournamentId) {
+    // Simple prompt-based for now, can be made into a modal
+    const first = prompt("Enter 1st Place Team Name:");
+    if (!first) return;
+    
+    const second = prompt("Enter 2nd Place Team Name:");
+    const third = prompt("Enter 3rd Place Team Name:");
+    
+    // Save to tournament
+    updateDoc(doc(db, "tournaments", tournamentId), {
+        'winners.firstPlace': { teamName: first },
+        'winners.secondPlace': { teamName: second || 'N/A' },
+        'winners.thirdPlace': { teamName: third || 'N/A' },
+        'winners.totalTeams': 12, // You'd calculate this from registrations
+        resultsEntered: true,
+        status: 'completed'
+    }).then(() => {
+        showToast("Results saved successfully!", "success");
+    });
+};
+
+
+
+
 // ===============================
 // TIMER SYSTEM
 // ===============================
@@ -2252,6 +2525,79 @@ window.toggleMobileMenu = function() {
     nav.style.display = 'none';
   }
 };
+
+// ===============================
+// PHASE 2: SOUND NOTIFICATION SYSTEM
+// ===============================
+
+// Create audio context for notification sounds
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+// Simple beep sound using Web Audio API
+function playNotificationSound(type = 'default') {
+    if (audioContext.state === 'suspended') {
+        audioContext.resume();
+    }
+    
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    if (type === 'success') {
+        // Happy chime for approvals
+        oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
+        oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
+        oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2); // G5
+        gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.5);
+    } else if (type === 'reminder') {
+        // Urgent beep for reminders
+        oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // A5
+        oscillator.type = 'square';
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime + 0.1);
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime + 0.1);
+        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime + 0.2);
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.4);
+    } else {
+        // Default soft ping
+        oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.3);
+    }
+}
+
+// Modify initNotifications to play sound
+// Add inside your initNotifications, in the docChanges loop:
+
+if (change.type === "added") {
+    const notif = change.doc.data();
+    
+    // Play sound for important notifications
+    if (notif.type === "approval" || notif.type === "upcoming_approved") {
+        playNotificationSound('success');
+    } else if (notif.type === "payment_reminder") {
+        playNotificationSound('reminder');
+    } else {
+        playNotificationSound('default');
+    }
+    
+    // ... rest of your notification handling code
+}
+
+// Browser notification permission (optional enhancement)
+if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+}
+
+
 
 
 // ===============================
