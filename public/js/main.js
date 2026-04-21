@@ -45,9 +45,8 @@ const activeTimers = new Map();
 
 
 let userWallet = { balance: 0, transactions: [], pending: 0 };
-const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+let audioContext = null; // Don't initialize it immediately
 let currentStream = null;
-
 
 // ===============================
 // PROFILE CLICK HANDLER
@@ -2174,6 +2173,16 @@ function initNotifications() {
                 const notifId = change.doc.id;
                 console.log("📥 New Notification Data:", notif);
 
+                // --- NEW: SOUND TRIGGER ---
+                if (notif.type === "approval" || notif.type === "upcoming_approved") {
+                    playNotificationSound('success');
+                } else if (notif.type === "payment_reminder") {
+                    playNotificationSound('reminder');
+                } else {
+                    playNotificationSound('default');
+                }
+                // --------------------------
+
                 // Check if it's an approval/rejection and hasn't been shown yet
                 if ((notif.type === "approval" || notif.type === "approved" || notif.type === "rejected") && !notif.popupShown) {
                     console.log("🚀 Firing Popup for:", notif.type);
@@ -2830,14 +2839,15 @@ window.toggleMobileMenu = function() {
   }
 };
 
-// ===============================
-// PHASE 2: SOUND NOTIFICATION SYSTEM
-// ===============================
-
-
-
 // Simple beep sound using Web Audio API
 function playNotificationSound(type = 'default') {
+    // 1. Lazy initialize the audio context ONLY when needed
+    if (!audioContext) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return; // Browser doesn't support Web Audio
+        audioContext = new AudioContext();
+    }
+
     if (audioContext.state === 'suspended') {
         audioContext.resume();
     }
@@ -2849,17 +2859,15 @@ function playNotificationSound(type = 'default') {
     gainNode.connect(audioContext.destination);
     
     if (type === 'success') {
-        // Happy chime for approvals
-        oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); // C5
-        oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); // E5
-        oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2); // G5
+        oscillator.frequency.setValueAtTime(523.25, audioContext.currentTime); 
+        oscillator.frequency.setValueAtTime(659.25, audioContext.currentTime + 0.1); 
+        oscillator.frequency.setValueAtTime(783.99, audioContext.currentTime + 0.2); 
         gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.5);
     } else if (type === 'reminder') {
-        // Urgent beep for reminders
-        oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // A5
+        oscillator.frequency.setValueAtTime(880, audioContext.currentTime); 
         oscillator.type = 'square';
         gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
         gainNode.gain.setValueAtTime(0.2, audioContext.currentTime + 0.1);
@@ -2868,7 +2876,6 @@ function playNotificationSound(type = 'default') {
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.4);
     } else {
-        // Default soft ping
         oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
         gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
@@ -2876,32 +2883,6 @@ function playNotificationSound(type = 'default') {
         oscillator.stop(audioContext.currentTime + 0.3);
     }
 }
-
-// Modify initNotifications to play sound
-// Add inside your initNotifications, in the docChanges loop:
-
-if (change.type === "added") {
-    const notif = change.doc.data();
-    
-    // Play sound for important notifications
-    if (notif.type === "approval" || notif.type === "upcoming_approved") {
-        playNotificationSound('success');
-    } else if (notif.type === "payment_reminder") {
-        playNotificationSound('reminder');
-    } else {
-        playNotificationSound('default');
-    }
-    
-    // ... rest of your notification handling code
-}
-
-// Browser notification permission (optional enhancement)
-if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
-}
-
-
-
 
 // ===============================
 // GLOBAL EXPORTS
