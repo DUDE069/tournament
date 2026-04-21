@@ -53,6 +53,124 @@ function handleProfileClick() {
     }
 }
 
+
+
+// ===============================
+// UPCOMING TOURNAMENT REGISTRATION (Phase 1)
+// ===============================
+window.handleUpcomingRegister = async function(tournamentId) {
+    if (!currentUser) { openLogin(); return; }
+
+    const tournament = tournaments.find(t => t.id === tournamentId);
+    if (!tournament) { showMessage("Tournament not found"); return; }
+
+    // Check if user has team (required)
+    if (!userProfile?.teamId) {
+        showMessage("Please create or join a team first!");
+        document.getElementById("viewerBlocker").style.display = "block";
+        document.getElementById("registrationContainer").style.display = "none";
+        document.getElementById("joinTournamentModal").style.display = "block";
+        document.body.style.overflow = "hidden";
+        return;
+    }
+
+    window.currentJoiningTournament = tournamentId;
+    window.currentTournamentType = 'upcoming'; // Flag for upcoming
+
+    // Setup modal for upcoming (no payment fields)
+    document.getElementById("viewerBlocker").style.display = "none";
+    document.getElementById("registrationContainer").style.display = "block";
+    document.getElementById("joinTournamentModal").style.display = "block";
+    document.body.style.overflow = "hidden";
+
+    // Fill header info
+    document.getElementById("joinTournamentTitle").textContent  = tournament.title;
+    document.getElementById("joinPrizeFirst").textContent       = tournament.prize?.first || 0;
+    document.getElementById("prizeFirst").textContent           = tournament.prize?.first || 0;
+    document.getElementById("prizeSecond").textContent          = tournament.prize?.second || 0;
+    document.getElementById("prizeThird").textContent           = tournament.prize?.third || 0;
+    
+    // HIDE Payment elements for upcoming
+    document.getElementById("walletBalance").parentElement.style.display = "none"; // Hide wallet
+    document.getElementById("joinEntryFeeDisplay").parentElement.style.display = "none"; // Hide entry fee display
+    
+    // SHOW Date prominently for upcoming
+    const eventDate = tournament.eventDate ? new Date(tournament.eventDate).toLocaleDateString('en-IN', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+    }) : 'TBA';
+    
+    // Add date banner if not exists
+    let dateBanner = document.getElementById("upcomingDateBanner");
+    if (!dateBanner) {
+        const form = document.getElementById("tournamentJoinForm");
+        dateBanner = document.createElement("div");
+        dateBanner.id = "upcomingDateBanner";
+        dateBanner.style.cssText = `
+            background: rgba(59, 130, 246, 0.1); 
+            border: 1px solid #3b82f6; 
+            border-radius: 8px; 
+            padding: 15px; 
+            margin-bottom: 20px;
+            text-align: center;
+        `;
+        form.insertBefore(dateBanner, form.firstChild);
+    }
+    
+    dateBanner.innerHTML = `
+        <div style="color: #3b82f6; font-size: 14px; margin-bottom: 5px;">Tournament Schedule</div>
+        <div style="color: #fff; font-size: 20px; font-weight: bold;">${eventDate}</div>
+        <div style="color: #888; font-size: 12px; margin-top: 5px;">
+            Free registration now • Payment required 1 day before match
+        </div>
+    `;
+
+    // Update timer to show days until event
+    const timerEl = document.getElementById("headerTimer");
+    if (timerEl && tournament.eventDate) {
+        const updateCountdown = () => {
+            const now = new Date();
+            const event = new Date(tournament.eventDate);
+            const diff = event - now;
+            
+            if (diff > 0) {
+                const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                timerEl.textContent = `${days} days until match`;
+                timerEl.style.color = "#3b82f6";
+            }
+        };
+        updateCountdown();
+        if (window.headerTimerInterval) clearInterval(window.headerTimerInterval);
+        window.headerTimerInterval = setInterval(updateCountdown, 60000);
+    }
+
+    // Fill user data (same as ongoing)
+    document.getElementById("joinDisplayEmail").textContent = userProfile.email;
+    document.getElementById("joinDisplayAge").textContent   = userProfile.age + " years";
+    document.getElementById("joinDisplayTeam").textContent  = userProfile.teamName;
+    document.getElementById("joinDisplayCode").textContent  = "Code: " + (userProfile.teamCode || "N/A");
+
+    // Clear previous values
+    document.getElementById("uidPlayer1").value     = userProfile.freeFireUid || "";
+    document.getElementById("joinBackupEmail").value = "";
+    document.getElementById("uidPlayer2").value     = "";
+    document.getElementById("uidPlayer3").value     = "";
+    document.getElementById("uidPlayer4").value     = "";
+    document.getElementById("uidPlayer5").value     = "";
+    document.getElementById("joinPhone").value       = "";
+
+    // Change submit button text
+    const submitBtn = document.getElementById("joinSubmitBtn");
+    if (submitBtn) {
+        submitBtn.textContent = "Submit for Verification →";
+        submitBtn.style.background = "#3b82f6"; // Blue for upcoming
+    }
+    
+    // Store tournament type for form handler
+    window.currentTournamentCategory = 'upcoming';
+};
+
+
+
 // ===============================
 // TOURNAMENT RENDER SYSTEM
 // ===============================
@@ -72,39 +190,68 @@ function renderTournaments() {
         if (!t.title) return;
 
         const isAdminUser = userProfile?.isAdmin === true;
-        const hasStarted  = t.endTime && now > t.endTime;
-        const joinDisabled = hasStarted ? 'disabled' : '';
-        const joinStyle    = hasStarted ? 'opacity:0.6;cursor:not-allowed;' : '';
-
+        
+        // Determine card content based on category
+        let buttonHTML = '';
         let timerHTML = '';
-        if (!hasStarted && t.category === "ongoing") {
+        let cardStyle = '';
+
+        if (t.category === "ongoing") {
+            // ONGOING LOGIC
+            const hasStarted = t.endTime && now > t.endTime;
+            const joinDisabled = hasStarted ? 'disabled' : '';
+            const joinStyle = hasStarted ? 'opacity:0.6;cursor:not-allowed;' : '';
+            
+            if (!hasStarted && t.endTime) {
+                timerHTML = `
+                    <div class="timer-box">
+                        <p class="section-title">⏳ Registration Ends In</p>
+                        <div class="timer" data-end="${t.endTime}" data-id="${t.id}"></div>
+                    </div>`;
+            } else if (hasStarted) {
+                timerHTML = `
+                    <div class="timer-box">
+                        <p class="section-title" style="color:#ff4444;">⏱ Match Started</p>
+                    </div>`;
+                cardStyle = 'border:2px solid #ff4444;';
+            }
+
+            buttonHTML = `
+                <button class="join-btn" onclick="handleJoin('${t.id}')" ${joinDisabled} style="${joinStyle}">
+                    ${hasStarted ? "Closed" : "Join Now"}
+                </button>`;
+
+        } else if (t.category === "upcoming") {
+            // UPCOMING LOGIC (NEW)
+            const eventDateStr = t.eventDate ? new Date(t.eventDate).toLocaleDateString('en-IN', {
+                day: 'numeric', month: 'short', year: 'numeric'
+            }) : 'Date TBA';
+            
             timerHTML = `
-                <div class="timer-box">
-                    <p class="section-title">⏳ Registration Ends In</p>
-                    <div class="timer" data-end="${t.endTime}" data-id="${t.id}"></div>
+                <div class="timer-box" style="background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6;">
+                    <p style="color: #3b82f6; font-size: 12px; margin: 0 0 5px;">📅 Tournament Date</p>
+                    <div style="color: #fff; font-size: 16px; font-weight: bold;">${eventDateStr}</div>
                 </div>`;
-        } else if (hasStarted) {
-            timerHTML = `
-                <div class="timer-box">
-                    <p class="section-title" style="color:#ff4444;">⏱ Registration Closed</p>
-                    <div style="color:#ff4444;font-weight:bold;">Match in Progress</div>
-                </div>`;
+            
+            buttonHTML = `
+                <button class="join-btn" onclick="handleUpcomingRegister('${t.id}')"
+                    style="background: #3b82f6; border-color: #3b82f6;">
+                    Register Team
+                </button>`;
+                
+            cardStyle = 'border-left: 4px solid #3b82f6;';
+
+        } else if (t.category === "limited") {
+            // LIMITED LOGIC
+            buttonHTML = `
+                <button class="join-btn" onclick="handleJoin('${t.id}')">
+                    Join Limited
+                </button>`;
         }
 
-        const matchOverlay = hasStarted ? `
-            <div class="match-overlay" style="position:absolute;top:0;left:0;right:0;bottom:0;
-                background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;
-                z-index:10;border-radius:inherit;">
-                <div style="background:#ff4444;color:white;padding:10px 20px;border-radius:8px;
-                    font-weight:bold;font-size:18px;transform:rotate(-5deg);">MATCH STARTED</div>
-            </div>` : '';
-
-        const blurStyle = hasStarted ? 'filter:blur(2px);pointer-events:none;' : '';
-
         const card = `
-            <div class="card" style="position:relative;${hasStarted ? 'border:2px solid #ff4444;' : ''}">
-                ${matchOverlay}
-                <div style="${blurStyle}">
+            <div class="card" style="position:relative; ${cardStyle}">
+                <div>
                     <h3>${t.title}</h3>
                     <p class="entry"><b>Entry Fee:</b> ₹${t.entryFee || 0}</p>
                     <p class="mode"><b>Mode:</b> ${t.mode || "N/A"}</p>
@@ -122,22 +269,15 @@ function renderTournaments() {
                     }
 
                     ${timerHTML}
-                    ${t.category !== "ongoing" && t.eventDate
-                        ? `<p class="date"><b>Match Date:</b> ${t.eventDate}</p>` : ""}
+                    ${buttonHTML}
 
-                    <button class="join-btn" onclick="handleJoin('${t.id}')"
-                        ${joinDisabled} style="${joinStyle}">
-                        ${hasStarted ? "Closed" : "Join"}
-                    </button>
-
-                    ${isAdminUser
-                        ? `<button onclick="editTournament('${t.id}')">Edit</button>` : ""}
+                    ${isAdminUser ? `<button onclick="editTournament('${t.id}')" style="margin-top:10px;background:#ff6b35;">Edit</button>` : ""}
                 </div>
             </div>`;
 
-        if (t.category === "ongoing")        sections.ongoing  += card;
-        else if (t.category === "upcoming")  sections.upcoming += card;
-        else if (t.category === "limited")   sections.limited  += card;
+        if (t.category === "ongoing") sections.ongoing += card;
+        else if (t.category === "upcoming") sections.upcoming += card;
+        else if (t.category === "limited") sections.limited += card;
     });
 
     ongoing.innerHTML  = sections.ongoing  || `<p class="empty-msg">No active tournaments</p>`;
@@ -147,6 +287,7 @@ function renderTournaments() {
     handleScrollVisibility();
     startTimers();
 }
+
 
 // ===============================
 // JOIN SYSTEM
@@ -273,7 +414,7 @@ window.closeGuidelines = function() {
 };
 
 // ===============================
-// FORM SUBMISSION (single DOMContentLoaded block)
+// FORM SUBMISSION (Handles BOTH Ongoing & Upcoming)
 // ===============================
 document.addEventListener("DOMContentLoaded", function() {
     const form = document.getElementById("tournamentJoinForm");
@@ -285,6 +426,17 @@ document.addEventListener("DOMContentLoaded", function() {
         const submitBtn  = document.getElementById("joinSubmitBtn");
         const processing = document.getElementById("processingOverlay");
 
+        // Get tournament type
+        const tournamentId = window.currentJoiningTournament;
+        const isUpcoming = window.currentTournamentCategory === 'upcoming';
+        const tournament = tournaments.find(t => t.id === tournamentId);
+        
+        if (!tournament) {
+            showMessage("Tournament data not found");
+            return;
+        }
+
+        // Collect UIDs
         const uids = [
             document.getElementById("uidPlayer1").value.trim(),
             document.getElementById("uidPlayer2").value.trim(),
@@ -298,97 +450,142 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
 
-        const phoneRaw   = document.getElementById("joinPhone").value.trim();
-        const backupEmail = document.getElementById("joinBackupEmail").value.trim();
-
+        // Validate phone
+        const phoneRaw = document.getElementById("joinPhone").value.trim();
         if (!phoneRaw || !/^\d{10}$/.test(phoneRaw)) {
             showMessage("Please enter valid 10-digit phone number");
             return;
         }
         const formattedPhone = "+91" + phoneRaw;
 
+        // Validate email
+        const backupEmail = document.getElementById("joinBackupEmail").value.trim();
         if (!backupEmail || !backupEmail.includes('@')) {
             showMessage("Please enter valid backup email");
             return;
         }
 
-        submitBtn.disabled    = true;
-        submitBtn.textContent = "Sending...";
+        // Show loading
+        submitBtn.disabled = true;
+        submitBtn.textContent = isUpcoming ? "Registering..." : "Sending...";
         if (processing) processing.style.display = "flex";
 
         try {
-            const tournamentId = window.currentJoiningTournament;
-            const userId       = currentUser.uid;
-            const tournament   = tournaments.find(t => t.id === tournamentId);
+            const userId = currentUser.uid;
 
-            // 1. Save verification record for admin
-            await setDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
-                userId:      userId,
-                teamId:      userProfile.teamId,
-                teamName:    userProfile.teamName,
-                teamCode:    userProfile.teamCode,
-                leaderEmail: userProfile.email,
-                leaderUid:   uids[0],
-                uids:        uids,
-                phone:       formattedPhone,
-                backupEmail: backupEmail,
-                status:      "pending",
-                submittedAt: serverTimestamp()
-            });
+            if (isUpcoming) {
+                // ========================================
+                // UPCOMING TOURNAMENT (No Payment Required Now)
+                // ========================================
+                
+                // 1. Save to upcomingRegistrations (separate collection)
+                await setDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
+                    userId:       userId,
+                    teamId:       userProfile.teamId,
+                    teamName:     userProfile.teamName,
+                    teamCode:     userProfile.teamCode,
+                    leaderEmail:  userProfile.email,
+                    leaderUid:    uids[0],
+                    uids:         uids,
+                    phone:        formattedPhone,
+                    backupEmail:  backupEmail,
+                    status:       "pending", // Admin needs to approve
+                    registeredAt: serverTimestamp(),
+                    eventDate:    tournament.eventDate,
+                    category:     "upcoming"
+                });
 
-            // 2. Save pending payment data
-            await setDoc(doc(db, "users", userId, "pendingPayment", tournamentId), {
-                tournamentId: tournamentId,
-                teamName:     userProfile.teamName,
-                uids:         uids,
-                phone:        formattedPhone,
-                backupEmail:  backupEmail,
-                entryFee:     tournament?.entryFee || 0,
-                submittedAt:  serverTimestamp()
-            });
+                // 2. Track in user's profile (optional, for "My Registrations")
+                await setDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId), {
+                    tournamentId: tournamentId,
+                    title:          tournament.title,
+                    eventDate:      tournament.eventDate,
+                    teamName:       userProfile.teamName,
+                    status:         "pending_verification",
+                    registeredAt:   serverTimestamp()
+                });
 
-            // 3. Lock registration
-            await setDoc(
-                doc(db, "tournaments", tournamentId, "lockedRegistrations", userId),
-                { lockedAt: serverTimestamp(), editable: false },
-                { merge: true }
-            );
+                // 3. Start listener for admin approval (separate listener for upcoming)
+                listenToUpcomingApproval(tournamentId, userId);
 
-            if (processing) processing.style.display = "none";
+                // 4. Show success
+                if (processing) processing.style.display = "none";
+                closeJoinModal();
+                
+                showPopup(
+                    "success",
+                    `Successfully registered for "${tournament.title}"!\n\n📅 Date: ${new Date(tournament.eventDate).toLocaleDateString('en-IN')}\n\nYour application is under review. You will be notified once approved.`, 
+                    "Got it",
+                    () => document.getElementById('customPopup')?.remove()
+                );
 
-            // 4. Start listening for admin decision
-            listenToVerification(tournamentId, userId);
+            } else {
+                // ========================================
+                // ONGOING TOURNAMENT (Existing Logic - Keep As Is)
+                // ========================================
+                
+                // 1. Save verification record for admin
+                await setDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
+                    userId:      userId,
+                    teamId:      userProfile.teamId,
+                    teamName:    userProfile.teamName,
+                    teamCode:    userProfile.teamCode,
+                    leaderEmail: userProfile.email,
+                    leaderUid:   uids[0],
+                    uids:        uids,
+                    phone:       formattedPhone,
+                    backupEmail: backupEmail,
+                    status:      "pending",
+                    submittedAt: serverTimestamp()
+                });
 
-            // 5. SUCCESS FLOW (FIXED)
-            // We close the modal instead of overwriting its HTML so that 
-            // the DOM elements remain available for the 'Approved' stage.
-            closeJoinModal(); 
+                // 2. Save pending payment data
+                await setDoc(doc(db, "users", userId, "pendingPayment", tournamentId), {
+                    tournamentId: tournamentId,
+                    teamName:     userProfile.teamName,
+                    uids:         uids,
+                    phone:        formattedPhone,
+                    backupEmail:  backupEmail,
+                    entryFee:     tournament?.entryFee || 0,
+                    submittedAt:  serverTimestamp()
+                });
 
-            showPopup(
-                "success", 
-                `Application Submitted! Your team "${userProfile.teamName}" is now under review. Check your notifications (🔔) for updates.`, 
-                "Got it", 
-                () => {
-                    const popup = document.getElementById('customPopup');
-                    if (popup) popup.remove();
-                }
-            );
+                // 3. Lock registration
+                await setDoc(
+                    doc(db, "tournaments", tournamentId, "lockedRegistrations", userId),
+                    { lockedAt: serverTimestamp(), editable: false },
+                    { merge: true }
+                );
 
-            submitBtn.disabled    = false;
-            submitBtn.textContent = "Submit for Verification →";
+                // 4. Start listening for admin decision
+                listenToVerification(tournamentId, userId);
+
+                // 5. Show success
+                if (processing) processing.style.display = "none";
+                closeJoinModal();
+                
+                showPopup(
+                    "success", 
+                    `Application Submitted! Your team "${userProfile.teamName}" is now under review. Check your notifications (🔔) for updates.`, 
+                    "Got it", 
+                    () => document.getElementById('customPopup')?.remove()
+                );
+            }
+
+            // Reset button
+            submitBtn.disabled = false;
+            submitBtn.textContent = isUpcoming ? "Register Team →" : "Submit for Verification →";
 
         } catch (err) {
             console.error("Submit error:", err);
             if (processing) processing.style.display = "none";
-            
-            // Show all errors to the user for debugging
             showMessage("Error submitting: " + err.message);
-            
-            submitBtn.disabled    = false;
-            submitBtn.textContent = "Submit for Verification →";
+            submitBtn.disabled = false;
+            submitBtn.textContent = isUpcoming ? "Register Team →" : "Submit for Verification →";
         }
     });
 });
+
 // ===============================
 // PAYMENT INTERFACE
 // ===============================
@@ -1758,6 +1955,68 @@ function listenToVerification(tournamentId, userId) {
         }
     );
 }
+
+
+// ===============================
+// LISTENER FOR UPCOMING TOURNAMENT APPROVAL
+// ===============================
+function listenToUpcomingApproval(tournamentId, userId) {
+    const ref = doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId);
+
+    const unsub = onSnapshot(ref, async (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        
+        if (data.status === "approved" && !data.notified) {
+            // Mark as notified so we don't show popup twice
+            await updateDoc(ref, { notified: true });
+            
+            // Show approval popup with Date reminder
+            const eventDate = data.eventDate ? new Date(data.eventDate).toLocaleDateString('en-IN', {
+                weekday: 'long', day: 'numeric', month: 'long'
+            }) : 'TBA';
+            
+            showPopup(
+                "success",
+                `✅ Registration Approved!\n\nTournament: ${data.teamName}\n📅 Date: ${eventDate}\n\nBe ready! Payment will be required 1 day before the match. Check "View Details" for rules.`, 
+                "View Details →",
+                () => {
+                    document.getElementById('customPopup')?.remove();
+                    // Could open a details modal here (Phase 2)
+                }
+            );
+            
+            // Also add to notification inbox
+            await addDoc(collection(db, "users", userId, "notifications"), {
+                type: "upcoming_approved",
+                title: "Tournament Registration Approved",
+                message: `Your registration for ${data.eventDate ? 'tournament on ' + new Date(data.eventDate).toLocaleDateString() : 'upcoming tournament'} is approved. Be ready!`,
+                tournamentId: tournamentId,
+                read: false,
+                createdAt: serverTimestamp()
+            });
+            
+        } else if (data.status === "rejected" && !data.notified) {
+            await updateDoc(ref, { notified: true });
+            
+            showPopup(
+                "error",
+                `Registration Rejected\n\nReason: ${data.rejectionReason || "Not specified"}\n\nContact admin for more information.`, 
+                "Close",
+                () => document.getElementById('customPopup')?.remove()
+            );
+        }
+    });
+    
+    // Store unsubscribe if needed
+    window._upcomingListeners = window._upcomingListeners || {};
+    window._upcomingListeners[tournamentId] = unsub;
+}
+
+
+
+
+
 // ===============================
 // APPROVED REVIEW INTERFACE (NEW)
 // Shows locked/submitted data before payment
@@ -1948,7 +2207,7 @@ function showPopup(type, message, buttonText = null, action = null) {
                 </div>
 
                 <h2 style="color:${type === 'success' ? '#00ff88' : '#ff4444'};margin:0 0 12px;">
-                    ${type === 'success' ? 'summitted!' : 'Error'}
+                    ${type === 'success' ? 'submitted!' : 'Error'}
                 </h2>
 
                 <p style="color:#aaa;line-height:1.5;margin:0 0 ${buttonText ? '20px' : '0'};">

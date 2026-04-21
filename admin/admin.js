@@ -224,6 +224,99 @@ function loadVerifications() {
   );
 }
 
+
+
+// ============================================================================
+//  UPCOMING REGISTRATIONS (Phase 1)
+// ============================================================================
+function loadUpcomingRegistrations() {
+  if (_listeners.upcoming) {
+    _listeners.upcoming();
+    _listeners.upcoming = null;
+  }
+
+  const container = document.getElementById("upcomingRegistrationsList");
+  if (!container) return;
+  
+  container.innerHTML = '<p style="color:#888;">Loading upcoming registrations…</p>';
+
+  // Query all upcomingRegistrations subcollections
+  const upcomingQuery = query(
+    collectionGroup(db, "upcomingRegistrations"),
+    where("status", "==", "pending")
+  );
+
+  _listeners.upcoming = onSnapshot(upcomingQuery, (snapshot) => {
+    if (snapshot.empty) {
+      container.innerHTML = '<p style="color:#666;">No pending upcoming registrations.</p>';
+      return;
+    }
+
+    let html = `<h3 style="color:#3b82f6; margin-bottom:16px;">Upcoming Tournament Registrations (${snapshot.size})</h3>`;
+    
+    snapshot.forEach((doc) => {
+      const data = doc.data();
+      const tournamentId = doc.ref.parent.parent.id;
+      
+      html += `
+        <div style="background:#1a1a2a; padding:15px; margin:10px 0; border-radius:8px; border-left:4px solid #3b82f6;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <strong style="color:#fff;">${escHtml(data.teamName)}</strong><br>
+              <small style="color:#888;">Event: ${escHtml(data.eventDate || 'TBA')}</small><br>
+              <small style="color:#888;">Leader: ${escHtml(data.leaderEmail)}</small>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button onclick="approveUpcoming('${tournamentId}', '${doc.id}')"
+                style="background:#00ff88; color:#000; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">
+                Approve
+              </button>
+              <button onclick="rejectUpcoming('${tournamentId}', '${doc.id}')"
+                style="background:#ff4444; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">
+                Reject
+              </button>
+            </div>
+          </div>
+        </div>`;
+    });
+    
+    container.innerHTML = html;
+  });
+}
+
+window.approveUpcoming = async function(tournamentId, userId) {
+  try {
+    await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
+      status: "approved",
+      processedAt: serverTimestamp()
+    });
+    
+    // Notification is handled by the listener in main.js
+    showToast("Upcoming registration approved!", "success");
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+};
+
+window.rejectUpcoming = async function(tournamentId, userId) {
+  const reason = prompt("Enter rejection reason:");
+  if (!reason) return;
+  
+  try {
+    await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
+      status: "rejected",
+      rejectionReason: reason,
+      processedAt: serverTimestamp()
+    });
+    showToast("Registration rejected.", "success");
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+};
+
+
+
+
 /**
  * Renders the full pending verification cards from a snapshot.
  * Each card gets "View & Decide" which opens the detail modal.
@@ -470,6 +563,7 @@ window.showTab = function (tabName) {
     tournaments:   "tournamentsSection",
     calendar:      "calendarSection",
     verifications: "verificationsSection",
+    upcoming:      "upcomingSection"
   };
   const sectionId = sectionMap[tabName];
   if (sectionId) document.getElementById(sectionId)?.classList.add("active");
@@ -509,37 +603,118 @@ window.logout = async function () {
   await signOut(auth);
 };
 
+let currentTournamentCategory = 'ongoing';
+
 // ============================================================================
 //  7. TOURNAMENTS  (unchanged logic, just cleaned up)
 // ============================================================================
+// ============================================================================
+//  CATEGORY HANDLING - Show/Hide fields based on selection
+// ============================================================================
+window.handleCategoryChange = function(select) {
+    const category = select.value;
+    currentTournamentCategory = category;
+    
+    const dateGroup = document.getElementById('eventDateGroup');
+    const durationGroup = document.getElementById('tournamentDuration')?.parentElement;
+    
+    if (category === 'upcoming') {
+        // Show date picker for upcoming
+        if (dateGroup) dateGroup.style.display = 'block';
+        // Hide duration for upcoming (no registration timer needed)
+        if (durationGroup) durationGroup.style.display = 'none';
+    } else {
+        // Hide date for ongoing/limited (use createdAt + duration)
+        if (dateGroup) dateGroup.style.display = 'none';
+        // Show duration for ongoing/limited
+        if (durationGroup) durationGroup.style.display = 'block';
+    }
+};
+
+// ============================================================================
+//  MODIFIED: Add Tournament with Auto-Calendar Sync
+// ============================================================================
 window.addTournament = async function () {
-  const title    = document.getElementById("tournamentTitle").value.trim();
-  const fee      = Number(document.getElementById("tournamentFee").value);
-  const mode     = document.getElementById("tournamentMode").value;
-  const category = document.getElementById("tournamentCategory").value;
-  const duration = Number(document.getElementById("tournamentDuration").value) || 60;
-  const first    = Number(document.getElementById("prizeFirst").value)  || 0;
-  const second   = Number(document.getElementById("prizeSecond").value) || 0;
-  const third    = Number(document.getElementById("prizeThird").value)  || 0;
+    const title    = document.getElementById("tournamentTitle").value.trim();
+    const fee      = Number(document.getElementById("tournamentFee").value);
+    const mode     = document.getElementById("tournamentMode").value;
+    const category = document.getElementById("tournamentCategory").value;
+    const duration = Number(document.getElementById("tournamentDuration")?.value) || 60;
+    const first    = Number(document.getElementById("prizeFirst").value)  || 0;
+    const second   = Number(document.getElementById("prizeSecond").value) || 0;
+    const third    = Number(document.getElementById("prizeThird").value)  || 0;
+    
+    // NEW: Get event date for upcoming tournaments
+    const eventDateInput = document.getElementById("tournamentEventDate")?.value;
+    let eventDate = null;
+    let endTime = null;
 
-  if (!title || !fee) {
-    showToast("Title and entry fee are required.", "warning");
-    return;
-  }
+    if (!title || !fee) {
+        showToast("Title and entry fee are required.", "warning");
+        return;
+    }
 
-  try {
-    await addDoc(tournamentsRef, {
-      title, entryFee: fee, mode, category, duration,
-      prize: { first, second, third },
-      createdAt: serverTimestamp(),
-      status: category === "ongoing" ? "live" : "upcoming",
-    });
-    ["tournamentTitle","tournamentFee","prizeFirst","prizeSecond","prizeThird"]
-      .forEach((id) => (document.getElementById(id).value = ""));
-    showToast("Tournament added!", "success");
-  } catch (e) {
-    showToast("Error: " + e.message, "error");
-  }
+    // Validation for upcoming tournaments
+    if (category === 'upcoming') {
+        if (!eventDateInput) {
+            showToast("Please select tournament date for upcoming events.", "warning");
+            return;
+        }
+        eventDate = eventDateInput; // YYYY-MM-DD format
+        
+        // For upcoming, set endTime far in future (no registration limit)
+        // Will be updated when promoted to ongoing
+        endTime = new Date(eventDateInput).getTime() + (24 * 60 * 60 * 1000); // 1 day after event date
+    } else {
+        // For ongoing/limited, calculate from now + duration
+        endTime = Date.now() + (duration * 60000);
+    }
+
+    try {
+        // 1. Create Tournament
+        const tournamentData = {
+            title, 
+            entryFee: fee, 
+            mode, 
+            category, 
+            duration: category === 'upcoming' ? null : duration,
+            eventDate: eventDate, // Only for upcoming
+            prize: { first, second, third },
+            createdAt: serverTimestamp(),
+            endTime: endTime,
+            status: category === "ongoing" ? "live" : "upcoming",
+            isPaymentDeferred: category === 'upcoming' // true for upcoming
+        };
+        
+        const tourneyRef = await addDoc(tournamentsRef, tournamentData);
+        
+        // 2. AUTO-CREATE CALENDAR EVENT (if upcoming)
+        if (category === 'upcoming' && eventDate) {
+            await addDoc(calendarRef, {
+                date: eventDate,
+                title: title,
+                type: 'special', // Highlight as tournament day
+                prize: first,
+                description: `${mode} Tournament - Entry Fee: ₹${fee}`,
+                tournamentId: tourneyRef.id,
+                createdAt: serverTimestamp(),
+                source: 'auto' // Mark as auto-created from tournament
+            });
+            showToast("Tournament added and calendar marked!", "success");
+        } else {
+            showToast("Tournament added!", "success");
+        }
+        
+        // Clear form
+        ["tournamentTitle","tournamentFee","prizeFirst","prizeSecond","prizeThird","tournamentEventDate"]
+            .forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) el.value = "";
+            });
+            
+    } catch (e) {
+        showToast("Error: " + e.message, "error");
+    }
 };
 
 window.deleteTournament = async function (id) {

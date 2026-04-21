@@ -164,7 +164,9 @@
     <button class="tab" onclick="showTab('calendar')">📅 Calendar</button>
     <button class="tab" onclick="showTab('verifications')">✅ Verifications</button> <!-- NEW -->
     <button class="tab" onclick="logout()" style="margin-left: auto; background: #ff4444;">Logout</button>
-</div>
+    <button class="tab" onclick="showTab('upcoming')">📅 Upcoming Regs</button>
+ 
+  </div>
 
 <!-- Add this section -->
 <div class="section" id="verificationsSection">
@@ -173,6 +175,11 @@
         <p>Loading...</p>
     </div>
 </div>
+<div class="section" id="upcomingSection">
+  <h2>Upcoming Tournament Registrations</h2>
+  <div id="upcomingRegistrationsList"></div>
+</div>
+
 
 
     <!-- TOURNAMENTS SECTION -->
@@ -195,14 +202,15 @@
             <option value="Squad">Squad</option>
           </select>
         </div>
-        <div class="form-group">
-          <label>Category</label>
-          <select id="tournamentCategory">
-            <option value="ongoing">Ongoing</option>
-            <option value="upcoming">Upcoming</option>
-            <option value="limited">Limited</option>
-          </select>
-        </div>
+        <!-- Modify existing category select to trigger onchange -->
+<div class="form-group">
+    <label>Category</label>
+    <select id="tournamentCategory" onchange="handleCategoryChange(this)">
+        <option value="ongoing">Ongoing</option>
+        <option value="upcoming">Upcoming</option>
+        <option value="limited">Limited</option>
+    </select>
+</div>
         <div class="form-group">
           <label>Duration (minutes)</label>
           <input type="number" id="tournamentDuration" value="60" placeholder="Registration duration in minutes">
@@ -221,6 +229,13 @@
       <h2>Existing Tournaments</h2>
       <div class="item-list" id="tournamentList"></div>
     </div>
+
+<!-- Add after tournamentCategory select -->
+<div class="form-group" id="eventDateGroup" style="display: none;">
+    <label>Tournament Date *</label>
+    <input type="date" id="tournamentEventDate" class="date-input">
+    <small style="color: #888; font-size: 11px;">Match will be held on this date</small>
+</div>
 
     <!-- CALENDAR SECTION -->
     <div class="section" id="calendarSection">
