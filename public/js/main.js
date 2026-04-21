@@ -43,6 +43,12 @@ let currentCalendarDate = new Date();
 let unsubNotifications  = null;
 const activeTimers = new Map();
 
+
+let userWallet = { balance: 0, transactions: [], pending: 0 };
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+let currentStream = null;
+
+
 // ===============================
 // PROFILE CLICK HANDLER
 // ===============================
@@ -928,6 +934,8 @@ onAuthStateChanged(auth, async (user) => {
                 const userDoc = await getDoc(doc(db, "users", user.uid));
                 if (userDoc.exists()) {
                     userProfile = userDoc.data();
+                    await loadUserWallet();
+
                     console.log("[AUTH] Profile loaded:", userProfile.email);
                 } else {
                     console.warn("[AUTH] User doc not found");
@@ -1235,6 +1243,280 @@ window.openResultsEditor = function(tournamentId) {
         showToast("Results saved successfully!", "success");
     });
 };
+
+// ===============================
+// PHASE 3: WALLET SYSTEM
+// ===============================
+async function loadUserWallet() {
+    if (!currentUser) return;
+    const walletRef = doc(db, "users", currentUser.uid, "wallet", "main");
+    const walletSnap = await getDoc(walletRef);
+    
+    if (walletSnap.exists()) {
+        userWallet = walletSnap.data();
+    } else {
+        await setDoc(walletRef, {
+            balance: 0,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+        userWallet = { balance: 0 };
+    }
+    updateWalletUI();
+}
+
+function updateWalletUI() {
+    const el = document.getElementById("walletBalance");
+    if (el) el.textContent = userWallet.balance || 0;
+}
+
+async function deductFunds(amount, description = 'Tournament entry') {
+    if (!currentUser) return false;
+    if ((userWallet.balance || 0) < amount) {
+        showMessage("Insufficient balance. Please add funds.");
+        return false;
+    }
+    
+    const walletRef = doc(db, "users", currentUser.uid, "wallet", "main");
+    await updateDoc(walletRef, {
+        balance: increment(-amount),
+        updatedAt: serverTimestamp()
+    });
+    
+    await addDoc(collection(db, "users", currentUser.uid, "transactions"), {
+        type: 'debit',
+        amount: amount,
+        description: description,
+        status: 'completed',
+        createdAt: serverTimestamp()
+    });
+    
+    userWallet.balance = (userWallet.balance || 0) - amount;
+    updateWalletUI();
+    return true;
+}
+
+window.addFunds = async function(amount) {
+    if (!currentUser || amount <= 0) return;
+    
+    await addDoc(collection(db, "users", currentUser.uid, "transactions"), {
+        type: 'credit',
+        amount: amount,
+        method: 'upi',
+        status: 'pending',
+        createdAt: serverTimestamp(),
+        description: 'Wallet recharge'
+    });
+    
+    showPopup("success", `₹${amount} added (pending verification)`, "OK", () => {
+        document.getElementById('customPopup')?.remove();
+    });
+};
+
+window.openWalletModal = function() {
+    const amount = prompt("Enter amount to add (₹):");
+    if (amount && !isNaN(amount) && amount > 0) {
+        addFunds(Number(amount));
+    }
+};
+
+window.viewTransactionHistory = async function() {
+    if (!currentUser) return;
+    const transactions = await getDocs(
+        query(collection(db, "users", currentUser.uid, "transactions"), 
+        orderBy("createdAt", "desc"), 
+        limit(20))
+    );
+    
+    let html = '<div style="max-height:400px;overflow-y:auto;">';
+    transactions.forEach(doc => {
+        const t = doc.data();
+        const color = t.type === 'credit' ? '#00ff88' : '#ff4444';
+        const sign = t.type === 'credit' ? '+' : '-';
+        html += `
+            <div style="padding:12px;border-bottom:1px solid #333;display:flex;justify-content:space-between;">
+                <div>
+                    <div style="color:${color};font-weight:bold;">${sign}₹${t.amount}</div>
+                    <div style="color:#888;font-size:12px;">${t.description}</div>
+                </div>
+                <div style="color:#666;font-size:11px;">${t.createdAt?.toDate ? new Date(t.createdAt.toDate()).toLocaleDateString() : 'Pending'}</div>
+            </div>
+        `;
+    });
+    html += '</div>';
+    
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="walletHistoryModal" style="position:fixed;top:0;left:0;width:100%;height:100%;
+            background:rgba(0,0,0,0.9);z-index:9000;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#1a1a1a;padding:30px;border-radius:12px;width:90%;max-width:500px;border:1px solid #ffd700;">
+                <h2 style="color:#ffd700;margin-bottom:20px;">Transaction History</h2>
+                ${html}
+                <button onclick="document.getElementById('walletHistoryModal').remove()" 
+                    style="margin-top:20px;padding:10px 20px;background:#333;color:#fff;border:none;border-radius:6px;cursor:pointer;width:100%;">
+                    Close
+                </button>
+            </div>
+        </div>
+    `);
+};
+
+
+// ===============================
+// PHASE 3: LIVE MATCH SYSTEM
+// ===============================
+window.startTournamentMatches = async function(tournamentId) {
+    if (!userProfile?.isAdmin) return;
+    
+    const roomCode = 'NPC' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    const password = Math.floor(1000 + Math.random() * 9000);
+    
+    await updateDoc(doc(db, "tournaments", tournamentId), {
+        'matchDetails.roomCode': roomCode,
+        'matchDetails.password': password,
+        'matchDetails.status': 'live',
+        'matchDetails.startedAt': serverTimestamp()
+    });
+    
+    const participants = await getDocs(collection(db, "tournaments", tournamentId, "participants"));
+    participants.forEach(async (p) => {
+        if (p.data().paymentStatus === 'verified') {
+            await addDoc(collection(db, "users", p.id, "notifications"), {
+                type: "match_started",
+                title: "🎮 Match Started!",
+                message: `Room: ${roomCode} | Pass: ${password}`,
+                tournamentId: tournamentId,
+                read: false,
+                createdAt: serverTimestamp()
+            });
+        }
+    });
+    
+    showMessage("Match started! Codes sent.");
+};
+
+window.showMatchRoom = async function(tournamentId) {
+    const tourneySnap = await getDoc(doc(db, "tournaments", tournamentId));
+    if (!tourneySnap.exists()) return;
+    const data = tourneySnap.data();
+    
+    if (data.matchDetails?.status !== 'live') {
+        showMessage("Match hasn't started yet.");
+        return;
+    }
+    
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="matchRoomModal" style="position:fixed;top:0;left:0;width:100%;height:100%;
+            background:rgba(0,0,0,0.95);z-index:8000;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#1a1a1a;padding:40px;border-radius:16px;border:3px solid #00ff88;text-align:center;max-width:500px;">
+                <h2 style="color:#00ff88;margin-bottom:20px;">🏆 Tournament Live</h2>
+                <div style="background:#0f0f0f;padding:30px;border-radius:12px;margin:20px 0;">
+                    <p style="color:#888;margin-bottom:10px;">Free Fire Room Code</p>
+                    <div style="font-size:48px;color:#fff;font-weight:bold;letter-spacing:4px;font-family:monospace;">
+                        ${data.matchDetails.roomCode}
+                    </div>
+                    <p style="color:#888;margin-top:20px;margin-bottom:10px;">Password</p>
+                    <div style="font-size:36px;color:#ffd700;font-weight:bold;">
+                        ${data.matchDetails.password}
+                    </div>
+                </div>
+                <p style="color:#ff4444;font-size:14px;margin-bottom:20px;">⚠️ Join within 10 minutes</p>
+                <button onclick="document.getElementById('matchRoomModal').remove()" 
+                    style="padding:12px 40px;background:#333;color:#fff;border:none;border-radius:8px;cursor:pointer;">
+                    Close
+                </button>
+            </div>
+        </div>
+    `);
+};
+
+
+
+// ===============================
+// PHASE 4: REFERRAL SYSTEM
+// ===============================
+window.generateReferralCode = function() {
+    if (!currentUser) return '';
+    return currentUser.uid.substring(0, 8).toUpperCase();
+};
+
+window.showReferralModal = async function() {
+    if (!currentUser) return;
+    const code = generateReferralCode();
+    
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="referralModal" style="position:fixed;top:0;left:0;width:100%;height:100%;
+            background:rgba(0,0,0,0.9);z-index:8000;display:flex;align-items:center;justify-content:center;">
+            <div style="background:#1a1a1a;padding:30px;border-radius:12px;max-width:400px;width:90%;border:1px solid #00ff88;">
+                <h2 style="color:#00ff88;margin-bottom:20px;">Refer & Earn</h2>
+                <p style="color:#888;margin-bottom:20px;">Share your code with friends. Both get ₹50 bonus!</p>
+                <div style="background:#0f0f0f;padding:15px;border-radius:8px;margin-bottom:20px;text-align:center;">
+                    <div style="color:#666;font-size:12px;margin-bottom:5px;">Your Referral Code</div>
+                    <div style="color:#00ff88;font-size:24px;font-weight:bold;letter-spacing:2px;font-family:monospace;">${code}</div>
+                </div>
+                <button onclick="navigator.clipboard.writeText('${code}');showMessage('Code copied!')" 
+                    style="width:100%;padding:12px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;margin-bottom:10px;">
+                    Copy Code
+                </button>
+                <button onclick="document.getElementById('referralModal').remove()" 
+                    style="width:100%;padding:12px;background:#333;color:#fff;border:none;border-radius:6px;cursor:pointer;">
+                    Close
+                </button>
+            </div>
+        </div>
+    `);
+};
+
+window.applyReferral = async function(code) {
+    if (!currentUser) return;
+    const referrerQuery = query(collection(db, "users"), where("referralCode", "==", code.toUpperCase()));
+    const referrerSnap = await getDocs(referrerQuery);
+    
+    if (!referrerSnap.empty && referrerSnap.docs[0].id !== currentUser.uid) {
+        await updateDoc(doc(db, "users", currentUser.uid), {
+            referredBy: referrerSnap.docs[0].id,
+            bonusCredits: increment(50),
+            'wallet.balance': increment(50)
+        });
+        await updateDoc(doc(db, "users", referrerSnap.docs[0].id), {
+            referralCount: increment(1),
+            bonusCredits: increment(50),
+            'wallet.balance': increment(50)
+        });
+        showMessage("Referral applied! ₹50 added to wallet.");
+    } else {
+        showMessage("Invalid referral code.");
+    }
+};
+
+
+// ===============================
+// PHASE 5: ANTI-CHEAT & REPORTING
+// ===============================
+window.reportCheater = async function(tournamentId, teamId, reason) {
+    if (!currentUser) return;
+    
+    await addDoc(collection(db, "reports"), {
+        type: 'cheating',
+        tournamentId: tournamentId,
+        reportedTeam: teamId,
+        reason: reason,
+        reportedBy: currentUser.uid,
+        reporterName: userProfile.email || 'Anonymous',
+        createdAt: serverTimestamp(),
+        status: 'pending'
+    });
+    
+    showMessage("Report submitted. Admin will review.");
+    
+    await addDoc(collection(db, "adminNotifications"), {
+        title: "🚨 Cheating Report",
+        message: `New report for tournament ${tournamentId}`,
+        type: 'report',
+        read: false,
+        createdAt: serverTimestamp()
+    });
+};
+
 
 
 
@@ -1609,6 +1891,27 @@ function renderProfileTab(content) {
                     style="background:#ff4444;color:#fff;border:none;padding:8px 16px;border-radius:4px;margin-top:10px;cursor:pointer;">Create Team</button>
             </div>`;
     }
+
+// PHASE 3: Wallet Section
+const walletSection = `
+    <div style="padding:15px;background:#1a2a1a;border-radius:8px;border:1px solid #ffd700;margin-bottom:15px;">
+        <h4 style="color:#ffd700;margin:0 0 15px;font-size:14px;">💰 Wallet Balance</h4>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <div style="font-size:32px;color:#ffd700;font-weight:bold;">₹${userWallet.balance || 0}</div>
+                <div style="color:#888;font-size:12px;">Available for tournaments</div>
+            </div>
+            <button onclick="openWalletModal()" style="background:#ffd700;color:#000;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:bold;">
+                Add Funds
+            </button>
+        </div>
+        <button onclick="viewTransactionHistory()" style="background:transparent;color:#888;border:1px solid #444;padding:8px 16px;border-radius:4px;cursor:pointer;margin-top:10px;width:100%;">
+            View History
+        </button>
+    </div>
+`;
+
+
 
     content.innerHTML = `
         <h2 style="color:#00ff88;margin-bottom:20px;">My Profile</h2>
@@ -2633,3 +2936,10 @@ window.confirmPayment          = confirmPayment;
 window.toggleNotifications     = window.toggleNotifications;
 window.markAllRead             = window.markAllRead;
 window.handleNotificationClick = window.handleNotificationClick;
+window.showMatchRoom = showMatchRoom;
+window.startTournamentMatches = startTournamentMatches;
+window.addFunds = addFunds;
+window.openWalletModal = openWalletModal;
+window.viewTransactionHistory = viewTransactionHistory;
+window.reportCheater = reportCheater;
+window.showReferralModal = showReferralModal;
