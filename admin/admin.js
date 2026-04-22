@@ -58,6 +58,9 @@ function teardownAllListeners() {
 // ---------------------------------------------------------------------------
 const tournamentsRef = collection(db, "tournaments");
 const calendarRef    = collection(db, "calendarEvents");
+// State to track which specific fields are OK or Wrong
+let currentFieldStatuses = {}; 
+
 
 // ============================================================================
 //  1. AUTH GUARD
@@ -139,12 +142,18 @@ function startBadgeListener() {
     where("status", "==", "pending")
   );
 
-  _listeners.badge = onSnapshot(
+ _listeners.badge = onSnapshot(
     pendingQuery,
     (snapshot) => {
-      const count = snapshot.size;
-      updateBadge(count);
+      // ✅ FIX: Sound now plays here because this listener is ALWAYS active in background
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added") {
+          playAdminAlert(); 
+        }
+      });
+      updateBadge(snapshot.size);
     },
+
     (err) => {
       console.error("Badge listener error:", err.message);
       // If permissions fail (non-admin somehow got here) sign out.
@@ -386,88 +395,77 @@ function renderVerificationList(snapshot) {
 //    → main.js (user-side) has an onSnapshot on that notifications collection
 //        and immediately reacts to the new doc — no page refresh needed.
 // ============================================================================
+// Helper to create a row with check/cross buttons
+function fieldVerifyRow(label, value, fieldKey) {
+    return `
+    <div style="display:flex; justify-content:space-between; align-items:center; background:#222; padding:10px; border-radius:6px;">
+      <span style="color:#888; font-size:13px;">${label}: <b style="color:#fff;">${escHtml(value ?? "—")}</b></span>
+      <div style="display:flex; gap:5px;">
+        <button onclick="toggleField('${fieldKey}', 'ok')" id="btn-${fieldKey}-ok" style="background:#333; color:#00ff88; border:1px solid #00ff88; width:30px; height:30px; border-radius:50%; cursor:pointer;">✓</button>
+        <button onclick="toggleField('${fieldKey}', 'err')" id="btn-${fieldKey}-err" style="background:#333; color:#ff4444; border:1px solid #ff4444; width:30px; height:30px; border-radius:50%; cursor:pointer;">✗</button>
+      </div>
+    </div>`;
+}
+
+// Function to handle button colors when clicking ✓ or ✗
+window.toggleField = function(field, status) {
+    currentFieldStatuses[field] = status;
+    document.getElementById(`btn-${field}-ok`).style.background = status === 'ok' ? '#00ff88' : '#333';
+    document.getElementById(`btn-${field}-ok`).style.color = status === 'ok' ? '#000' : '#00ff88';
+    document.getElementById(`btn-${field}-err`).style.background = status === 'err' ? '#ff4444' : '#333';
+    document.getElementById(`btn-${field}-err`).style.color = status === 'err' ? '#fff' : '#ff4444';
+};
+
 window.viewApplicationDetails = async function (tournamentId, userId) {
   try {
-    const docSnap = await getDoc(
-      doc(db, "tournaments", tournamentId, "verifications", userId)
-    );
-    if (!docSnap.exists()) {
-      showToast("Verification record not found.", "error");
-      return;
-    }
+    const docSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
+    if (!docSnap.exists()) return;
     const v = docSnap.data();
-
-    // Remove any existing modal first.
     document.getElementById("verifModal")?.remove();
 
     const uids = Array.isArray(v.uids) ? v.uids.join(", ") : (v.uids ?? "—");
+    currentFieldStatuses = {}; // Reset statuses for new user
 
     const modal = document.createElement("div");
     modal.id = "verifModal";
-    modal.style.cssText = `
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.92);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 9999; padding: 20px;
-    `;
+    modal.style.cssText = `position: fixed; inset: 0; background: rgba(0,0,0,0.92); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 20px;`;
+    
     modal.innerHTML = `
-      <div style="
-        background: #1a1a1a; width: 100%; max-width: 520px;
-        padding: 28px; border-radius: 12px; border: 1px solid #333;
-      ">
-        <h2 style="color:#00ff88; margin-bottom:20px;">
-          Review: ${escHtml(v.teamName ?? "—")}
-        </h2>
-
-        <div style="display:grid; gap:12px; color:#ccc;">
-          ${infoRow("Leader Email", v.leaderEmail ?? "—")}
-          ${infoRow("Phone", v.phone ?? "—")}
-          ${infoRow("Player UIDs", `<span style="font-family:monospace;color:#ffd700;">${escHtml(uids)}</span>`)}
-          ${infoRow("Team Code", v.teamCode ?? "—")}
+      <div style="background: #1a1a1a; width: 100%; max-width: 550px; padding: 28px; border-radius: 12px; border: 1px solid #333;">
+        <h2 style="color:#00ff88; margin-bottom:20px;">Review: ${escHtml(v.teamName ?? "—")}</h2>
+        
+        <div style="display:grid; gap:15px; color:#ccc;">
+          ${fieldVerifyRow("Leader Email", v.leaderEmail, "email")}
+          ${fieldVerifyRow("Phone", v.phone, "phone")}
+          ${fieldVerifyRow("Player UIDs", uids, "uids")}
+          ${fieldVerifyRow("Team Code", v.teamCode, "code")}
         </div>
 
-        <textarea
-          id="adminNote"
-          placeholder="Rejection reason (required for rejections)…"
-          style="
-            width: 100%; height: 80px; margin-top: 18px;
-            background: #000; color: #fff; border: 1px solid #444;
-            padding: 10px; border-radius: 6px; resize: vertical;
-            font-family: inherit;
-          "
-        ></textarea>
-
-        <div style="margin-top: 18px; display:flex; gap:10px;">
-          <button
-            id="approveBtn"
-            style="flex:1; background:#00ff88; color:#000; border:none; padding:12px; font-weight:bold; border-radius:6px; cursor:pointer;">
-            ✅ Approve
-          </button>
-          <button
-            id="rejectBtn"
-            style="flex:1; background:#ff4444; color:#fff; border:none; padding:12px; font-weight:bold; border-radius:6px; cursor:pointer;">
-            ❌ Reject
-          </button>
+        <div style="margin-top: 20px;">
+            <label style="color:#888; font-size:13px; display:block; margin-bottom:8px;">Rejection Reason</label>
+            <select id="reasonSelect" style="width:100%; padding:10px; background:#000; color:#fff; border:1px solid #444; border-radius:6px; margin-bottom:10px;">
+                <option value="">-- Select Reason --</option>
+                <option value="Invalid UID">❌ Invalid Player UID</option>
+                <option value="Incorrect Phone">❌ Phone Number Wrong</option>
+                <option value="Email Mismatch">❌ Email Mismatch</option>
+                <option value="Blacklisted Team">🚫 Team is Blacklisted</option>
+                <option value="Incomplete Info">⚠️ Insufficient Information</option>
+                <option value="custom">✍️ Other (Write below...)</option>
+            </select>
+            <textarea id="adminNote" placeholder="Optional: Add detailed notes here..." style="width: 100%; height: 60px; background: #000; color: #fff; border: 1px solid #444; padding: 10px; border-radius: 6px;"></textarea>
         </div>
-        <button
-          onclick="document.getElementById('verifModal').remove()"
-          style="width:100%; margin-top:10px; background:transparent; color:#666; border:none; cursor:pointer;">
-          Cancel
-        </button>
+
+        <div style="margin-top: 20px; display:flex; gap:10px;">
+          <button id="approveBtn" style="flex:1; background:#00ff88; color:#000; border:none; padding:12px; font-weight:bold; border-radius:6px; cursor:pointer;">✅ Approve All</button>
+          <button id="rejectBtn" style="flex:1; background:#ff4444; color:#fff; border:none; padding:12px; font-weight:bold; border-radius:6px; cursor:pointer;">❌ Reject Team</button>
+        </div>
+        <button onclick="document.getElementById('verifModal').remove()" style="width:100%; margin-top:10px; background:transparent; color:#666; border:none; cursor:pointer;">Cancel</button>
       </div>`;
 
     document.body.appendChild(modal);
-
-    // Attach listeners after the modal is in the DOM.
-    modal.querySelector("#approveBtn").addEventListener("click", () =>
-      processDecision(tournamentId, userId, "approved")
-    );
-    modal.querySelector("#rejectBtn").addEventListener("click", () =>
-      processDecision(tournamentId, userId, "rejected")
-    );
-  } catch (e) {
-    showToast("Failed to load application: " + e.message, "error");
-  }
+    modal.querySelector("#approveBtn").addEventListener("click", () => processDecision(tournamentId, userId, "approved"));
+    modal.querySelector("#rejectBtn").addEventListener("click", () => processDecision(tournamentId, userId, "rejected"));
+  } catch (e) { showToast("Error: " + e.message, "error"); }
 };
 
 /**
@@ -494,40 +492,30 @@ window.viewApplicationDetails = async function (tournamentId, userId) {
  *  no page refresh. See the companion snippet at the bottom of this file.
  */
 async function processDecision(tournamentId, userId, status) {
-  const note = document.getElementById("adminNote")?.value?.trim() ?? "";
+  const reasonSelect = document.getElementById("reasonSelect").value;
+  const customNote = document.getElementById("adminNote")?.value?.trim() ?? "";
+  const finalReason = reasonSelect === "custom" ? customNote : reasonSelect;
 
-  if (status === "rejected" && !note) {
-    showToast("Please enter a rejection reason.", "warning");
+  if (status === "rejected" && !finalReason) {
+    showToast("Please select or write a rejection reason.", "warning");
     return;
   }
 
-  const approveBtn = document.getElementById("approveBtn");
-  const rejectBtn = document.getElementById("rejectBtn");
-
-  if (approveBtn.disabled || rejectBtn.disabled) return;
-  approveBtn.disabled = true;
-  rejectBtn.disabled = true;
-  approveBtn.textContent = "Processing...";
-
   try {
-    // 1. Update the tournament verification document
-    await updateDoc(
-      doc(db, "tournaments", tournamentId, "verifications", userId),
-      {
+    // 1. Update Verification doc with Field-by-Field Status and Decision
+    await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
         status,
-        rejectionNote: status === "rejected" ? note : "",
+        rejectionNote: finalReason,
+        fieldStatus: currentFieldStatuses, // Saves {uids: 'err', phone: 'ok', etc}
         processedAt: serverTimestamp(),
-        processedBy: auth.currentUser?.uid ?? "unknown",
-      }
-    );
+        processedBy: auth.currentUser?.uid ?? "admin"
+    });
 
-    // 2. SEND THE NOTIFICATION TO THE USER (This is what was missing/failing!)
+    // 2. Send Notification to User
     await addDoc(collection(db, "users", userId, "notifications"), {
       type: status === "approved" ? "approval" : "rejected", 
       title: status === "approved" ? "Application Approved!" : "Application Rejected",
-      message: status === "approved"
-        ? "Your team has been verified! Proceed to the payment stage."
-        : `Your application was rejected: ${note}`,
+      message: status === "approved" ? "Your team has been verified!" : `Rejected: ${finalReason}`,
       tournamentId: tournamentId,
       actionLink: `tournament=${tournamentId}`,
       read: false,
@@ -535,20 +523,14 @@ async function processDecision(tournamentId, userId, status) {
       createdAt: serverTimestamp(),
     });
 
-    // 3. UI Cleanup
     document.getElementById("verifModal")?.remove();
-    showToast(
-      status === "approved" ? "✅ Team approved!" : "❌ Application rejected.",
-      status === "approved" ? "success" : "error"
-    );
+    showToast(status === "approved" ? "✅ Team approved!" : "❌ Team rejected.", status === "approved" ? "success" : "error");
   } catch (e) {
-    console.error("Admin processing error:", e);
-    showToast("Error processing decision: " + e.message, "error");
-    approveBtn.disabled = false;
-    rejectBtn.disabled = false;
-    approveBtn.textContent = "✅ Approve";
+    console.error("Decision Error:", e);
+    showToast("Permission Error: Check Firebase Rules", "error");
   }
 }
+
 // ============================================================================
 //  5. TAB NAVIGATION
 //     Starts/stops the verification listener based on active tab to keep
