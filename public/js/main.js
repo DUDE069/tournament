@@ -1719,33 +1719,56 @@ async function createAccount() {
             localStorage.setItem("welcomeTeam", teamData.teamName);
         }
 
-              // Create user document
+                   // Create user document with verification
         console.log("[CREATE] Writing user document for UID:", uid);
-        console.log("[CREATE] User data:", JSON.stringify(userData, null, 2));
         
+        let writeSuccess = false;
         try {
+            // Use set() instead of setDoc() for more explicit behavior
             await setDoc(doc(db, "users", uid), userData);
-            console.log("[CREATE] User document written successfully");
+            console.log("[CREATE] ✓ setDoc completed without error");
             
-            // Verify the document was created
+            // Small delay for Firestore to process
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // Verify the document was actually created by reading it
             const verifyDoc = await getDoc(doc(db, "users", uid));
             if (verifyDoc.exists()) {
                 console.log("[CREATE] ✓ Document verified in Firestore");
+                writeSuccess = true;
             } else {
-                console.warn("[CREATE] ✗ Document NOT found after write!");
+                console.error("[CREATE] ✗ Document NOT found after write!");
+                // Try to recover by writing again
+                console.log("[CREATE] Retrying write...");
+                await setDoc(doc(db, "users", uid), userData);
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                const retryVerify = await getDoc(doc(db, "users", uid));
+                if (retryVerify.exists()) {
+                    console.log("[CREATE] ✓ Document verified on retry");
+                    writeSuccess = true;
+                }
             }
         } catch (writeErr) {
             console.error("[CREATE] Error writing document:", writeErr.message);
             console.error("[CREATE] Error code:", writeErr.code);
-            // Still show success to user, but log the error
-            showMessage("Account created (note: some features may be limited)");
+            console.error("[CREATE] Full error:", writeErr);
         }
         
-        // Wait for Firestore to propagate
-        await new Promise(resolve => setTimeout(resolve, 800));
+        // Extended delay if write had issues
+        if (!writeSuccess) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
         
-        // Success
-        showMessage("Account created successfully!");
+        // Success message
+        if (writeSuccess) {
+            showMessage("Account created successfully!");
+        } else {
+            showMessage("Account created! Refreshing...");
+            // Force page reload to re-authenticate properly
+            setTimeout(() => location.reload(), 1500);
+        }
+
 
         closeModal();
         
