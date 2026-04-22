@@ -306,6 +306,14 @@ function renderTournaments() {
 // ===============================
 // JOIN SYSTEM
 // ===============================
+// ============================================================
+// PATCH FOR main.js — replace window.handleJoin entirely
+// This adds an already-submitted check at the top so when a
+// user clicks a tournament they already applied for, they see
+// their submitted details in a read-only "status" view instead
+// of empty verified fields.
+// ============================================================
+
 window.handleJoin = async function(tournamentId) {
     if (!currentUser) { openLogin(); return; }
 
@@ -322,6 +330,83 @@ window.handleJoin = async function(tournamentId) {
         showMessage("Match has already started");
         return;
     }
+
+    // ── NEW: Check if user already submitted ──────────────────
+    try {
+        const existingSnap = await getDoc(
+            doc(db, "tournaments", tournamentId, "verifications", currentUser.uid)
+        );
+
+        if (existingSnap.exists()) {
+            const existing = existingSnap.data();
+            const statusColor = existing.status === "approved"
+                ? "#00ff88"
+                : existing.status === "rejected"
+                    ? "#ff4444"
+                    : "#ffd700";
+            const statusLabel = existing.status === "approved"
+                ? "✅ Approved — Proceed to payment"
+                : existing.status === "rejected"
+                    ? `❌ Rejected — Reason: ${existing.rejectionNote || "Contact admin"}`
+                    : "⏳ Under Review — Admin will notify you";
+
+            const uids = Array.isArray(existing.uids)
+                ? existing.uids.join(", ")
+                : (existing.uids ?? "—");
+
+            // Remove any existing already-applied modal
+            document.getElementById("alreadyAppliedModal")?.remove();
+
+            document.body.insertAdjacentHTML("beforeend", `
+                <div id="alreadyAppliedModal"
+                    style="position:fixed;inset:0;background:rgba(0,0,0,0.92);
+                           display:flex;align-items:center;justify-content:center;
+                           z-index:9999;padding:20px;">
+                    <div style="background:#1a1a1a;width:100%;max-width:480px;padding:28px;
+                                border-radius:14px;border:1px solid #333;">
+
+                        <h2 style="color:#00ff88;margin-bottom:6px;">Application Status</h2>
+                        <p style="color:#888;font-size:13px;margin-bottom:20px;">
+                            You have already applied for <b style="color:#fff;">${tournament.title}</b>
+                        </p>
+
+                        <div style="background:rgba(${existing.status === "approved" ? "0,255,136" : existing.status === "rejected" ? "255,68,68" : "255,215,0"},.1);
+                                    border:1px solid ${statusColor};border-radius:10px;
+                                    padding:14px 16px;margin-bottom:20px;
+                                    color:${statusColor};font-size:14px;font-weight:600;">
+                            ${statusLabel}
+                        </div>
+
+                        <div style="display:grid;gap:8px;margin-bottom:20px;">
+                            ${infoRowUser("Team Name",    existing.teamName   ?? "—")}
+                            ${infoRowUser("Leader Email", existing.leaderEmail ?? "—")}
+                            ${infoRowUser("Phone",        existing.phone       ?? "—")}
+                            ${infoRowUser("Player UIDs",  uids)}
+                            ${infoRowUser("Submitted",    existing.submittedAt?.toDate?.()?.toLocaleString("en-IN") ?? "—")}
+                        </div>
+
+                        ${existing.status === "approved" ? `
+                        <button onclick="document.getElementById('alreadyAppliedModal').remove(); showPaymentInterface('${tournamentId}');"
+                            style="width:100%;padding:12px;background:#00ff88;color:#000;border:none;
+                                   border-radius:8px;font-weight:700;cursor:pointer;font-size:15px;
+                                   margin-bottom:10px;">
+                            💳 Proceed to Payment →
+                        </button>` : ""}
+
+                        <button onclick="document.getElementById('alreadyAppliedModal').remove()"
+                            style="width:100%;padding:10px;background:transparent;color:#666;
+                                   border:1px solid #333;border-radius:8px;cursor:pointer;">
+                            Close
+                        </button>
+                    </div>
+                </div>`);
+            return; // ← stop here, don't open the regular form
+        }
+    } catch (checkErr) {
+        console.warn("Could not check existing application:", checkErr.message);
+        // If check fails, fall through to normal flow
+    }
+    // ── END already-submitted check ───────────────────────────
 
     window.currentJoiningTournament = tournamentId;
 
@@ -372,13 +457,13 @@ window.handleJoin = async function(tournamentId) {
     document.getElementById("joinDisplayTeam").textContent  = userProfile.teamName;
     document.getElementById("joinDisplayCode").textContent  = "Code: " + (userProfile.teamCode || "N/A");
 
-    document.getElementById("uidPlayer1").value     = userProfile.freeFireUid || "";
+    document.getElementById("uidPlayer1").value      = userProfile.freeFireUid || "";
     document.getElementById("joinBackupEmail").value = "";
-    document.getElementById("uidPlayer2").value     = "";
-    document.getElementById("uidPlayer3").value     = "";
-    document.getElementById("uidPlayer4").value     = "";
-    document.getElementById("uidPlayer5").value     = "";
-    document.getElementById("joinPhone").value       = "";
+    document.getElementById("uidPlayer2").value      = "";
+    document.getElementById("uidPlayer3").value      = "";
+    document.getElementById("uidPlayer4").value      = "";
+    document.getElementById("uidPlayer5").value      = "";
+    document.getElementById("joinPhone").value        = "";
 
     if (userProfile.isLeader) {
         document.getElementById("joinDisplayLeader").textContent = "👑 You are the Team Leader";
@@ -392,6 +477,17 @@ window.handleJoin = async function(tournamentId) {
         }
     }
 };
+
+// Helper for already-applied modal rows
+function infoRowUser(label, value) {
+    return `
+        <div style="display:flex;justify-content:space-between;align-items:center;
+                    background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:#666;font-size:13px;">${label}</span>
+            <span style="color:#fff;font-size:13px;font-weight:600;
+                         max-width:60%;text-align:right;word-break:break-all;">${value}</span>
+        </div>`;
+}
 
 window.closeJoinModal = function() {
     document.getElementById('joinTournamentModal').style.display  = 'none';

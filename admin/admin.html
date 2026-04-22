@@ -3,247 +3,572 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NPC Esports - Admin Panel</title>
+  <title>NPC Esports — Admin Panel</title>
+  <link rel="stylesheet" href="admin.css">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { 
-      background: #0f0f0f; 
-      color: #fff; 
-      font-family: 'Segoe UI', Arial, sans-serif; 
-      padding: 20px;
+    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap');
+
+    :root {
+      --green:  #00ff88;
+      --blue:   #4a90e2;
+      --red:    #ff4444;
+      --gold:   #ffd700;
+      --orange: #ff6b35;
+      --bg:     #0a0a0a;
+      --bg2:    #111;
+      --bg3:    #1a1a1a;
+      --border: #2a2a2a;
+      --text:   #e0e0e0;
+      --muted:  #666;
     }
-    h1 { color: #00ff88; margin-bottom: 20px; border-bottom: 2px solid #00ff88; padding-bottom: 10px; }
-    h2 { color: #4a90e2; margin: 20px 0 15px 0; }
-    
-    .login-section { max-width: 400px; margin: 100px auto; text-align: center; }
-    .login-section input { 
-      width: 100%; 
-      padding: 12px; 
-      margin: 10px 0; 
-      border: 1px solid #333; 
-      background: #1a1a1a; 
-      color: #fff;
-      border-radius: 4px;
+
+    * { margin:0; padding:0; box-sizing:border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+      font-size: 15px;
+      min-height: 100vh;
     }
-    .login-section button { 
-      width: 100%; 
-      padding: 12px; 
-      background: #00ff88; 
-      color: #000; 
-      border: none; 
+
+    /* ── LOGIN ─────────────────────────────────────── */
+    .login-section {
+      max-width: 400px;
+      margin: 100px auto;
+      text-align: center;
+      padding: 40px 30px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+    }
+    .login-section h1 {
+      color: var(--green);
+      font-size: 28px;
+      margin-bottom: 24px;
+      letter-spacing: 2px;
+    }
+    .login-section input {
+      width: 100%;
+      padding: 12px 16px;
+      margin: 8px 0;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .login-section input:focus { outline: none; border-color: var(--green); }
+    .login-section button {
+      width: 100%;
+      padding: 13px;
+      background: var(--green);
+      color: #000;
+      border: none;
       cursor: pointer;
-      font-weight: bold;
-      border-radius: 4px;
-      margin-top: 10px;
+      font-weight: 700;
+      border-radius: 8px;
+      margin-top: 12px;
+      font-size: 15px;
+      font-family: inherit;
+      letter-spacing: 1px;
+      transition: opacity .15s;
     }
-    
+    .login-section button:hover { opacity: .85; }
+
+    /* ── ADMIN PANEL WRAPPER ───────────────────────── */
     .admin-panel { display: none; }
-    
-    .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid #333; padding-bottom: 10px; }
-    .tab { 
-      padding: 10px 20px; 
-      background: #1a1a1a; 
-      border: none; 
-      color: #fff; 
-      cursor: pointer;
-      border-radius: 4px;
+
+    /* ── HEADER ────────────────────────────────────── */
+    .admin-header {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
-    .tab.active { background: #00ff88; color: #000; }
-    
+    .admin-header h1 {
+      color: var(--green);
+      font-size: 22px;
+      letter-spacing: 2px;
+    }
+    .admin-header .logout-btn {
+      background: var(--red);
+      color: #fff;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      transition: opacity .15s;
+    }
+    .admin-header .logout-btn:hover { opacity: .8; }
+
+    /* ── TABS ──────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      gap: 6px;
+      padding: 14px 24px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 9px 18px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .5px;
+      transition: all .15s;
+      position: relative;
+    }
+    .tab:hover { border-color: #444; }
+    .tab.active { background: var(--green); color: #000; border-color: var(--green); }
+
+    /* badge on tab */
+    .tab-badge {
+      display: inline-block;
+      background: var(--red);
+      color: #fff;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    /* ── CONTENT ───────────────────────────────────── */
+    .content { padding: 24px; max-width: 1100px; margin: 0 auto; }
+
     .section { display: none; }
     .section.active { display: block; }
-    
-    /* Tournament Styles */
-    .form-group { margin-bottom: 15px; }
-    .form-group label { display: block; margin-bottom: 5px; color: #888; }
-    .form-group input, .form-group select {
+
+    h2 {
+      color: var(--blue);
+      font-size: 18px;
+      margin: 0 0 16px;
+      letter-spacing: 1px;
+      border-left: 3px solid var(--blue);
+      padding-left: 10px;
+    }
+
+    /* ── FORM ELEMENTS ─────────────────────────────── */
+    .form-group { margin-bottom: 14px; }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
       width: 100%;
-      padding: 10px;
-      background: #1a1a1a;
-      border: 1px solid #333;
-      color: #fff;
-      border-radius: 4px;
-    }
-    .btn-submit { 
-      background: #00ff88; 
-      color: #000; 
-      padding: 12px 24px; 
-      border: none; 
-      cursor: pointer;
-      font-weight: bold;
-      border-radius: 4px;
-    }
-    .btn-delete { 
-      background: #ff4444; 
-      color: #fff; 
-      padding: 5px 15px; 
-      border: none; 
-      cursor: pointer;
-      border-radius: 4px;
-    }
-    
-    .item-list { margin-top: 20px; }
-    .item-card {
-      background: #1a1a1a;
-      border: 1px solid #333;
-      padding: 15px;
-      margin-bottom: 10px;
+      padding: 10px 14px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
       border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      transition: border-color .15s;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus { outline: none; border-color: var(--green); }
+
+    .form-row { display: flex; gap: 10px; }
+    .form-row .form-group { flex: 1; }
+
+    .btn-submit {
+      background: var(--green);
+      color: #000;
+      padding: 11px 24px;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      letter-spacing: .5px;
+      transition: opacity .15s;
+    }
+    .btn-submit:hover { opacity: .85; }
+    .btn-delete {
+      background: var(--red);
+      color: #fff;
+      padding: 6px 14px;
+      border: none;
+      cursor: pointer;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 12px;
+      transition: opacity .15s;
+    }
+    .btn-delete:hover { opacity: .8; }
+
+    /* ── TOURNAMENT FORM BOX ───────────────────────── */
+    .form-box {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px;
+      margin-bottom: 28px;
+      max-width: 640px;
+    }
+
+    /* ── TOURNAMENT LIST ───────────────────────────── */
+    .item-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      padding: 14px 18px;
+      margin-bottom: 10px;
+      border-radius: 10px;
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-    
-    /* Calendar Admin Styles */
-    .calendar-form {
-      background: #1a1a1a;
-      padding: 20px;
-      border-radius: 8px;
-      margin-bottom: 30px;
-      border: 1px solid #333;
-    }
-    .date-input { width: 200px !important; }
-    
-    .event-preview {
-      display: inline-block;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      margin-right: 10px;
-      vertical-align: middle;
-    }
-    .event-upcoming { background: #4a90e2; }
-    .event-special { background: #ffd700; }
-    .event-completed { background: #666; }
-    .event-today { background: #00ff88; }
-    
-    .color-picker {
+    .item-card strong { color: var(--green); }
+    .item-card small { color: var(--muted); font-size: 12px; }
+
+    /* ── PARTITION / SECTION LABELS ────────────────── */
+    .partition {
       display: flex;
-      gap: 10px;
-      margin-top: 5px;
+      align-items: center;
+      gap: 12px;
+      margin: 24px 0 14px;
     }
+    .partition-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+    .partition-label.new      { background: rgba(255,215,0,.15);  color: var(--gold);  border: 1px solid var(--gold); }
+    .partition-label.accepted { background: rgba(0,255,136,.12);  color: var(--green); border: 1px solid var(--green); }
+    .partition-label.rejected { background: rgba(255,68,68,.12);  color: var(--red);   border: 1px solid var(--red); }
+    .partition-line { flex: 1; height: 1px; background: var(--border); }
+
+    /* ── APPLICATION CARDS ─────────────────────────── */
+    .app-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-left-width: 4px;
+      padding: 14px 18px;
+      margin-bottom: 10px;
+      border-radius: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .app-card.new      { border-left-color: var(--gold); }
+    .app-card.accepted { border-left-color: var(--green); }
+    .app-card.rejected { border-left-color: var(--red); }
+
+    .app-card-info strong { color: #fff; font-size: 15px; }
+    .app-card-info small  { color: var(--muted); font-size: 12px; display: block; margin-top: 2px; }
+
+    .app-card-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+    .btn-view {
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      padding: 7px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      transition: opacity .15s;
+    }
+    .btn-view:hover { opacity: .8; }
+
+    .btn-status {
+      background: #222;
+      color: var(--green);
+      border: 1px solid var(--green);
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all .15s;
+    }
+    .btn-status:hover { background: var(--green); color: #000; }
+
+    .btn-remove {
+      background: #1a1a1a;
+      color: var(--red);
+      border: 1px solid var(--red);
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all .15s;
+    }
+    .btn-remove:hover { background: var(--red); color: #fff; }
+
+    .status-pill {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      letter-spacing: .5px;
+    }
+    .pill-new      { background: rgba(255,215,0,.2);  color: var(--gold);  }
+    .pill-accepted { background: rgba(0,255,136,.15); color: var(--green); }
+    .pill-rejected { background: rgba(255,68,68,.15); color: var(--red);   }
+
+    /* ── EMPTY STATE ───────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .empty-state .emoji { font-size: 36px; display: block; margin-bottom: 10px; }
+
+    /* ── CALENDAR SECTION ──────────────────────────── */
+    .calendar-form {
+      background: var(--bg2);
+      padding: 22px;
+      border-radius: 12px;
+      margin-bottom: 28px;
+      border: 1px solid var(--border);
+      max-width: 640px;
+    }
+    .color-picker { display: flex; gap: 10px; margin-top: 6px; }
     .color-option {
-      width: 30px;
-      height: 30px;
+      width: 28px; height: 28px;
       border-radius: 50%;
       cursor: pointer;
       border: 2px solid transparent;
+      transition: transform .15s;
     }
+    .color-option:hover { transform: scale(1.15); }
     .color-option.selected { border-color: #fff; }
-    
+    .color-option.event-upcoming  { background: #4a90e2; }
+    .color-option.event-special   { background: #ffd700; }
+    .color-option.event-completed { background: #666; }
+    .color-option.event-today     { background: #00ff88; }
+
     .calendar-events-list {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-      gap: 15px;
+      gap: 14px;
     }
     .event-card {
-      background: #1a1a1a;
+      background: var(--bg2);
       border-left: 4px solid;
-      padding: 15px;
-      border-radius: 4px;
+      padding: 14px;
+      border-radius: 8px;
+      border-top: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
     }
+
+    /* ── TOAST ─────────────────────────────────────── */
+    @keyframes fadeInUp {
+      from { opacity:0; transform:translateY(8px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    /* ── STATUS MODAL ──────────────────────────────── */
+    .status-modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.8);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999; padding: 20px;
+    }
+    .status-modal {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      width: 100%;
+      max-width: 500px;
+      padding: 28px;
+    }
+    .status-modal h3 { color: var(--green); margin-bottom: 18px; font-size: 18px; }
+    .status-row {
+      display: flex; justify-content: space-between;
+      background: #0f0f0f;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .status-row .s-label { color: var(--muted); font-size: 13px; }
+    .status-row .s-value { color: #fff; font-size: 13px; font-weight: 600; }
+
+    /* ── LOADING ───────────────────────────────────── */
+    .loading-text { color: var(--muted); padding: 30px 0; text-align: center; }
   </style>
 </head>
 <body>
 
-  <!-- LOGIN SECTION -->
-  <div class="login-section" id="loginSection">
-    <h1>NPC Admin Login</h1>
-    <input type="email" id="adminEmail" placeholder="Admin Email">
-    <input type="password" id="adminPass" placeholder="Password">
-    <button onclick="adminLogin()">Login</button>
-    <p style="margin-top: 20px; color: #666; font-size: 14px;">Secure Admin Access Only</p>
+<!-- ══════════════════════════════════════════════════
+     LOGIN
+══════════════════════════════════════════════════ -->
+<div class="login-section" id="loginSection">
+  <h1>⚡ NPC ADMIN</h1>
+  <input type="email"    id="adminEmail" placeholder="Admin Email">
+  <input type="password" id="adminPass"  placeholder="Password">
+  <button onclick="adminLogin()">Login</button>
+  <p style="margin-top:18px;color:#444;font-size:13px;">Secure Admin Access Only</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     ADMIN PANEL
+══════════════════════════════════════════════════ -->
+<div class="admin-panel" id="adminPanel">
+
+  <!-- HEADER -->
+  <div class="admin-header">
+    <h1>🎮 NPC ESPORTS — ADMIN</h1>
+    <button class="logout-btn" onclick="logout()">Logout</button>
   </div>
 
-  <!-- ADMIN PANEL -->
-  <div class="admin-panel" id="adminPanel">
-    <h1>🎮 NPC Esports Admin Panel</h1>
-    
-    <div class="tabs">
+  <!-- TABS -->
+  <div class="tabs">
     <button class="tab active" onclick="showTab('tournaments')">🏆 Tournaments</button>
     <button class="tab" onclick="showTab('calendar')">📅 Calendar</button>
-    <button class="tab" onclick="showTab('verifications')">✅ Verifications</button> <!-- NEW -->
-    <button class="tab" onclick="logout()" style="margin-left: auto; background: #ff4444;">Logout</button>
-    <button class="tab" onclick="showTab('upcoming')">📅 Upcoming Regs</button>
- 
+    <button class="tab" onclick="showTab('verifications')">
+      📋 Ongoing Applications
+      <span class="tab-badge" id="verificationBadge" style="display:none">0</span>
+    </button>
+    <button class="tab" onclick="showTab('registrations')">
+      📝 Registrations
+      <span class="tab-badge" id="registrationBadge" style="display:none">0</span>
+    </button>
   </div>
 
-<!-- Add this section -->
-<div class="section" id="verificationsSection">
-    <h2>Pending Team Verifications</h2>
-    <div id="verificationList" style="margin-top: 20px;">
-        <p>Loading...</p>
-    </div>
-</div>
-<div class="section" id="upcomingSection">
-  <h2>Upcoming Tournament Registrations</h2>
-  <div id="upcomingRegistrationsList"></div>
-</div>
+  <!-- CONTENT -->
+  <div class="content">
 
-
-
-    <!-- TOURNAMENTS SECTION -->
+    <!-- ══ TOURNAMENTS ══════════════════════════════ -->
     <div class="section active" id="tournamentsSection">
       <h2>Add New Tournament</h2>
-      <div style="max-width: 600px;">
+      <div class="form-box">
+
         <div class="form-group">
           <label>Title</label>
           <input type="text" id="tournamentTitle" placeholder="e.g., Free Fire Pro League">
         </div>
+
         <div class="form-group">
-          <label>Entry Fee (₹)</label>
-          <input type="number" id="tournamentFee" placeholder="e.g., 50">
-        </div>
-        <div class="form-group">
-          <label>Mode</label>
-          <select id="tournamentMode">
-            <option value="Solo">Solo</option>
-            <option value="Duo">Duo</option>
-            <option value="Squad">Squad</option>
+          <label>Category</label>
+          <select id="tournamentCategory" onchange="handleCategoryChange(this)">
+            <option value="ongoing">Ongoing</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="limited">Limited</option>
           </select>
         </div>
-        <!-- Modify existing category select to trigger onchange -->
-<div class="form-group">
-    <label>Category</label>
-    <select id="tournamentCategory" onchange="handleCategoryChange(this)">
-        <option value="ongoing">Ongoing</option>
-        <option value="upcoming">Upcoming</option>
-        <option value="limited">Limited</option>
-    </select>
-</div>
-        <div class="form-group">
-          <label>Duration (minutes)</label>
-          <input type="number" id="tournamentDuration" value="60" placeholder="Registration duration in minutes">
-        </div>
-        <div class="form-group">
-          <label>Prize Pool (1st/2nd/3rd)</label>
-          <div style="display: flex; gap: 10px;">
-            <input type="number" id="prizeFirst" placeholder="1st Prize" style="flex: 1;">
-            <input type="number" id="prizeSecond" placeholder="2nd Prize" style="flex: 1;">
-            <input type="number" id="prizeThird" placeholder="3rd Prize" style="flex: 1;">
+
+        <!-- ONGOING / LIMITED FIELDS -->
+        <div id="ongoingFields">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Entry Fee (₹)</label>
+              <input type="number" id="tournamentFee" placeholder="e.g., 50">
+            </div>
+            <div class="form-group">
+              <label>Mode</label>
+              <select id="tournamentMode">
+                <option value="Solo">Solo</option>
+                <option value="Duo">Duo</option>
+                <option value="Squad">Squad</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Duration (minutes)</label>
+            <input type="number" id="tournamentDuration" value="60">
+          </div>
+          <div class="form-group">
+            <label>Prize Pool (1st / 2nd / 3rd)</label>
+            <div class="form-row">
+              <div class="form-group"><input type="number" id="prizeFirst"  placeholder="1st"></div>
+              <div class="form-group"><input type="number" id="prizeSecond" placeholder="2nd"></div>
+              <div class="form-group"><input type="number" id="prizeThird"  placeholder="3rd"></div>
+            </div>
           </div>
         </div>
+
+        <!-- UPCOMING FIELDS (hidden by default) -->
+        <div id="upcomingFields" style="display:none;">
+          <div class="form-row">
+            <div class="form-group">
+              <label>Entry Fee (₹)</label>
+              <input type="number" id="upcomingFee" placeholder="e.g., 100">
+            </div>
+            <div class="form-group">
+              <label>Mode</label>
+              <select id="upcomingMode">
+                <option value="Solo">Solo</option>
+                <option value="Duo">Duo</option>
+                <option value="Squad">Squad</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Tournament Date ✱</label>
+            <input type="date" id="tournamentEventDate">
+            <small style="color:var(--muted);font-size:11px;margin-top:4px;display:block;">
+              Match will be held on this date · Event auto-added to calendar
+            </small>
+          </div>
+          <div class="form-group">
+            <label>Prize Pool (1st / 2nd / 3rd)</label>
+            <div class="form-row">
+              <div class="form-group"><input type="number" id="upcomingPrizeFirst"  placeholder="1st"></div>
+              <div class="form-group"><input type="number" id="upcomingPrizeSecond" placeholder="2nd"></div>
+              <div class="form-group"><input type="number" id="upcomingPrizeThird"  placeholder="3rd"></div>
+            </div>
+          </div>
+          <div id="upcomingCalendarNote" style="
+            background:rgba(74,144,226,.1);border:1px solid var(--blue);
+            border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--blue);">
+            📅 A calendar event will be auto-created for this tournament date.<br>
+            <span id="calendarMarkNote" style="color:var(--muted);font-size:12px;"></span>
+          </div>
+        </div>
+
         <button class="btn-submit" onclick="addTournament()">+ Add Tournament</button>
       </div>
 
       <h2>Existing Tournaments</h2>
-      <div class="item-list" id="tournamentList"></div>
+      <div id="tournamentList"></div>
     </div>
 
-<!-- Add after tournamentCategory select -->
-<div class="form-group" id="eventDateGroup" style="display: none;">
-    <label>Tournament Date *</label>
-    <input type="date" id="tournamentEventDate" class="date-input">
-    <small style="color: #888; font-size: 11px;">Match will be held on this date</small>
-</div>
-
-    <!-- CALENDAR SECTION -->
+    <!-- ══ CALENDAR ══════════════════════════════════ -->
     <div class="section" id="calendarSection">
       <h2>Add Calendar Event</h2>
       <div class="calendar-form">
         <div class="form-group">
           <label>Select Date</label>
-          <input type="date" id="eventDate" class="date-input">
+          <input type="date" id="eventDate">
         </div>
         <div class="form-group">
           <label>Event Title</label>
@@ -252,20 +577,20 @@
         <div class="form-group">
           <label>Event Type (Color)</label>
           <div class="color-picker" id="colorPicker">
-            <div class="color-option event-upcoming selected" onclick="selectColor('upcoming', this)" title="Upcoming"></div>
-            <div class="color-option event-special" onclick="selectColor('special', this)" style="background: #ffd700;" title="Special Event"></div>
-            <div class="color-option event-completed" onclick="selectColor('completed', this)" title="Completed"></div>
-            <div class="color-option event-today" onclick="selectColor('today', this)" title="Today/Tournament Day"></div>
+            <div class="color-option event-upcoming selected" onclick="selectColor('upcoming',this)" title="Upcoming"></div>
+            <div class="color-option event-special"   onclick="selectColor('special',this)"   title="Special"></div>
+            <div class="color-option event-completed" onclick="selectColor('completed',this)" title="Completed"></div>
+            <div class="color-option event-today"     onclick="selectColor('today',this)"     title="Today/Match Day"></div>
           </div>
           <input type="hidden" id="eventType" value="upcoming">
         </div>
         <div class="form-group">
-          <label>Prize Amount (₹) - Shows in tooltip</label>
+          <label>Prize Amount (₹)</label>
           <input type="number" id="eventPrize" placeholder="e.g., 5000">
         </div>
         <div class="form-group">
-          <label>Description (Optional)</label>
-          <input type="text" id="eventDesc" placeholder="Short description for tooltip">
+          <label>Description (optional)</label>
+          <input type="text" id="eventDesc" placeholder="Short tooltip description">
         </div>
         <button class="btn-submit" onclick="addCalendarEvent()">+ Add Calendar Event</button>
       </div>
@@ -274,12 +599,25 @@
       <div class="calendar-events-list" id="calendarEventsList"></div>
     </div>
 
-  </div>
+    <!-- ══ ONGOING APPLICATIONS (was Verifications) ══ -->
+    <div class="section" id="verificationsSection">
+      <h2>Ongoing Tournament Applications</h2>
+      <div id="verificationList">
+        <p class="loading-text">Loading…</p>
+      </div>
+    </div>
 
+    <!-- ══ REGISTRATIONS (new tab merging upcoming) ═══ -->
+    <div class="section" id="registrationsSection">
+      <h2>Upcoming Tournament Registrations</h2>
+      <div id="upcomingRegistrationsList">
+        <p class="loading-text">Loading…</p>
+      </div>
+    </div>
 
+  </div><!-- /content -->
+</div><!-- /admin-panel -->
 
-
-  
-  <script type="module" src="admin.js"></script>
+<script type="module" src="admin.js"></script>
 </body>
 </html>
