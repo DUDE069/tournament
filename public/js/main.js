@@ -1789,9 +1789,15 @@ async function createAccount() {
 
         backToLogin();
 
-    } catch (err) {
+   } catch (err) {
         console.error("Registration error:", err);
         showMessage("Error: " + err.message);
+        // Clean up orphaned Auth account so the user can try again cleanly
+        try {
+            if (auth.currentUser) await auth.currentUser.delete();
+        } catch (deleteErr) {
+            console.warn("Could not clean up auth account:", deleteErr.message);
+        }
     } finally {
         if (createBtn) {
             createBtn.disabled = false;
