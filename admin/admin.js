@@ -2,7 +2,7 @@
 //  NPC Esports — admin.js  (v2 — full rewrite)
 // =============================================================================
 
-import { db, auth } from './firebase.js';
+import { db, auth } from "../public/js/firebase.js";
 import {
   collection, collectionGroup, addDoc, deleteDoc,
   doc, onSnapshot, query, orderBy, serverTimestamp,

@@ -3,7 +3,7 @@
 // ===============================
 
 // FIREBASE IMPORTS (SINGLE BLOCK - NO DUPLICATES)
-import { db, auth } from "../public/js/firebase.js";
+import { db, auth } from "./firebase.js";
 
 import {
   collection, onSnapshot, doc, setDoc, getDoc, serverTimestamp,
