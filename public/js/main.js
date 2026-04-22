@@ -936,31 +936,33 @@ onAuthStateChanged(auth, async (user) => {
         isLoggedIn  = true;
 
         // Create loading promise with retry logic for race conditions
+               // Create loading promise with retry logic for race conditions
         profileLoadPromise = (async () => {
             let attempts = 0;
             const maxAttempts = 3;
             
             while (attempts < maxAttempts) {
                 try {
+                    console.log(`[AUTH] Attempt ${attempts + 1}: Reading /users/${user.uid}`);
                     const userDoc = await getDoc(doc(db, "users", user.uid));
                     
                     if (userDoc.exists()) {
                         userProfile = userDoc.data();
                         await loadUserWallet();
-                        console.log("[AUTH] Profile loaded:", userProfile.email);
+                        console.log("[AUTH] ✓ Profile loaded:", userProfile.email);
                         return; // Success - exit function
                     } else {
                         // Document doesn't exist yet - wait and retry
-                        console.warn(`[AUTH] User doc not found, attempt ${attempts + 1}/${maxAttempts}`);
+                        console.warn(`[AUTH] User doc not found (attempt ${attempts + 1}/${maxAttempts})`);
                         attempts++;
                         
                         if (attempts < maxAttempts) {
-                            // Wait 500ms before retrying (allows Firestore write to complete)
+                            console.log(`[AUTH] Waiting 500ms before retry...`);
                             await new Promise(resolve => setTimeout(resolve, 500));
                         }
                     }
                 } catch (e) {
-                    console.warn(`[AUTH] Error loading profile, attempt ${attempts + 1}:`, e.message);
+                    console.warn(`[AUTH] Attempt ${attempts + 1} failed: ${e.code || e.message}`);
                     attempts++;
                     
                     if (attempts < maxAttempts) {
@@ -969,8 +971,8 @@ onAuthStateChanged(auth, async (user) => {
                 }
             }
             
-            // All attempts failed - set to null (will trigger error UI)
-            console.error("[AUTH] Failed to load profile after retries");
+            // All attempts failed
+            console.error("[AUTH] ✗ Failed to load profile after all retries");
             userProfile = null;
         })();
 
@@ -1717,13 +1719,34 @@ async function createAccount() {
             localStorage.setItem("welcomeTeam", teamData.teamName);
         }
 
-        // Create user document
-        await setDoc(doc(db, "users", uid), userData);
-        await new Promise(resolve => setTimeout(resolve, 500));
-
+              // Create user document
+        console.log("[CREATE] Writing user document for UID:", uid);
+        console.log("[CREATE] User data:", JSON.stringify(userData, null, 2));
+        
+        try {
+            await setDoc(doc(db, "users", uid), userData);
+            console.log("[CREATE] User document written successfully");
+            
+            // Verify the document was created
+            const verifyDoc = await getDoc(doc(db, "users", uid));
+            if (verifyDoc.exists()) {
+                console.log("[CREATE] ✓ Document verified in Firestore");
+            } else {
+                console.warn("[CREATE] ✗ Document NOT found after write!");
+            }
+        } catch (writeErr) {
+            console.error("[CREATE] Error writing document:", writeErr.message);
+            console.error("[CREATE] Error code:", writeErr.code);
+            // Still show success to user, but log the error
+            showMessage("Account created (note: some features may be limited)");
+        }
+        
+        // Wait for Firestore to propagate
+        await new Promise(resolve => setTimeout(resolve, 800));
         
         // Success
         showMessage("Account created successfully!");
+
         closeModal();
         
         // Show team welcome if applicable
