@@ -198,7 +198,6 @@ function updateBadge(count) {
 //    loadVerifications   → tab-scoped, full render, collectionGroup
 // ============================================================================
 function loadVerifications() {
-  // Cancel any stale listener before creating a new one.
   if (_listeners.verifications) {
     _listeners.verifications();
     _listeners.verifications = null;
@@ -211,18 +210,27 @@ function loadVerifications() {
   const pendingQuery = query(
     collectionGroup(db, "verifications"),
     where("status", "==", "pending"),
-    orderBy("submittedAt", "desc")   // newest first — ensure index exists
+    orderBy("submittedAt", "desc")
   );
 
   _listeners.verifications = onSnapshot(
     pendingQuery,
-    (snapshot) => renderVerificationList(snapshot),
+    (snapshot) => {
+      // Play sound for new pending verifications
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === "added" && change.doc.data().status === "pending") {
+          playAdminAlert();
+        }
+      });
+      renderVerificationList(snapshot);
+    },
     (err) => {
       console.error("Verification list error:", err.message);
       container.innerHTML = `<p style="color:#ff4444;">Error loading verifications: ${err.message}</p>`;
     }
   );
 }
+
 
 
 
@@ -589,7 +597,6 @@ const adminAudio = new (window.AudioContext || window.webkitAudioContext)();
 function playAdminAlert() {
     if (adminAudio.state === 'suspended') adminAudio.resume();
     
-    // Admin "ding" - distinct from user sound
     const osc = adminAudio.createOscillator();
     const gain = adminAudio.createGain();
     
@@ -604,12 +611,7 @@ function playAdminAlert() {
     osc.start(adminAudio.currentTime);
     osc.stop(adminAudio.currentTime + 0.5);
 }
-
-// Play sound when new verification arrives (add to loadVerifications)
-// Inside the onSnapshot callback, when snapshot.docChanges() has 'added':
-if (change.type === "added" && change.doc.data().status === "pending") {
-    playAdminAlert();
-}
+// REMOVE THE STANDALONE BLOCK HERE - DON'T LEAVE ORPHANED CODE
 
 
 
