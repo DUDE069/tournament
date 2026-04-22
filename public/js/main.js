@@ -935,35 +935,58 @@ onAuthStateChanged(auth, async (user) => {
         currentUser = user;
         isLoggedIn  = true;
 
-        // NEW: Create loading promise that dashboard can await
+        // Create loading promise with retry logic for race conditions
         profileLoadPromise = (async () => {
-            try {
-                const userDoc = await getDoc(doc(db, "users", user.uid));
-                if (userDoc.exists()) {
-                    userProfile = userDoc.data();
-                    await loadUserWallet();
-
-                    console.log("[AUTH] Profile loaded:", userProfile.email);
-                } else {
-                    console.warn("[AUTH] User doc not found");
-                    userProfile = null;
+            let attempts = 0;
+            const maxAttempts = 3;
+            
+            while (attempts < maxAttempts) {
+                try {
+                    const userDoc = await getDoc(doc(db, "users", user.uid));
+                    
+                    if (userDoc.exists()) {
+                        userProfile = userDoc.data();
+                        await loadUserWallet();
+                        console.log("[AUTH] Profile loaded:", userProfile.email);
+                        return; // Success - exit function
+                    } else {
+                        // Document doesn't exist yet - wait and retry
+                        console.warn(`[AUTH] User doc not found, attempt ${attempts + 1}/${maxAttempts}`);
+                        attempts++;
+                        
+                        if (attempts < maxAttempts) {
+                            // Wait 500ms before retrying (allows Firestore write to complete)
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`[AUTH] Error loading profile, attempt ${attempts + 1}:`, e.message);
+                    attempts++;
+                    
+                    if (attempts < maxAttempts) {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
                 }
-            } catch (e) {
-                console.error("[AUTH] Error loading profile:", e);
-                userProfile = null;
             }
+            
+            // All attempts failed - set to null (will trigger error UI)
+            console.error("[AUTH] Failed to load profile after retries");
+            userProfile = null;
         })();
 
+        // Wait for profile to load before proceeding
         try {
             await profileLoadPromise;
         } catch (e) {
             console.error("[AUTH] Profile load failed:", e);
+            userProfile = null;
         }
 
         // Only start PRIVATE listeners here
         initNotifications();
 
     } else {
+
         // Cleanup
         if (unsubNotifications) { 
             unsubNotifications(); 
@@ -1696,6 +1719,8 @@ async function createAccount() {
 
         // Create user document
         await setDoc(doc(db, "users", uid), userData);
+        await new Promise(resolve => setTimeout(resolve, 500));
+
         
         // Success
         showMessage("Account created successfully!");
