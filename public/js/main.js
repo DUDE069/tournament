@@ -125,6 +125,7 @@ window.handleUpcomingRegister = async function(tournamentId) {
     dateBanner.innerHTML = `
         <div style="color: #3b82f6; font-size: 14px; margin-bottom: 5px;">Tournament Schedule</div>
         <div style="color: #fff; font-size: 20px; font-weight: bold;">${eventDate}</div>
+        ${tournament.eventTime ? `<div style="color:#3b82f6;font-size:16px;font-weight:600;margin-top:4px;">⏰ ${tournament.eventTime}</div>` : ''}
         <div style="color: #888; font-size: 12px; margin-top: 5px;">
             Free registration now • Payment required 1 day before match
         </div>
@@ -244,6 +245,7 @@ function renderTournaments() {
                 <div class="timer-box" style="background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6;">
                     <p style="color: #3b82f6; font-size: 12px; margin: 0 0 5px;">📅 Tournament Date</p>
                     <div style="color: #fff; font-size: 16px; font-weight: bold;">${eventDateStr}</div>
+                    ${t.eventTime ? `<div style="color:#3b82f6;font-size:14px;font-weight:600;margin-top:3px;">⏰ ${t.eventTime}</div>` : ''}
                 </div>`;
             
             buttonHTML = `
@@ -256,23 +258,40 @@ function renderTournaments() {
             cardStyle = 'border-left: 4px solid #3b82f6;';
 
         } else if (t.category === "limited") {
-            // LIMITED LOGIC
+            // LIMITED LOGIC — no entry fee shown, "Notify Me" button
+            const startLabel = t.endTime
+                ? new Date(t.endTime).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+                : 'TBA';
+
+            timerHTML = `
+                <div class="timer-box" style="background:rgba(255,215,0,0.1);border:1px solid #ffd700;">
+                    <p style="color:#ffd700;font-size:12px;margin:0 0 4px;">⚡ Limited Tournament</p>
+                    <div style="color:#fff;font-size:13px;">Ends: ${startLabel}</div>
+                </div>`;
+
             buttonHTML = `
-                <button class="join-btn" onclick="handleJoin('${t.id}')">
-                    Join Limited
+                <button class="join-btn" onclick="handleNotifyMe('${t.id}','${(t.title || '').replace(/'/g, "\\'")}')"
+                    style="background:#ffd700;color:#000;border-color:#ffd700;">
+                    🔔 Notify Me
                 </button>`;
+
+            cardStyle = 'border-left: 4px solid #ffd700;';
         }
 
         const card = `
             <div class="card" style="position:relative; ${cardStyle}">
                 <div>
                     <h3>${t.title}</h3>
-                    <p class="entry"><b>Entry Fee:</b> ₹${t.entryFee || 0}</p>
+                    ${t.category !== 'limited' ? `<p class="entry"><b>Entry Fee:</b> ₹${t.entryFee || 0}</p>` : ''}
                     <p class="mode"><b>Mode:</b> ${t.mode || "N/A"}</p>
 
-                    ${t.title?.toLowerCase().includes("flash")
-                        ? `<p class="winner-prize"><b>Winner Prize:</b> ₹${t.prize?.first || 0}</p>`
-                        : `<div class="prize-box">
+                    ${t.category === 'upcoming' && t.eventTime
+                        ? `<p style="color:#3b82f6;font-size:13px;margin:4px 0;"><b>⏰ Time:</b> ${t.eventTime}</p>`
+                        : ''
+                    }
+
+                    ${t.category === 'limited'
+                        ? `<div class="prize-box">
                              <p class="section-title">🏆 Prize Pool</p>
                              <div class="prize-list">
                                <span>1st: ₹${t.prize?.first || 0}</span>
@@ -280,6 +299,16 @@ function renderTournaments() {
                                <span>3rd: ₹${t.prize?.third || 0}</span>
                              </div>
                            </div>`
+                        : t.title?.toLowerCase().includes("flash")
+                            ? `<p class="winner-prize"><b>Winner Prize:</b> ₹${t.prize?.first || 0}</p>`
+                            : `<div class="prize-box">
+                                 <p class="section-title">🏆 Prize Pool</p>
+                                 <div class="prize-list">
+                                   <span>1st: ₹${t.prize?.first || 0}</span>
+                                   <span>2nd: ₹${t.prize?.second || 0}</span>
+                                   <span>3rd: ₹${t.prize?.third || 0}</span>
+                                 </div>
+                               </div>`
                     }
 
                     ${timerHTML}
@@ -1110,6 +1139,82 @@ onAuthStateChanged(auth, async (user) => {
 // Check every 5 minutes for tournaments that need to be promoted
 setInterval(checkTournamentPromotions, 300000); // 5 minutes
 checkTournamentPromotions(); // Run immediately on load
+
+// ===============================
+// LIMITED TOURNAMENT: NOTIFY ME
+// ===============================
+window.handleNotifyMe = async function(tournamentId, tournamentName) {
+    if (!currentUser) { openLogin(); return; }
+
+    try {
+        // Save user's intent to be notified
+        const ref = doc(db, "tournaments", tournamentId, "limitedNotifyList", currentUser.uid);
+        const existing = await getDoc(ref);
+
+        if (existing.exists()) {
+            showPopup("success", `You're already on the notification list for "${tournamentName}"!\n\nWe'll let you know when it starts.`, "Got it", () => {
+                document.getElementById('customPopup')?.remove();
+            });
+            return;
+        }
+
+        await setDoc(ref, {
+            userId: currentUser.uid,
+            email: userProfile?.email || "",
+            teamId: userProfile?.teamId || null,
+            teamName: userProfile?.teamName || null,
+            savedAt: serverTimestamp(),
+            notified: false
+        });
+
+        showPopup("success", `🔔 Done! You'll be notified when "${tournamentName}" starts.`, "Got it", () => {
+            document.getElementById('customPopup')?.remove();
+        });
+    } catch (err) {
+        console.error("Notify Me error:", err);
+        showMessage("Error saving notification preference. Try again.");
+    }
+};
+
+// Check if any limited tournament has started and notify subscribed users
+async function checkLimitedTournamentNotifications() {
+    if (!currentUser) return;
+    const now = Date.now();
+
+    tournaments.forEach(async (t) => {
+        if (t.category !== 'limited' || !t.endTime) return;
+
+        // If tournament's endTime (which is its start in the limited flow) has been reached
+        const startTime = t.endTime; // for limited, endTime marks when the event goes live
+        if (now < startTime) return;
+
+        // Check if user subscribed and hasn't been notified
+        try {
+            const notifyRef = doc(db, "tournaments", t.id, "limitedNotifyList", currentUser.uid);
+            const notifySnap = await getDoc(notifyRef);
+
+            if (notifySnap.exists() && !notifySnap.data().notified) {
+                const timeStr = new Date(startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+                // Send in-app notification
+                await addDoc(collection(db, "users", currentUser.uid, "notifications"), {
+                    type: "limited_start",
+                    title: `🚨 Tournament Starting Now!`,
+                    message: `Tournament "${t.title}" is starting now at ${timeStr}!`,
+                    tournamentId: t.id,
+                    read: false,
+                    createdAt: serverTimestamp()
+                });
+                // Mark as notified
+                await updateDoc(notifyRef, { notified: true, notifiedAt: serverTimestamp() });
+            }
+        } catch (e) {
+            console.warn("[Limited Notify] error:", e);
+        }
+    });
+}
+
+// Run limited-tournament notification check every minute
+setInterval(checkLimitedTournamentNotifications, 60000);
 
 async function checkTournamentPromotions() {
     const now = new Date();
@@ -2428,7 +2533,9 @@ function renderNotificationList(docs, listEl) {
         payment_confirmed: '✓',
         verification:      '🔍',
         payment:           '💳',
-        team_stage_locked: '🔒'
+        team_stage_locked: '🔒',
+        limited_start:     '⚡',
+        upcoming_approved: '✓'
     };
 
     const colorMap = {
@@ -2438,7 +2545,9 @@ function renderNotificationList(docs, listEl) {
         payment_confirmed: '#00ff88',
         verification:      '#00ff88',
         payment:           '#ffd700',
-        team_stage_locked: '#4a90e2'
+        team_stage_locked: '#4a90e2',
+        limited_start:     '#ffd700',
+        upcoming_approved: '#00ff88'
     };
 
     listEl.innerHTML = docs.map(d => {
@@ -3098,3 +3207,4 @@ window.openWalletModal = openWalletModal;
 window.viewTransactionHistory = viewTransactionHistory;
 window.reportCheater = reportCheater;
 window.showReferralModal = showReferralModal;
+window.handleNotifyMe = window.handleNotifyMe;

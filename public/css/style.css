@@ -489,8 +489,15 @@ section {
     background: linear-gradient(45deg, #0a0b1e, #1a1c3d);
 }
 
-.discord-btn {
+.community-btns {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
     margin-top: 2rem;
+}
+
+.discord-btn {
     padding: 1.2rem 3rem;
     background: #7289da;
     color: white;
@@ -501,11 +508,47 @@ section {
     cursor: pointer;
     box-shadow: 0 5px 20px rgba(114, 137, 218, 0.4);
     transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .discord-btn:hover {
     transform: translateY(-5px);
     box-shadow: 0 10px 30px rgba(114, 137, 218, 0.6);
+}
+
+.youtube-btn {
+    background: #ff0000;
+    box-shadow: 0 5px 20px rgba(255, 0, 0, 0.35);
+}
+
+.youtube-btn:hover {
+    background: #cc0000;
+    box-shadow: 0 10px 30px rgba(255, 0, 0, 0.55);
+}
+
+.instagram-btn {
+    background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+    box-shadow: 0 5px 20px rgba(220, 39, 67, 0.35);
+}
+
+.instagram-btn:hover {
+    filter: brightness(1.12);
+    box-shadow: 0 10px 30px rgba(220, 39, 67, 0.55);
+}
+
+/* Responsive: stack buttons on small screens */
+@media screen and (max-width: 480px) {
+    .community-btns {
+        flex-direction: column;
+        align-items: center;
+    }
+    .discord-btn {
+        width: 100%;
+        max-width: 300px;
+        justify-content: center;
+    }
 }
 
 .footer {

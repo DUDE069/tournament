@@ -232,7 +232,7 @@ function applicationCard(d, type) {
       <button class="btn-remove" onclick="removeApplication('${d.tournamentId}','${d.id}')">Remove</button>`;
   } else {
     actions = `
-      <button class="btn-view"   onclick="viewApplicationDetails('${d.tournamentId}','${d.id}')">Review</button>
+      <button class="btn-view"   onclick="viewRejectedDetails('${d.tournamentId}','${d.id}')">Review</button>
       <button class="btn-remove" onclick="removeApplication('${d.tournamentId}','${d.id}')">Remove</button>`;
   }
 
@@ -348,13 +348,62 @@ window.verifyPaymentDirect = async function(tournamentId, participantId, isVerif
 
 // Remove accepted/rejected application from the list (just sets status to archived)
 window.removeApplication = async function(tournamentId, userId) {
-  if (!confirm("Remove this application from the list?")) return;
   try {
     await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
       archived: true,
       archivedAt: serverTimestamp(),
     });
     showToast("Application removed from list.", "success");
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+};
+
+// ============================================================================
+//  6a. VIEW REJECTED DETAILS (read-only modal for rejected applications)
+// ============================================================================
+window.viewRejectedDetails = async function(tournamentId, userId) {
+  try {
+    const docSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
+    if (!docSnap.exists()) { showToast("Application not found.", "error"); return; }
+
+    const v = docSnap.data();
+    document.getElementById("rejectedDetailModal")?.remove();
+
+    const modal = document.createElement("div");
+    modal.id = "rejectedDetailModal";
+    modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
+    modal.innerHTML = `
+      <div style="background:var(--bg2);width:100%;max-width:520px;padding:28px;border-radius:14px;border:1px solid var(--red);max-height:90vh;overflow-y:auto;">
+        <h2 style="color:var(--red);margin-bottom:6px;">❌ Rejected Application</h2>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">Read-only view of rejection details</p>
+
+        <div style="display:grid;gap:8px;">
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Team Name: <b style="color:#fff;margin-left:6px;">${escHtml(v.teamName ?? "—")}</b></span>
+          </div>
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Leader Email: <b style="color:#fff;margin-left:6px;">${escHtml(v.leaderEmail ?? "—")}</b></span>
+          </div>
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Tournament: <b style="color:#fff;margin-left:6px;">${escHtml(tournamentId)}</b></span>
+          </div>
+          <div style="background:rgba(255,68,68,.1);padding:14px;border-radius:8px;border:1px solid var(--red);">
+            <span style="color:var(--muted);font-size:13px;display:block;margin-bottom:4px;">Rejection Reason:</span>
+            <b style="color:var(--red);font-size:15px;">${escHtml(v.rejectionNote || v.rejectionReason || "— No reason recorded —")}</b>
+          </div>
+          ${v.processedAt ? `
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Rejected At: <b style="color:#fff;margin-left:6px;">${v.processedAt.toDate?.()?.toLocaleString("en-IN") ?? "—"}</b></span>
+          </div>` : ""}
+        </div>
+
+        <button onclick="document.getElementById('rejectedDetailModal').remove()"
+          style="width:100%;margin-top:16px;background:transparent;color:var(--muted);border:1px solid var(--border);cursor:pointer;font-family:inherit;padding:10px;border-radius:8px;">
+          Close
+        </button>
+      </div>`;
+    document.body.appendChild(modal);
   } catch (e) {
     showToast("Error: " + e.message, "error");
   }
@@ -395,23 +444,52 @@ window.viewApplicationDetails = async function(tournamentId, userId) {
     document.getElementById("verifModal")?.remove();
     currentFieldStatuses = {};
 
-    const uids = Array.isArray(v.uids) ? v.uids.join(", ") : (v.uids ?? "—");
+    // Build individual UID rows (up to 5 players)
+    const uidsArray = Array.isArray(v.uids) ? v.uids : (v.uids ? [v.uids] : []);
+    const uidRowsHtml = uidsArray.map((uid, i) =>
+      fieldVerifyRow(`Player ${i + 1} UID`, uid, `uid_${i}`)
+    ).join("") || `<div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;color:var(--muted);font-size:13px;">No UIDs submitted</div>`;
+
+    // Find the tournament entry fee
+    let entryFee = "—";
+    try {
+      const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+      if (tSnap.exists()) entryFee = "₹" + (tSnap.data().entryFee ?? "—");
+    } catch (_) {}
 
     const modal = document.createElement("div");
     modal.id = "verifModal";
     modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
     modal.innerHTML = `
-      <div style="background:var(--bg2);width:100%;max-width:560px;padding:28px;border-radius:14px;border:1px solid var(--border);max-height:90vh;overflow-y:auto;">
+      <div style="background:var(--bg2);width:100%;max-width:580px;padding:28px;border-radius:14px;border:1px solid var(--border);max-height:92vh;overflow-y:auto;">
         <h2 style="color:var(--green);margin-bottom:6px;">Review Application</h2>
         <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">Team: <b style="color:#fff;">${escHtml(v.teamName ?? "—")}</b></p>
 
-        <div style="display:grid;gap:8px;">
-          ${fieldVerifyRow("Leader Email", v.leaderEmail, "email")}
-          ${fieldVerifyRow("Phone",        v.phone,       "phone")}
-          ${fieldVerifyRow("Player UIDs",  uids,          "uids")}
-          ${fieldVerifyRow("Team Code",    v.teamCode,    "code")}
+        <!-- Core Info (display only) -->
+        <div style="display:grid;gap:8px;margin-bottom:16px;">
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Leader Email: <b style="color:#fff;margin-left:6px;">${escHtml(v.leaderEmail ?? "—")}</b></span>
+          </div>
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Tournament ID: <b style="color:#fff;margin-left:6px;">${escHtml(tournamentId)}</b></span>
+          </div>
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Entry Fee: <b style="color:var(--gold);margin-left:6px;">${entryFee}</b></span>
+          </div>
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Team Code: <b style="color:#fff;margin-left:6px;">${escHtml(v.teamCode ?? "—")}</b></span>
+          </div>
         </div>
 
+        <!-- Per-field verification rows -->
+        <p style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Verify Each Field</p>
+        <div style="display:grid;gap:8px;">
+          ${fieldVerifyRow("Phone Number", v.phone, "phone")}
+          ${fieldVerifyRow("Backup Email", v.backupEmail, "backupEmail")}
+          ${uidRowsHtml}
+        </div>
+
+        <!-- Rejection reason -->
         <div style="margin-top:20px;">
           <label style="color:var(--muted);font-size:12px;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:8px;">
             Rejection Reason (required if rejecting)
@@ -669,7 +747,6 @@ window.rejectUpcoming = async function(tournamentId, userId) {
 };
 
 window.removeUpcoming = async function(tournamentId, userId) {
-  if (!confirm("Remove this registration from the list?")) return;
   try {
     await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
       archived: true, archivedAt: serverTimestamp(),
@@ -713,6 +790,10 @@ window.handleCategoryChange = function(select) {
   if (select.value === "upcoming") {
     if (ongoingFields)  ongoingFields.style.display  = "none";
     if (upcomingFields) upcomingFields.style.display = "block";
+  } else if (select.value === "limited") {
+    // Limited uses ongoing fields (duration-based) but no entry fee shown to users
+    if (ongoingFields)  ongoingFields.style.display  = "block";
+    if (upcomingFields) upcomingFields.style.display = "none";
   } else {
     if (ongoingFields)  ongoingFields.style.display  = "block";
     if (upcomingFields) upcomingFields.style.display = "none";
@@ -749,6 +830,7 @@ window.addTournament = async function() {
     second    = Number(document.getElementById("upcomingPrizeSecond").value) || 0;
     third     = Number(document.getElementById("upcomingPrizeThird").value)  || 0;
     eventDate = document.getElementById("tournamentEventDate")?.value;
+    const eventTime = document.getElementById("tournamentEventTime")?.value || null;
     duration  = null;
 
     if (!title || !fee)      { showToast("Title and entry fee are required.", "warning"); return; }
@@ -774,10 +856,11 @@ window.addTournament = async function() {
       title, entryFee: fee, mode, category,
       duration: eventDate ? null : duration,
       eventDate: eventDate ?? null,
+      eventTime: (category === "upcoming" ? (eventTime ?? null) : null),
       prize: { first, second, third },
       createdAt: serverTimestamp(),
       endTime,
-      status: category === "ongoing" ? "live" : "upcoming",
+      status: category === "ongoing" ? "live" : (category === "limited" ? "limited" : "upcoming"),
       isPaymentDeferred: category === "upcoming",
     };
 
@@ -797,13 +880,27 @@ window.addTournament = async function() {
         source: "auto",
       });
       showToast(`Tournament added! Calendar marked as ${calType === "special" ? "⭐ Special" : "📅 Upcoming"}.`, "success");
+    } else if (category === "limited") {
+      // Limited tournaments auto-added to calendar as Special
+      const today = new Date().toISOString().split("T")[0];
+      await addDoc(calendarRef, {
+        date: today,
+        title: `[LIMITED] ${title}`,
+        type: "special",
+        prize: first,
+        description: `Limited Tournament — ${mode} · Entry ₹${fee}`,
+        tournamentId: tourneyRef.id,
+        createdAt: serverTimestamp(),
+        source: "auto",
+      });
+      showToast("Limited tournament added! Auto-marked as ⭐ Special on calendar.", "success");
     } else {
       showToast("Tournament added!", "success");
     }
 
     // Clear form
     ["tournamentTitle","tournamentFee","prizeFirst","prizeSecond","prizeThird",
-     "upcomingFee","upcomingPrizeFirst","upcomingPrizeSecond","upcomingPrizeThird","tournamentEventDate"]
+     "upcomingFee","upcomingPrizeFirst","upcomingPrizeSecond","upcomingPrizeThird","tournamentEventDate","tournamentEventTime"]
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
 
   } catch (e) {
