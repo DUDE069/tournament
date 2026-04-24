@@ -29,7 +29,7 @@
         <a href="#" onclick="scrollToSection('tournaments', this)">Tournaments</a>
         <a href="#" onclick="scrollToSection('leaderboard', this)">Leaderboard</a>
         <!-- NEW: Dashboard link in menu -->
-        <a href="#" onclick="openDashboard('profile')">Dashboard</a>
+        <a href="#dashboard" onclick="scrollToDashboard(event)">Dashboard</a>
 
         <a href="javascript:void(0)" id="loginBtn">Login</a>
 
@@ -106,36 +106,38 @@
 </section>
 
 
-<!-- DASHBOARD SECTION -->
+<!-- DASHBOARD SECTION - REFINED -->
 <section class="dashboard" id="dashboard">
     <h2>Your Dashboard</h2>
 
     <div class="dashboard-box">
 
-        <!-- MY PROFILE (Dashboard only — menu Profile is the loginBtn) -->
-        <div class="dash-card" onclick="openDashboard('profile')">
+        <!-- MY PROFILE -->
+        <div class="dash-card" data-popup="profile">
             <h3>My Profile</h3>
             <p>Account details &amp; team info</p>
         </div>
 
-        <!-- RENAMED: Tournament History -->
-        <div class="dash-card" onclick="openDashboard('tournaments')">
+        <!-- TOURNAMENT HISTORY -->
+        <div class="dash-card" data-popup="tournaments">
             <h3>Tournament History</h3>
             <p>Your confirmed registrations</p>
         </div>
 
-        <div class="dash-card" onclick="openDashboard('matches')">
+        <!-- UPCOMING MATCHES -->
+        <div class="dash-card" data-popup="matches">
             <h3>Upcoming Matches</h3>
             <p>Check your scheduled matches</p>
         </div>
 
-        <div class="dash-card" onclick="openDashboard('performance')">
+        <!-- PERFORMANCE -->
+        <div class="dash-card" data-popup="performance">
             <h3>Performance</h3>
             <p>Wins &amp; earnings only</p>
         </div>
 
-        <!-- NEW: My Account / Wallet -->
-        <div class="dash-card" onclick="openDashboard('account')">
+        <!-- MY ACCOUNT -->
+        <div class="dash-card" data-popup="account">
             <h3>My Account</h3>
             <p>Wallet &amp; transactions</p>
         </div>
@@ -143,25 +145,20 @@
     </div>
 </section>
 
-
-<!-- DASHBOARD POPUP — with nav tabs -->
+<!-- DASHBOARD POPUP - INDEPENDENT SECTIONS -->
 <div class="dashboard-popup" id="dashboardPopup">
-    <div class="popup-content" style="padding:0; position:relative; overflow:hidden; display:flex; flex-direction:column;">
-
-        <!-- Close Button -->
-        <button class="dash-popup-close" onclick="closeDashboard()">✕</button>
-
-        <!-- Tab Navigation -->
-        <div class="dash-nav-tabs">
-            <button class="dash-nav-tab active" id="dashTab-profile"      onclick="switchDashTab('profile', this)">👤 Profile</button>
-            <button class="dash-nav-tab"         id="dashTab-tournaments"  onclick="switchDashTab('tournaments', this)">📋 History</button>
-            <button class="dash-nav-tab"         id="dashTab-matches"      onclick="switchDashTab('matches', this)">📅 Matches</button>
-            <button class="dash-nav-tab"         id="dashTab-performance"  onclick="switchDashTab('performance', this)">🏆 Performance</button>
-            <button class="dash-nav-tab"         id="dashTab-account"      onclick="switchDashTab('account', this)">💼 Account</button>
+    <div class="popup-content">
+        
+        <!-- Header -->
+        <div class="popup-header">
+            <h3 id="popupTitle">Dashboard</h3>
+            <button class="popup-close" onclick="closeDashboard()">✕</button>
         </div>
 
         <!-- Content Area -->
-        <div id="dashboardContent" style="padding:24px; overflow-y:auto; flex:1;"></div>
+        <div class="popup-body" id="dashboardContent">
+            <!-- Content injected by JS -->
+        </div>
     </div>
 </div>
 

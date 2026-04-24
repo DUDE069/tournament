@@ -3697,6 +3697,584 @@ window.skipTutorial = function() {
     document.getElementById("tutorialOverlay")?.remove();
 };
 
+// ========================================
+// PROFESSIONAL TUTORIAL SYSTEM
+// ========================================
+const TUTORIAL_KEY = "npc_tutorial_done";
+
+window.handleJoinNowTutorial = function() {
+    const done = localStorage.getItem(TUTORIAL_KEY);
+    if (done) {
+        // Returning user - skip to community
+        scrollToSection("community");
+        return;
+    }
+    startTutorial();
+};
+
+function startTutorial() {
+    // Remove existing
+    document.getElementById("tutorialOverlay")?.remove();
+    document.querySelector(".tutorial-spotlight")?.remove();
+
+    const tutorialSteps = [
+        {
+            id: "menu",
+            icon: "🎮",
+            title: "Welcome to NPC Esports!",
+            content: `Navigate easily using our <span class="highlight-text">Menu</span> at the top.<br><br>
+                      Access <strong>Tournaments</strong>, <strong>Leaderboard</strong>, <strong>Profile</strong>, and <strong>Dashboard</strong> from anywhere.`,
+            highlight: ".navbar"
+        },
+        {
+            id: "tournaments",
+            icon: "🏆",
+            title: "Find Your Tournament",
+            content: `Browse <span class="highlight-text">Ongoing</span>, <span class="highlight-text">Upcoming</span>, and <span class="highlight-text">Limited</span> tournaments.<br><br>
+                      Register your team, get verified, then pay the entry fee.`,
+            highlight: "#tournaments"
+        },
+        {
+            id: "dashboard",
+            icon: "📊",
+            title: "Your Dashboard",
+            content: `Track your <span class="highlight-text">Profile</span>, <span class="highlight-text">Tournament History</span>, <span class="highlight-text">Performance</span>, and <span class="highlight-text">Wallet</span> all in one place.`,
+            highlight: ".dashboard"
+        },
+        {
+            id: "dashboard-cards",
+            icon: "👤",
+            title: "Dashboard Features",
+            content: `Each dashboard section shows <span class="highlight-text">independent content</span>.<br><br>
+                      Click any card to see detailed information about that section.`,
+            highlight: ".dash-card[data-popup='profile']"
+        },
+        {
+            id: "community",
+            icon: "💬",
+            title: "Join Our Community",
+            content: `Connect through <span class="highlight-text">Discord</span>, <span class="highlight-text">YouTube</span>, and <span class="highlight-text">Instagram</span> for match updates and exclusive events!`,
+            highlight: "#community"
+        },
+        {
+            id: "complete",
+            icon: "🎉",
+            title: "You're All Set!",
+            content: `Try a <span class="highlight-text">free tournament</span> to get started.<br><br>
+                      Your journey to becoming a champion starts here. Good luck! 💪`,
+            highlight: null
+        }
+    ];
+
+    let currentStep = 0;
+    let overlay = null;
+    let spotlight = null;
+
+    function createCard(step) {
+        const s = tutorialSteps[step];
+        const isLast = step === tutorialSteps.length - 1;
+        
+        return `
+            <div class="tutorial-card">
+                <button class="tutorial-skip" onclick="completeTutorial()">Skip</button>
+                
+                <div class="tutorial-progress">
+                    ${tutorialSteps.map((_, i) => `
+                        <div class="tutorial-dot ${i === step ? 'active' : ''} ${i < step ? 'completed' : ''}"></div>
+                    `).join('')}
+                </div>
+                
+                <span class="tutorial-icon">${s.icon}</span>
+                <h2 class="tutorial-title">${s.title}</h2>
+                <p class="tutorial-content">${s.content}</p>
+                <p class="tutorial-subtext">Step ${step + 1} of ${tutorialSteps.length}</p>
+                
+                <div class="tutorial-controls">
+                    ${step > 0 ? `
+                        <button class="tutorial-btn tutorial-btn-secondary" onclick="tutorialPrev()">← Previous</button>
+                    ` : ''}
+                    <button class="tutorial-btn tutorial-btn-primary" onclick="${isLast ? 'completeTutorial()' : 'tutorialNext()'}">
+                        ${isLast ? "Let's Go! 🚀" : "Next →"}
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    function updateStep(step) {
+        const s = tutorialSteps[step];
+        
+        const card = overlay?.querySelector(".tutorial-card");
+        if (card) {
+            // Preserve skip button
+            const skipBtn = card.querySelector(".tutorial-skip");
+            card.innerHTML = createCard(step).replace('<div class="tutorial-card">', '').replace('</div>', '');
+            if (skipBtn) {
+                skipBtn.onclick = completeTutorial;
+                card.insertBefore(skipBtn, card.firstChild);
+            }
+        }
+
+        overlay?.querySelectorAll(".tutorial-dot").forEach((dot, i) => {
+            dot.className = `tutorial-dot ${i === step ? 'active' : ''} ${i < step ? 'completed' : ''}`;
+        });
+
+        if (s.highlight) {
+            const el = document.querySelector(s.highlight);
+            if (el) {
+                spotlight.style.display = "block";
+                const rect = el.getBoundingClientRect();
+                const padding = 12;
+                spotlight.style.top = `${rect.top - padding}px`;
+                spotlight.style.left = `${rect.left - padding}px`;
+                spotlight.style.width = `${rect.width + padding * 2}px`;
+                spotlight.style.height = `${rect.height + padding * 2}px`;
+                
+                setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+            }
+        } else {
+            spotlight.style.display = "none";
+        }
+    }
+
+    // Create overlay
+    overlay = document.createElement("div");
+    overlay.id = "tutorialOverlay";
+    overlay.className = "tutorial-overlay";
+    overlay.innerHTML = createCard(0);
+    document.body.appendChild(overlay);
+
+    // Create spotlight
+    spotlight = document.createElement("div");
+    spotlight.className = "tutorial-spotlight";
+    document.body.appendChild(spotlight);
+
+    updateStep(0);
+
+    window.tutorialNext = function() {
+        if (currentStep < tutorialSteps.length - 1) {
+            currentStep++;
+            updateStep(currentStep);
+        }
+    };
+
+    window.tutorialPrev = function() {
+        if (currentStep > 0) {
+            currentStep--;
+            updateStep(currentStep);
+        }
+    };
+
+    window.completeTutorial = function() {
+        localStorage.setItem(TUTORIAL_KEY, "1");
+        overlay?.remove();
+        spotlight?.remove();
+        scrollToSection("community");
+        showToast("Tutorial complete! Welcome aboard!");
+    };
+
+    window.skipTutorial = window.completeTutorial;
+
+    // Update spotlight on resize
+    window.addEventListener("resize", () => {
+        if (spotlight && spotlight.style.display !== "none") {
+            const s = tutorialSteps[currentStep];
+            if (s?.highlight) {
+                const el = document.querySelector(s.highlight);
+                if (el) {
+                    const rect = el.getBoundingClientRect();
+                    const padding = 12;
+                    spotlight.style.top = `${rect.top - padding}px`;
+                    spotlight.style.left = `${rect.left - padding}px`;
+                    spotlight.style.width = `${rect.width + padding * 2}px`;
+                    spotlight.style.height = `${rect.height + padding * 2}px`;
+                }
+            }
+        }
+    });
+}
+
+// ========================================
+// FIXED DASHBOARD SYSTEM
+// ========================================
+const popupTitles = {
+    profile: "👤 My Profile",
+    tournaments: "📋 Tournament History",
+    matches: "📅 Upcoming Matches",
+    performance: "🏆 Performance",
+    account: "💼 My Account"
+};
+
+// Dashboard content templates
+const dashboardTemplates = {
+    profile: `
+        <div class="popup-section active">
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding: 20px; background: rgba(0,255,136,0.05); border-radius: 12px;">
+                <div style="width: 56px; height: 56px; background: var(--npc-glow); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #000; font-weight: bold;" id="dp-initials">U</div>
+                <div>
+                    <div style="color: #fff; font-weight: 600;" id="dp-name">Loading...</div>
+                    <div style="color: #888; font-size: 13px;" id="dp-role">Loading...</div>
+                </div>
+            </div>
+            
+            <div style="display: grid; gap: 12px;">
+                <div style="padding: 14px; background: #1a1a1a; border-radius: 8px; display: flex; justify-content: space-between;">
+                    <span style="color: #666;">Email</span>
+                    <span style="color: #fff;" id="dp-email">—</span>
+                </div>
+                <div style="padding: 14px; background: #1a1a1a; border-radius: 8px; display: flex; justify-content: space-between;">
+                    <span style="color: #666;">Age</span>
+                    <span style="color: #fff;" id="dp-age">—</span>
+                </div>
+                <div style="padding: 14px; background: #1a1a1a; border-radius: 8px; display: flex; justify-content: space-between;">
+                    <span style="color: #666;">Team</span>
+                    <span style="color: var(--npc-glow);" id="dp-team">No Team</span>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 24px;">
+                <button onclick="logout()" style="flex: 1; padding: 12px; background: rgba(255,68,68,0.2); color: #ff4444; border: 1px solid #ff4444; border-radius: 8px; cursor: pointer;">Logout</button>
+            </div>
+        </div>
+    `,
+    
+    tournaments: `
+        <div class="popup-section active" id="dp-tournaments">
+            <div style="text-align: center; padding: 40px;">
+                <div class="loading-spinner"></div>
+                <p style="color: #888; margin-top: 15px;">Loading history...</p>
+            </div>
+        </div>
+    `,
+    
+    matches: `
+        <div class="popup-section active" id="dp-matches">
+            <div style="text-align: center; padding: 40px;">
+                <div class="loading-spinner"></div>
+                <p style="color: #888; margin-top: 15px;">Loading matches...</p>
+            </div>
+        </div>
+    `,
+    
+    performance: `
+        <div class="popup-section active" id="dp-performance">
+            <div style="text-align: center; padding: 40px;">
+                <div class="loading-spinner"></div>
+                <p style="color: #888; margin-top: 15px;">Loading stats...</p>
+            </div>
+        </div>
+    `,
+    
+    account: `
+        <div class="popup-section active" id="dp-account">
+            <div style="text-align: center; padding: 40px;">
+                <div class="loading-spinner"></div>
+                <p style="color: #888; margin-top: 15px;">Loading wallet...</p>
+            </div>
+        </div>
+    `
+};
+
+// Main dashboard function - UNIFIED
+window.openDashboard = async function(type) {
+    if (!currentUser) {
+        openLogin();
+        return;
+    }
+
+    const popup = document.getElementById("dashboardPopup");
+    const content = document.getElementById("dashboardContent");
+    const title = document.getElementById("popupTitle");
+    
+    if (!popup || !content) {
+        console.error("Dashboard elements not found");
+        return;
+    }
+
+    // Show popup
+    popup.classList.add("active");
+    document.body.style.overflow = "hidden";
+    
+    // Set title
+    title.innerHTML = popupTitles[type] || "Dashboard";
+
+    // Show loading first
+    content.innerHTML = `
+        <div style="text-align: center; padding: 40px;">
+            <div class="loading-spinner"></div>
+            <p style="color: #888; margin-top: 15px;">Loading...</p>
+        </div>
+    `;
+
+    // Wait for profile if needed
+    if (!userProfile && profileLoadPromise) {
+        try {
+            await Promise.race([
+                profileLoadPromise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000))
+            ]);
+        } catch (e) {
+            console.error("Profile load timeout:", e);
+        }
+    }
+
+    // Load content based on type
+    switch (type) {
+        case "profile":
+            renderProfileContent(content);
+            break;
+        case "tournaments":
+            await renderTournamentHistoryContent(content);
+            break;
+        case "matches":
+            await renderUpcomingMatchesContent(content);
+            break;
+        case "performance":
+            await renderPerformanceContent(content);
+            break;
+        case "account":
+            await renderAccountContent(content);
+            break;
+        default:
+            content.innerHTML = `<p style="color: #888;">Content not found</p>`;
+    }
+};
+
+// Content renderers
+function renderProfileContent(content) {
+    content.innerHTML = dashboardTemplates.profile;
+    
+    if (userProfile) {
+        document.getElementById("dp-initials").textContent = (userProfile.email || "U").charAt(0).toUpperCase();
+        document.getElementById("dp-name").textContent = userProfile.email?.split("@")[0] || "User";
+        
+        let roleText = "👤 Viewer";
+        let roleColor = "#888";
+        if (userProfile.isLeader) {
+            roleText = "👑 Team Leader";
+            roleColor = "#ffd700";
+        } else if (userProfile.role === "member") {
+            roleText = "👥 Team Member";
+        }
+        document.getElementById("dp-role").textContent = roleText;
+        document.getElementById("dp-role").style.color = roleColor;
+        
+        document.getElementById("dp-email").textContent = userProfile.email || "—";
+        document.getElementById("dp-age").textContent = (userProfile.age || "—") + " years";
+        document.getElementById("dp-team").textContent = userProfile.teamName || "No Team";
+    }
+}
+
+async function renderTournamentHistoryContent(content) {
+    content.innerHTML = dashboardTemplates.tournaments;
+    
+    try {
+        const paidSnap = await getDocs(
+            collection(db, "users", currentUser.uid, "confirmedRegistrations")
+        );
+        const rows = paidSnap.docs.map(d => d.data());
+
+        const tableRows = rows.length === 0
+            ? `<tr><td colspan="4" style="text-align: center; color: #555; padding: 30px;">No tournament history yet</td></tr>`
+            : rows.map(r => `
+                <tr>
+                    <td>${r.tournamentName || '—'}</td>
+                    <td>₹${r.entryFee || 0}</td>
+                    <td>${r.mode || '—'}</td>
+                    <td>${r.date ? new Date(r.date).toLocaleDateString('en-IN') : '—'}</td>
+                </tr>`).join('');
+
+        document.getElementById("dp-tournaments").innerHTML = `
+            <div style="overflow-x: auto;">
+                <table class="dash-table">
+                    <thead>
+                        <tr>
+                            <th>Tournament</th>
+                            <th>Fee</th>
+                            <th>Mode</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>${tableRows}</tbody>
+                </table>
+            </div>
+        `;
+    } catch (err) {
+        document.getElementById("dp-tournaments").innerHTML = `<p style="color: #ff4444; text-align: center;">Failed to load</p>`;
+    }
+}
+
+async function renderUpcomingMatchesContent(content) {
+    content.innerHTML = dashboardTemplates.matches;
+    
+    try {
+        const upSnap = await getDocs(
+            collection(db, "users", currentUser.uid, "upcomingRegistrations")
+        );
+        const matches = upSnap.docs.map(d => d.data());
+
+        if (matches.length === 0) {
+            document.getElementById("dp-matches").innerHTML = `
+                <div style="text-align: center; padding: 40px; background: #1a1a1a; border-radius: 12px;">
+                    <div style="font-size: 40px; margin-bottom: 12px;">🎮</div>
+                    <p style="color: #888;">No upcoming matches</p>
+                </div>
+            `;
+            return;
+        }
+
+        document.getElementById("dp-matches").innerHTML = matches.map(m => {
+            const eventDate = m.eventDate ? new Date(m.eventDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) : 'TBA';
+            const statusColor = m.status === 'approved' ? '#00ff88' : m.status === 'rejected' ? '#ff4444' : '#ffd700';
+            
+            return `
+                <div style="background: #1a1a1a; border-radius: 10px; padding: 16px; margin-bottom: 12px; border-left: 3px solid ${statusColor};">
+                    <div style="color: #fff; font-weight: 600; margin-bottom: 6px;">${m.title || '—'}</div>
+                    <div style="color: #888; font-size: 13px;">📅 ${eventDate}</div>
+                    <div style="color: ${statusColor}; font-size: 12px; margin-top: 6px; font-weight: 600;">
+                        ${m.status === 'approved' ? '✅ Approved' : m.status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        document.getElementById("dp-matches").innerHTML = `<p style="color: #ff4444; text-align: center;">Failed to load</p>`;
+    }
+}
+
+async function renderPerformanceContent(content) {
+    content.innerHTML = dashboardTemplates.performance;
+    
+    try {
+        const perfSnap = await getDocs(
+            collection(db, "users", currentUser.uid, "performanceHistory")
+        );
+        const records = perfSnap.docs.map(d => d.data()).filter(r => r.earnings && r.earnings > 0);
+        
+        const totalEarnings = records.reduce((sum, r) => sum + (r.earnings || 0), 0);
+
+        document.getElementById("dp-performance").innerHTML = `
+            <div style="background: linear-gradient(135deg, #1a2a1a, #2a3a1a); border: 2px solid #ffd700; border-radius: 12px; padding: 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <div style="color: #888; font-size: 12px;">Total Earnings</div>
+                    <div style="color: #ffd700; font-size: 32px; font-weight: 900;">₹${totalEarnings}</div>
+                </div>
+                <div style="text-align: right;">
+                    <div style="color: #888; font-size: 12px;">Tournaments Won</div>
+                    <div style="color: #00ff88; font-size: 24px; font-weight: 700;">${records.length}</div>
+                </div>
+            </div>
+            
+            ${records.length === 0 ? `
+                <p style="color: #555; text-align: center; padding: 20px;">No earnings recorded yet</p>
+            ` : `
+                <table class="dash-table">
+                    <thead>
+                        <tr>
+                            <th>Tournament</th>
+                            <th>Position</th>
+                            <th>Earnings</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${records.map(r => `
+                            <tr>
+                                <td>${r.tournamentName || '—'}</td>
+                                <td>${r.position === 1 ? '🥇 1st' : r.position === 2 ? '🥈 2nd' : r.position === 3 ? '🥉 3rd' : `#${r.position || '—'}`}</td>
+                                <td style="color: #00ff88;">₹${r.earnings}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `}
+        `;
+    } catch (err) {
+        document.getElementById("dp-performance").innerHTML = `<p style="color: #ff4444; text-align: center;">Failed to load</p>`;
+    }
+}
+
+async function renderAccountContent(content) {
+    content.innerHTML = dashboardTemplates.account;
+    
+    try {
+        const txSnap = await getDocs(
+            query(
+                collection(db, "users", currentUser.uid, "transactions"),
+                orderBy("createdAt", "desc")
+            )
+        );
+        const txs = txSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const balance = userWallet?.balance || 0;
+
+        document.getElementById("dp-account").innerHTML = `
+            <div style="background: linear-gradient(135deg, #1a1a2a, #2a1a3a); border: 2px solid #ffd700; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <div style="color: #888; font-size: 12px;">Wallet Balance</div>
+                        <div style="color: #ffd700; font-size: 32px; font-weight: 900;">₹${balance}</div>
+                    </div>
+                    <button onclick="openWalletModal()" style="padding: 10px 20px; background: #ffd700; color: #000; border: none; border-radius: 8px; cursor: pointer; font-weight: 700;">+ Add Funds</button>
+                </div>
+            </div>
+            
+            <h4 style="color: #888; margin-bottom: 12px; font-size: 13px;">TRANSACTION HISTORY</h4>
+            <div style="max-height: 200px; overflow-y: auto;">
+                ${txs.length === 0 ? `<p style="color: #555; text-align: center; padding: 20px;">No transactions yet</p>` : txs.map(t => {
+                    const isCredit = t.type === 'credit';
+                    return `
+                        <div style="padding: 12px; border-bottom: 1px solid #2a2a2a; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <div style="color: ${isCredit ? '#00ff88' : '#ff4444'}; font-weight: 600;">${isCredit ? '+' : '-'}₹${t.amount}</div>
+                                <div style="color: #666; font-size: 12px;">${t.description || '—'}</div>
+                            </div>
+                            <div style="color: #555; font-size: 11px;">${t.createdAt?.toDate ? new Date(t.createdAt.toDate()).toLocaleDateString() : 'Pending'}</div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
+    } catch (err) {
+        document.getElementById("dp-account").innerHTML = `<p style="color: #ff4444; text-align: center;">Failed to load</p>`;
+    }
+}
+
+// Close dashboard
+window.closeDashboard = function() {
+    const popup = document.getElementById("dashboardPopup");
+    if (popup) {
+        popup.classList.remove("active");
+        document.body.style.overflow = "auto";
+    }
+};
+
+// Scroll to dashboard from navbar
+window.scrollToDashboard = function(e) {
+    e.preventDefault();
+    const section = document.getElementById("dashboard");
+    if (section) {
+        const y = section.getBoundingClientRect().top + window.pageYOffset - 120;
+        window.scrollTo({ top: y, behavior: "smooth" });
+    }
+};
+
+// Attach click handlers to dashboard cards
+document.addEventListener("DOMContentLoaded", function() {
+    document.querySelectorAll(".dash-card[data-popup]").forEach(card => {
+        card.addEventListener("click", function() {
+            const type = this.getAttribute("data-popup");
+            openDashboard(type);
+        });
+    });
+    
+    // Close popup on backdrop click
+    const popup = document.getElementById("dashboardPopup");
+    if (popup) {
+        popup.addEventListener("click", function(e) {
+            if (e.target === this) closeDashboard();
+        });
+    }
+});
+
 
 // ===============================
 // GLOBAL EXPORTS
