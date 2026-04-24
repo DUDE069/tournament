@@ -236,22 +236,37 @@
     </div>
 
     <!-- CREATE ACCOUNT VIEW -->
-    <div id="createView" style="display:none;">
-      <h2>Create Account</h2>
-      <input id="regEmail" placeholder="Email" type="email">
-      <input id="regPass" type="password" placeholder="Password">
-      <input id="regConfirm" type="password" placeholder="Confirm Password">
-      
-      <div style="margin: 15px 0;">
-        <input type="number" id="regAge" placeholder="Your Age (12-60)" min="12" max="60" style="width: 100%;">
-      </div>
+ <div id="createView" style="display:none;">
+    <h2>Create Account</h2>
+    <div id="signupStep1">
+        <input id="regEmail" placeholder="Gmail ID" type="email">
+        <input id="regPass" type="password" placeholder="Password">
+        <input id="regConfirm" type="password" placeholder="Confirm Password">
+        <input type="number" id="regAge" placeholder="Your Age (12-60)" min="12" max="60">
+        <button onclick="sendSignupOTP()" id="btnSendOTP">Send Code</button>
+    </div>
 
-      <h3>Select Role</h3>
-      <div class="role-options">
-        <div class="role-card" onclick="selectRole('viewer', this)">👁 Viewer</div>
-        <div class="role-card" onclick="selectRole('leader', this)">👑 Team Leader</div>
-        <div class="role-card" onclick="selectRole('join', this)">🔑 Join by Code</div>
-      </div>
+    <div id="signupStep2" style="display:none; margin-top:15px;">
+        <p style="color:#888; font-size:13px; margin-bottom:10px;">Enter the 6-digit code sent to your Gmail</p>
+        <input type="text" id="regOTP" placeholder="Enter OTP" maxlength="6" style="text-align:center; letter-spacing:4px;">
+        <button onclick="verifyAndCreate()" style="background:#00ff88; color:#000;">Verify & Create Account</button>
+        <p class="switch-text">Didn't get it? <span id="resendTimer" onclick="resendSignupOTP()">Resend Code</span></p>
+    </div>
+
+    <div id="roleSelectionArea" style="display:none;">
+        <h3 style="margin-top:20px;">Select Role</h3>
+        <div class="role-options">
+            <div class="role-card" onclick="selectRole('viewer', this)">👁 Viewer</div>
+            <div class="role-card" onclick="selectRole('leader', this)">👑 Team Leader</div>
+            <div class="role-card" onclick="selectRole('join', this)">🔑 Join by Code</div>
+        </div>
+        </div>
+</div>
+
+<div id="customActionModal" class="modal-overlay">
+    <div class="modal-card" id="customActionContent">
+        </div>
+</div>
 
       <div id="teamNameBox" style="display:none; margin: 15px 0; padding: 10px; border: 1px solid #444; border-radius: 8px;">
         <h4 style="margin-bottom: 10px;">Create Your Team (Free Fire - Max 4)</h4>

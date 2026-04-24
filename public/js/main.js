@@ -2538,6 +2538,7 @@ function renderProfileTab(content) {
     const roleBadge  = userProfile?.isLeader ? "👑 Team Leader"
                      : userProfile?.role === 'member' ? "👥 Team Member" : "👤 Viewer";
 
+    // 1. Team Section Logic
     let teamSection = '';
     if (userProfile?.teamId) {
         teamSection = userProfile?.isLeader ? `
@@ -2568,27 +2569,26 @@ function renderProfileTab(content) {
             </div>`;
     }
 
-// PHASE 3: Wallet Section
-const walletSection = `
-    <div style="padding:15px;background:#1a2a1a;border-radius:8px;border:1px solid #ffd700;margin-bottom:15px;">
-        <h4 style="color:#ffd700;margin:0 0 15px;font-size:14px;">💰 Wallet Balance</h4>
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-            <div>
-                <div style="font-size:32px;color:#ffd700;font-weight:bold;">₹${userWallet.balance || 0}</div>
-                <div style="color:#888;font-size:12px;">Available for tournaments</div>
+    // 2. Wallet Section Logic
+    const walletSection = `
+        <div style="padding:15px;background:#1a2a1a;border-radius:8px;border:1px solid #ffd700;margin-bottom:15px;">
+            <h4 style="color:#ffd700;margin:0 0 15px;font-size:14px;">💰 Wallet Balance</h4>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+                <div>
+                    <div style="font-size:32px;color:#ffd700;font-weight:bold;">₹${userWallet.balance || 0}</div>
+                    <div style="color:#888;font-size:12px;">Available for tournaments</div>
+                </div>
+                <button onclick="openWalletModal()" style="background:#ffd700;color:#000;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:bold;">
+                    Add Funds
+                </button>
             </div>
-            <button onclick="openWalletModal()" style="background:#ffd700;color:#000;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:bold;">
-                Add Funds
+            <button onclick="viewTransactionHistory()" style="background:transparent;color:#888;border:1px solid #444;padding:8px 16px;border-radius:4px;cursor:pointer;margin-top:10px;width:100%;">
+                View History
             </button>
         </div>
-        <button onclick="viewTransactionHistory()" style="background:transparent;color:#888;border:1px solid #444;padding:8px 16px;border-radius:4px;cursor:pointer;margin-top:10px;width:100%;">
-            View History
-        </button>
-    </div>
-`;
+    `;
 
-
-
+    // 3. Render Main Content
     content.innerHTML = `
         <h2 style="color:#00ff88;margin-bottom:20px;">My Profile</h2>
 
@@ -2609,6 +2609,8 @@ const walletSection = `
         </div>
 
         <div style="display:grid;gap:15px;">
+            ${walletSection}
+
             <div style="padding:15px;background:#1a1a1a;border-radius:8px;border:1px solid #333;">
                 <h4 style="color:#888;margin:0 0 15px;font-size:14px;text-transform:uppercase;">Account Details</h4>
                 <div style="display:grid;gap:10px;color:#ccc;">
@@ -2647,14 +2649,15 @@ const walletSection = `
             </div>` : ''}
 
             <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
-                <button onclick="changePassword()"
+                <button onclick="openEditProfile()"
+                    style="background:#00ff88;color:#000;border:none;padding:12px;flex:1;border-radius:6px;cursor:pointer;min-width:120px;font-weight:bold;">Edit Profile</button>
+                <button onclick="openChangePassword()"
                     style="background:#4a90e2;color:#fff;border:none;padding:12px;flex:1;border-radius:6px;cursor:pointer;min-width:120px;">Change Password</button>
                 <button onclick="logout()"
                     style="background:#ff4444;color:#fff;border:none;padding:12px;flex:1;border-radius:6px;cursor:pointer;min-width:120px;">Logout</button>
             </div>
         </div>`;
 }
-
 // renderPerformanceTab is now async and defined above in the dashboard section
 
 
@@ -4139,6 +4142,128 @@ document.addEventListener("DOMContentLoaded", function() {
         });
     }
 });
+
+// --- OTP System Variables ---
+let signupOTP = null;
+let otpExpiry = null;
+let resendCooldown = 0;
+
+window.sendSignupOTP = async function() {
+    const email = document.getElementById("regEmail").value.trim();
+    const pass = document.getElementById("regPass").value;
+    const age = document.getElementById("regAge").value;
+
+    if (!email.includes("@gmail.com")) { showMessage("Please use a valid Gmail ID"); return; }
+    if (pass.length < 6) { showMessage("Password too short"); return; }
+    if (age < 12 || age > 60) { showMessage("Invalid age (12-60)"); return; }
+
+    // Simulate OTP Generation
+    signupOTP = Math.floor(100000 + Math.random() * 900000).toString();
+    otpExpiry = Date.now() + 300000; // 5 mins
+    
+    console.log(`[NPC OTP DEBUG] Code for ${email}: ${signupOTP}`);
+    
+    showMessage("OTP Code sent to your Gmail!");
+    document.getElementById("signupStep1").style.display = "none";
+    document.getElementById("signupStep2").style.display = "block";
+    document.getElementById("roleSelectionArea").style.display = "block";
+    startResendTimer();
+};
+
+function startResendTimer() {
+    resendCooldown = 60;
+    const timerEl = document.getElementById("resendTimer");
+    const interval = setInterval(() => {
+        resendCooldown--;
+        if (resendCooldown <= 0) {
+            clearInterval(interval);
+            timerEl.innerText = "Resend Code";
+            timerEl.style.pointerEvents = "auto";
+        } else {
+            timerEl.innerText = `Resend in ${resendCooldown}s`;
+            timerEl.style.pointerEvents = "none";
+        }
+    }, 1000);
+}
+
+window.verifyAndCreate = async function() {
+    const enteredOTP = document.getElementById("regOTP").value.trim();
+    if (enteredOTP !== signupOTP || Date.now() > otpExpiry) {
+        showMessage("Invalid or expired OTP");
+        return;
+    }
+    // If OTP is correct, proceed to existing createAccount function logic
+    await createAccount();
+    // After success inside createAccount, ensure we redirect:
+    // backToLogin(); 
+};
+
+
+window.openEditProfile = function() {
+    const content = document.getElementById("customActionContent");
+    document.getElementById("customActionModal").classList.add("active");
+    
+    content.innerHTML = `
+        <div class="modal-header">
+            <h2>Edit Profile</h2>
+            <button class="close-modal" onclick="closeCustomModal()">×</button>
+        </div>
+        <label style="color:#888; font-size:12px;">Gmail ID</label>
+        <input id="editEmail" value="${userProfile.email}" type="email">
+        <label style="color:#888; font-size:12px;">Age</label>
+        <input id="editAge" value="${userProfile.age}" type="number">
+        <button onclick="saveProfileUpdate()" style="background:#00ff88; color:#000;">Save Changes</button>
+    `;
+};
+
+window.openChangePassword = function() {
+    const content = document.getElementById("customActionContent");
+    document.getElementById("customActionModal").classList.add("active");
+    
+    content.innerHTML = `
+        <div class="modal-header">
+            <h2>Security</h2>
+            <button class="close-modal" onclick="closeCustomModal()">×</button>
+        </div>
+        <div id="passFlowContent">
+            <input id="currPass" type="password" placeholder="Current Password">
+            <input id="newPass" type="password" placeholder="New Password">
+            <button onclick="requestPasswordOTP()" style="background:#00ff88; color:#000;">Update Password</button>
+            <p class="switch-text" onclick="forgotPasswordFlow()">Forgot Password?</p>
+        </div>
+    `;
+};
+
+window.forgotPasswordFlow = function() {
+    const flow = document.getElementById("passFlowContent");
+    // Generate and Log OTP
+    signupOTP = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log("[NPC DEBUG] Forgot Password OTP:", signupOTP);
+    
+    flow.innerHTML = `
+        <p style="color:#888; font-size:13px; text-align:center;">We've sent a code to your Gmail.</p>
+        <input id="recoveryOTP" placeholder="Enter OTP" maxlength="6" style="text-align:center;">
+        <button onclick="verifyRecoveryOTP()" style="background:#ffd700; color:#000;">Verify Code</button>
+    `;
+};
+
+window.verifyRecoveryOTP = function() {
+    const entered = document.getElementById("recoveryOTP").value;
+    if (entered === signupOTP) {
+        const flow = document.getElementById("passFlowContent");
+        flow.innerHTML = `
+            <input id="finalNewPass" type="password" placeholder="New Password">
+            <input id="confirmNewPass" type="password" placeholder="Confirm Password">
+            <button onclick="updateUserPassword(true)" style="background:#00ff88; color:#000;">Set New Password</button>
+        `;
+    } else {
+        showMessage("Invalid Code");
+    }
+};
+
+window.closeCustomModal = () => document.getElementById("customActionModal").classList.remove("active");
+
+
 
 
 // ===============================
