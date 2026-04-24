@@ -2083,9 +2083,7 @@ async function openDashboard(type) {
                     border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 20px;"></div>
                 <p>Loading profile...</p>
             </div>`;
-        
         try {
-            // Wait max 5 seconds for profile
             await Promise.race([
                 profileLoadPromise,
                 new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 5000))
@@ -2114,23 +2112,411 @@ async function openDashboard(type) {
         return;
     }
 
-    // Profile loaded successfully - continue with existing logic
+    // Profile loaded — route to correct tab
     if (type === "profile") {
         renderProfileTab(content);
     } else if (type === "tournaments") {
-        content.innerHTML = `
-            <h2 style="color:#00ff88;">My Tournaments</h2>
-            <p style="color:#666;margin-top:20px;">Feature coming in next update...</p>`;
+        await renderTournamentHistoryTab(content);
     } else if (type === "performance") {
-        renderPerformanceTab(content);
+        await renderPerformanceTab(content);
     } else if (type === "matches") {
-        content.innerHTML = `
-            <h2 style="color:#00ff88;">Upcoming Matches</h2>
-            <div style="margin-top:20px;padding:20px;background:#1a1a1a;border-radius:8px;">
-                <p style="color:#888;">No upcoming matches scheduled.</p>
-            </div>`;
+        await renderUpcomingMatchesTab(content);
+    } else if (type === "account") {
+        await renderMyAccountTab(content);
     }
 }
+
+// ─────────────────────────────────────
+// TAB: TOURNAMENT HISTORY
+// ─────────────────────────────────────
+async function renderTournamentHistoryTab(content) {
+    content.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+            <h2 style="color:#00ff88;margin:0;">📋 Tournament History</h2>
+            <span style="color:#666;font-size:13px;">Only confirmed (paid) registrations</span>
+        </div>
+        <div id="thLoadingMsg" style="text-align:center;padding:30px;color:#888;">
+            <div style="width:32px;height:32px;border:3px solid #333;border-top:3px solid #00ff88;
+                border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px;"></div>
+            Loading...
+        </div>
+        <div id="thTableWrap" style="display:none;overflow-x:auto;"></div>`;
+
+    try {
+        // Fetch paid/confirmed registrations from user's sub-collection
+        const paidSnap = await getDocs(
+            collection(db, "users", currentUser.uid, "confirmedRegistrations")
+        );
+        const rows = paidSnap.docs.map(d => d.data());
+
+        document.getElementById("thLoadingMsg").style.display = "none";
+        const wrap = document.getElementById("thTableWrap");
+        wrap.style.display = "block";
+
+        const tableRows = rows.length === 0
+            ? `<tr>
+                <td colspan="5" style="text-align:center;color:#444;padding:24px;font-style:italic;">
+                    No tournament history yet. Join and complete payment to appear here.
+                </td>
+               </tr>`
+            : rows.map(r => `
+                <tr>
+                    <td>${r.tournamentName || '—'}</td>
+                    <td>₹${r.entryFee || 0}</td>
+                    <td>${r.mode || '—'}</td>
+                    <td>${r.date ? new Date(r.date).toLocaleDateString('en-IN') : '—'}</td>
+                    <td>${r.time || '—'}</td>
+                </tr>`).join('');
+
+        wrap.innerHTML = `
+            <table class="dash-table">
+                <thead>
+                    <tr>
+                        <th>Tournament</th>
+                        <th>Entry Fee</th>
+                        <th>Mode</th>
+                        <th>Date</th>
+                        <th>Time</th>
+                    </tr>
+                </thead>
+                <tbody>${tableRows}</tbody>
+            </table>
+            <p style="color:#555;font-size:12px;margin-top:14px;text-align:right;">
+                Future columns: Result · Status · Match ID
+            </p>`;
+    } catch (err) {
+        console.error("Tournament history error:", err);
+        document.getElementById("thLoadingMsg").innerHTML = `<p style="color:#ff4444;">Failed to load. Try again.</p>`;
+    }
+}
+
+// ─────────────────────────────────────
+// TAB: UPCOMING MATCHES
+// ─────────────────────────────────────
+async function renderUpcomingMatchesTab(content) {
+    content.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+            <h2 style="color:#00ff88;margin:0;">📅 Upcoming Matches</h2>
+            <span style="color:#666;font-size:13px;">Your registered tournaments</span>
+        </div>
+        <div id="umLoading" style="text-align:center;padding:30px;color:#888;">
+            <div style="width:32px;height:32px;border:3px solid #333;border-top:3px solid #3b82f6;
+                border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px;"></div>
+            Loading matches...
+        </div>
+        <div id="umList"></div>`;
+
+    try {
+        const upSnap = await getDocs(
+            collection(db, "users", currentUser.uid, "upcomingRegistrations")
+        );
+        const matches = upSnap.docs.map(d => d.data());
+        matches.sort((a, b) => {
+            const da = a.eventDate ? new Date(a.eventDate) : new Date(9999, 0);
+            const db_ = b.eventDate ? new Date(b.eventDate) : new Date(9999, 0);
+            return da - db_;
+        });
+
+        document.getElementById("umLoading").style.display = "none";
+        const list = document.getElementById("umList");
+
+        if (matches.length === 0) {
+            list.innerHTML = `
+                <div style="text-align:center;padding:40px;background:#1a1a1a;border-radius:12px;border:1px solid #2a2a2a;">
+                    <div style="font-size:48px;margin-bottom:12px;">🎮</div>
+                    <p style="color:#888;">No upcoming matches yet.</p>
+                    <p style="color:#555;font-size:13px;margin-top:8px;">Register for a tournament to see it here.</p>
+                </div>`;
+            return;
+        }
+
+        list.innerHTML = matches.map(m => {
+            const eventDate = m.eventDate
+                ? new Date(m.eventDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+                : 'TBA';
+            const statusColor = m.status === 'approved' ? '#00ff88'
+                : m.status === 'rejected' ? '#ff4444' : '#ffd700';
+            const statusLabel = m.status === 'approved' ? '✅ Approved'
+                : m.status === 'rejected' ? '❌ Rejected' : '⏳ Pending Review';
+            return `
+                <div style="background:#1a1a1a;border-radius:10px;padding:18px 20px;margin-bottom:12px;
+                    border:1px solid #2a2a2a;border-left:4px solid #3b82f6;display:flex;
+                    justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+                    <div>
+                        <div style="color:#fff;font-weight:700;font-size:16px;margin-bottom:6px;">
+                            ${m.title || '—'}
+                        </div>
+                        <div style="color:#888;font-size:13px;">📅 ${eventDate}</div>
+                        ${m.eventTime ? `<div style="color:#3b82f6;font-size:13px;margin-top:3px;">⏰ ${m.eventTime}</div>` : ''}
+                    </div>
+                    <span style="background:${statusColor}22;color:${statusColor};
+                        padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;
+                        border:1px solid ${statusColor}44;white-space:nowrap;">
+                        ${statusLabel}
+                    </span>
+                </div>`;
+        }).join('');
+    } catch (err) {
+        console.error("Upcoming matches error:", err);
+        document.getElementById("umLoading").innerHTML = `<p style="color:#ff4444;">Failed to load. Try again.</p>`;
+    }
+}
+
+// ─────────────────────────────────────
+// TAB: PERFORMANCE
+// ─────────────────────────────────────
+async function renderPerformanceTab(content) {
+    content.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+            <h2 style="color:#00ff88;margin:0;">🏆 Performance</h2>
+            <span style="color:#666;font-size:13px;">Earnings only (no losses shown)</span>
+        </div>
+        <div id="perfLoading" style="text-align:center;padding:30px;color:#888;">
+            <div style="width:32px;height:32px;border:3px solid #333;border-top:3px solid #ffd700;
+                border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px;"></div>
+            Loading performance...
+        </div>
+        <div id="perfContent" style="display:none;"></div>`;
+
+    try {
+        const perfSnap = await getDocs(
+            collection(db, "users", currentUser.uid, "performanceHistory")
+        );
+        const records = perfSnap.docs.map(d => d.data())
+            .filter(r => r.earnings && r.earnings > 0); // Only earnings, no losses
+
+        const totalEarnings = records.reduce((sum, r) => sum + (r.earnings || 0), 0);
+
+        document.getElementById("perfLoading").style.display = "none";
+        const perfDiv = document.getElementById("perfContent");
+        perfDiv.style.display = "block";
+
+        const tableRows = records.length === 0
+            ? `<tr>
+                <td colspan="3" style="text-align:center;color:#444;padding:24px;font-style:italic;">
+                    No earnings recorded yet. Win a tournament to see your stats here!
+                </td>
+               </tr>`
+            : records.map(r => `
+                <tr>
+                    <td>${r.tournamentName || '—'}</td>
+                    <td style="text-align:center;">
+                        ${r.position === 1 ? '🥇 1st' : r.position === 2 ? '🥈 2nd' : r.position === 3 ? '🥉 3rd' : `#${r.position || '—'}`}
+                    </td>
+                    <td style="color:#00ff88;font-weight:700;text-align:right;">₹${r.earnings}</td>
+                </tr>`).join('');
+
+        perfDiv.innerHTML = `
+            <!-- Total Earnings Summary -->
+            <div style="background:linear-gradient(135deg,#1a2a1a,#2a3a1a);border:2px solid #ffd700;
+                border-radius:12px;padding:24px;margin-bottom:24px;display:flex;
+                justify-content:space-between;align-items:center;flex-wrap:wrap;gap:15px;">
+                <div>
+                    <div style="color:#888;font-size:13px;margin-bottom:6px;">💰 Total Earnings</div>
+                    <div style="color:#ffd700;font-size:36px;font-weight:900;">₹${totalEarnings}</div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="color:#888;font-size:13px;">Tournaments Won</div>
+                    <div style="color:#00ff88;font-size:28px;font-weight:700;">${records.length}</div>
+                </div>
+            </div>
+
+            <!-- Performance Table -->
+            <div style="overflow-x:auto;">
+                <table class="dash-table">
+                    <thead>
+                        <tr>
+                            <th>Tournament</th>
+                            <th style="text-align:center;">Position</th>
+                            <th style="text-align:right;">Earnings (₹)</th>
+                        </tr>
+                    </thead>
+                    <tbody>${tableRows}</tbody>
+                </table>
+            </div>
+            <p style="color:#555;font-size:12px;margin-top:14px;text-align:right;">
+                Future: Kill stats · Match stats · Ranking history
+            </p>`;
+    } catch (err) {
+        console.error("Performance error:", err);
+        document.getElementById("perfLoading").innerHTML = `<p style="color:#ff4444;">Failed to load. Try again.</p>`;
+    }
+}
+
+// ─────────────────────────────────────
+// TAB: MY ACCOUNT (WALLET)
+// ─────────────────────────────────────
+async function renderMyAccountTab(content) {
+    content.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:10px;">
+            <h2 style="color:#00ff88;margin:0;">💼 My Account</h2>
+            <span style="color:#666;font-size:13px;">Wallet & Transactions</span>
+        </div>
+        <div id="accLoading" style="text-align:center;padding:30px;color:#888;">
+            <div style="width:32px;height:32px;border:3px solid #333;border-top:3px solid #ffd700;
+                border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 12px;"></div>
+            Loading wallet...
+        </div>
+        <div id="accContent" style="display:none;"></div>`;
+
+    try {
+        const txSnap = await getDocs(
+            query(
+                collection(db, "users", currentUser.uid, "transactions"),
+                orderBy("createdAt", "desc")
+            )
+        );
+        const txs = txSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const balance = userWallet?.balance || 0;
+
+        document.getElementById("accLoading").style.display = "none";
+        const accDiv = document.getElementById("accContent");
+        accDiv.style.display = "block";
+
+        const txRows = txs.length === 0
+            ? `<tr>
+                <td colspan="3" style="text-align:center;color:#444;padding:24px;font-style:italic;">
+                    No transactions yet.
+                </td>
+               </tr>`
+            : txs.map(t => {
+                const isCredit = t.type === 'credit';
+                const sign = isCredit ? '+' : '-';
+                const color = isCredit ? '#00ff88' : '#ff4444';
+                const badge = isCredit
+                    ? '<span style="background:#00ff8822;color:#00ff88;padding:2px 8px;border-radius:10px;font-size:11px;border:1px solid #00ff8844;">Credit</span>'
+                    : '<span style="background:#ff444422;color:#ff4444;padding:2px 8px;border-radius:10px;font-size:11px;border:1px solid #ff444444;">Debit</span>';
+                const dateStr = t.createdAt?.toDate
+                    ? new Date(t.createdAt.toDate()).toLocaleDateString('en-IN')
+                    : 'Pending';
+                return `
+                    <tr>
+                        <td>${badge}</td>
+                        <td style="color:${color};font-weight:700;">${sign}₹${t.amount || 0}</td>
+                        <td style="color:#888;font-size:13px;">${t.description || '—'}</td>
+                        <td style="color:#555;font-size:12px;">${dateStr}</td>
+                    </tr>`;
+            }).join('');
+
+        accDiv.innerHTML = `
+            <!-- Wallet Balance Card -->
+            <div style="background:linear-gradient(135deg,#1a1a2a,#2a1a3a);border:2px solid #ffd700;
+                border-radius:12px;padding:24px;margin-bottom:24px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:15px;">
+                    <div>
+                        <div style="color:#888;font-size:13px;margin-bottom:6px;">💰 Wallet Balance</div>
+                        <div style="color:#ffd700;font-size:40px;font-weight:900;">₹${balance}</div>
+                        <div style="color:#555;font-size:12px;margin-top:4px;">Available for tournaments</div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                        <button onclick="openWalletModal()"
+                            style="padding:10px 20px;background:#ffd700;color:#000;border:none;
+                                border-radius:8px;cursor:pointer;font-weight:700;font-size:14px;">
+                            + Add Funds
+                        </button>
+                        <button onclick="showWithdrawUI()"
+                            style="padding:10px 20px;background:transparent;color:#ffd700;
+                                border:1px solid #ffd700;border-radius:8px;cursor:pointer;
+                                font-size:14px;font-weight:600;">
+                            ↑ Withdraw
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transaction History Table -->
+            <h3 style="color:#fff;margin-bottom:14px;font-size:15px;letter-spacing:1px;">
+                📊 Transaction Ledger
+            </h3>
+            <div style="overflow-x:auto;">
+                <table class="dash-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Amount</th>
+                            <th>Reason</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>${txRows}</tbody>
+                </table>
+            </div>
+            <p style="color:#555;font-size:12px;margin-top:14px;text-align:right;">
+                Future: Razorpay/Cashfree integration · Filters
+            </p>`;
+    } catch (err) {
+        console.error("Account tab error:", err);
+        document.getElementById("accLoading").innerHTML = `<p style="color:#ff4444;">Failed to load wallet. Try again.</p>`;
+    }
+}
+
+// Withdraw UI (UI only — backend-ready stub)
+window.showWithdrawUI = function() {
+    document.getElementById("withdrawModal")?.remove();
+    document.body.insertAdjacentHTML("beforeend", `
+        <div id="withdrawModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.85);
+            display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;">
+            <div style="background:#1a1a1a;padding:28px;border-radius:14px;width:100%;max-width:400px;
+                border:1px solid #ffd700;">
+                <h3 style="color:#ffd700;margin-bottom:6px;">Withdraw Funds</h3>
+                <p style="color:#888;font-size:13px;margin-bottom:20px;">
+                    Withdrawals are processed within 24–48 hours.
+                </p>
+                <label style="color:#888;font-size:12px;display:block;margin-bottom:6px;">Amount (₹)</label>
+                <input id="withdrawAmt" type="number" placeholder="Enter amount"
+                    style="width:100%;padding:10px 14px;background:#0f0f0f;border:1px solid #444;
+                        color:#fff;border-radius:8px;font-size:14px;margin-bottom:14px;">
+                <label style="color:#888;font-size:12px;display:block;margin-bottom:6px;">UPI ID</label>
+                <input id="withdrawUpi" type="text" placeholder="yourname@upi"
+                    style="width:100%;padding:10px 14px;background:#0f0f0f;border:1px solid #444;
+                        color:#fff;border-radius:8px;font-size:14px;margin-bottom:20px;">
+                <button onclick="submitWithdrawRequest()"
+                    style="width:100%;padding:12px;background:#ffd700;color:#000;border:none;
+                        border-radius:8px;cursor:pointer;font-weight:700;font-size:15px;margin-bottom:10px;">
+                    Submit Request
+                </button>
+                <button onclick="document.getElementById('withdrawModal').remove()"
+                    style="width:100%;padding:10px;background:transparent;color:#666;
+                        border:1px solid #333;border-radius:8px;cursor:pointer;">
+                    Cancel
+                </button>
+            </div>
+        </div>`);
+};
+
+window.submitWithdrawRequest = async function() {
+    const amt = parseFloat(document.getElementById("withdrawAmt")?.value);
+    const upi = document.getElementById("withdrawUpi")?.value?.trim();
+    if (!amt || amt <= 0) { showMessage("Enter a valid amount"); return; }
+    if (!upi) { showMessage("Enter your UPI ID"); return; }
+    if (amt > (userWallet?.balance || 0)) { showMessage("Insufficient balance"); return; }
+
+    try {
+        await addDoc(collection(db, "users", currentUser.uid, "transactions"), {
+            type: "debit",
+            amount: amt,
+            description: `Withdrawal to ${upi}`,
+            status: "pending",
+            upiId: upi,
+            createdAt: serverTimestamp()
+        });
+        // Flag for admin
+        await addDoc(collection(db, "adminNotifications"), {
+            title: "💸 Withdrawal Request",
+            message: `User ${userProfile?.email} requested ₹${amt} to ${upi}`,
+            type: "withdrawal",
+            userId: currentUser.uid,
+            amount: amt,
+            upiId: upi,
+            read: false,
+            createdAt: serverTimestamp()
+        });
+        document.getElementById("withdrawModal").remove();
+        showMessage("Withdrawal request submitted! Processing in 24–48h.");
+    } catch (err) {
+        showMessage("Error submitting withdrawal. Please try again.");
+    }
+};
 
 // Helper: Render Profile (extracted for clarity)
 function renderProfileTab(content) {
@@ -2255,14 +2641,7 @@ const walletSection = `
         </div>`;
 }
 
-function renderPerformanceTab(content) {
-    content.innerHTML = `
-        <h2 style="color:#00ff88;">Performance</h2>
-        <div style="margin-top:20px;padding:20px;background:#1a1a1a;border-radius:8px;">
-            <p style="color:#fff;font-size:18px;">Total Wins: <strong style="color:#00ff88;">${userProfile?.stats?.tournamentsWon || 0}</strong></p>
-            <p style="color:#888;margin-top:10px;">Detailed stats coming soon...</p>
-        </div>`;
-}
+// renderPerformanceTab is now async and defined above in the dashboard section
 
 
 function closeDashboard() {
@@ -3167,6 +3546,157 @@ function playNotificationSound(type = 'default') {
 
 document.getElementById("loginBtn")?.addEventListener("click", handleProfileClick);
 
+// ===============================
+// JOIN NOW — INTERACTIVE TUTORIAL
+// ===============================
+const TUTORIAL_KEY = "npc_tutorial_done";
+
+window.handleJoinNowTutorial = function() {
+    const done = localStorage.getItem(TUTORIAL_KEY);
+    if (done) {
+        // Returning user — skip straight to community
+        const communitySection = document.getElementById("community") || document.getElementById("communitySection");
+        if (communitySection) {
+            communitySection.scrollIntoView({ behavior: "smooth" });
+        }
+        return;
+    }
+    // First-time — run tutorial
+    startTutorial();
+};
+
+function startTutorial() {
+    // Remove any existing tutorial
+    document.getElementById("tutorialOverlay")?.remove();
+
+    document.body.insertAdjacentHTML("beforeend", `
+        <div id="tutorialOverlay" style="position:fixed;inset:0;background:rgba(0,0,0,0.88);
+            z-index:99999;display:flex;align-items:center;justify-content:center;
+            animation:fadeInTutorial 0.4s ease;">
+            <div id="tutorialCard" style="background:#111;border:1px solid #2a2a2a;border-radius:16px;
+                padding:32px;width:min(480px,90vw);text-align:center;position:relative;
+                box-shadow:0 0 60px rgba(0,255,136,0.1);">
+
+                <!-- Step indicator -->
+                <div id="tutorialDots" style="display:flex;gap:8px;justify-content:center;margin-bottom:24px;">
+                    <div class="tdot active"></div>
+                    <div class="tdot"></div>
+                    <div class="tdot"></div>
+                    <div class="tdot"></div>
+                </div>
+
+                <div id="tutorialBody"><!-- injected per step --></div>
+
+                <div style="display:flex;gap:12px;margin-top:28px;justify-content:center;">
+                    <button id="tutorialSkip" onclick="skipTutorial()"
+                        style="padding:10px 22px;background:transparent;color:#555;
+                            border:1px solid #333;border-radius:8px;cursor:pointer;font-size:13px;">
+                        Skip
+                    </button>
+                    <button id="tutorialNext" onclick="tutorialNext()"
+                        style="padding:10px 28px;background:#00ff88;color:#000;border:none;
+                            border-radius:8px;cursor:pointer;font-weight:700;font-size:15px;">
+                        Next →
+                    </button>
+                </div>
+            </div>
+        </div>
+        <style>
+            @keyframes fadeInTutorial { from{opacity:0;transform:scale(0.96)} to{opacity:1;transform:scale(1)} }
+            .tdot { width:10px;height:10px;border-radius:50%;background:#333;transition:all 0.3s; }
+            .tdot.active { background:#00ff88;transform:scale(1.2); }
+        </style>`);
+
+    window._tutorialStep = 0;
+    renderTutorialStep(0);
+}
+
+const tutorialSteps = [
+    {
+        icon: "🎮",
+        title: "Welcome to NPC Esports!",
+        body: `Let us quickly show you around.<br><br>
+               Use the <strong style="color:#00ff88;">Menu</strong> at the top to navigate between
+               <strong>Tournaments</strong>, <strong>Leaderboard</strong>, <strong>Profile</strong>, and <strong>Dashboard</strong>.`,
+        highlight: ".navbar nav"
+    },
+    {
+        icon: "🏆",
+        title: "Find Your Tournament",
+        body: `Browse <strong style="color:#3b82f6;">Ongoing</strong>, <strong style="color:#3b82f6;">Upcoming</strong>
+               and <strong style="color:#ffd700;">Limited</strong> tournaments.<br><br>
+               Register your team, get verified by admin, then pay the entry fee.`,
+        highlight: "#tournaments"
+    },
+    {
+        icon: "👥",
+        title: "Join Our Community",
+        body: `Stay updated through our <strong>Discord</strong>, <strong>YouTube</strong> and <strong>Instagram</strong>!<br><br>
+               You'll get match announcements, results, and exclusive events there first.`,
+        highlight: "#community"
+    },
+    {
+        icon: "🎉",
+        title: "You're All Set!",
+        body: `Try a <strong style="color:#00ff88;">free tournament</strong> first to get the feel of NPC Esports.<br><br>
+               Your journey to becoming a champion starts here. <strong>Good luck!</strong> 💪`,
+        highlight: null
+    }
+];
+
+function renderTutorialStep(step) {
+    const s = tutorialSteps[step];
+    document.getElementById("tutorialBody").innerHTML = `
+        <div style="font-size:52px;margin-bottom:16px;">${s.icon}</div>
+        <h2 style="color:#00ff88;margin:0 0 14px;font-size:20px;">${s.title}</h2>
+        <p style="color:#aaa;line-height:1.7;font-size:14px;">${s.body}</p>`;
+
+    // Update dots
+    document.querySelectorAll(".tdot").forEach((d, i) => {
+        d.classList.toggle("active", i === step);
+    });
+
+    // Last step
+    const nextBtn = document.getElementById("tutorialNext");
+    if (step === tutorialSteps.length - 1) {
+        nextBtn.textContent = "Let's Go! 🚀";
+        nextBtn.onclick = completeTutorial;
+    } else {
+        nextBtn.textContent = "Next →";
+        nextBtn.onclick = tutorialNext;
+    }
+
+    // Highlight section (scroll to it)
+    if (s.highlight) {
+        const el = document.querySelector(s.highlight);
+        if (el) {
+            setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+        }
+    }
+}
+
+window.tutorialNext = function() {
+    window._tutorialStep = (window._tutorialStep || 0) + 1;
+    if (window._tutorialStep < tutorialSteps.length) {
+        renderTutorialStep(window._tutorialStep);
+    }
+};
+
+function completeTutorial() {
+    localStorage.setItem(TUTORIAL_KEY, "1");
+    document.getElementById("tutorialOverlay")?.remove();
+    // Scroll to community
+    const communitySection = document.getElementById("community") || document.getElementById("communitySection");
+    if (communitySection) {
+        communitySection.scrollIntoView({ behavior: "smooth" });
+    }
+}
+
+window.skipTutorial = function() {
+    localStorage.setItem(TUTORIAL_KEY, "1");
+    document.getElementById("tutorialOverlay")?.remove();
+};
+
 
 // ===============================
 // GLOBAL EXPORTS
@@ -3200,11 +3730,15 @@ window.confirmPayment          = confirmPayment;
 window.toggleNotifications     = window.toggleNotifications;
 window.markAllRead             = window.markAllRead;
 window.handleNotificationClick = window.handleNotificationClick;
-window.showMatchRoom = showMatchRoom;
-window.startTournamentMatches = startTournamentMatches;
-window.addFunds = addFunds;
-window.openWalletModal = openWalletModal;
-window.viewTransactionHistory = viewTransactionHistory;
-window.reportCheater = reportCheater;
-window.showReferralModal = showReferralModal;
-window.handleNotifyMe = window.handleNotifyMe;
+window.showMatchRoom           = showMatchRoom;
+window.startTournamentMatches  = startTournamentMatches;
+window.addFunds                = addFunds;
+window.openWalletModal         = openWalletModal;
+window.viewTransactionHistory  = viewTransactionHistory;
+window.reportCheater           = reportCheater;
+window.showReferralModal       = showReferralModal;
+window.handleNotifyMe          = window.handleNotifyMe;
+// New exports
+window.handleJoinNowTutorial   = handleJoinNowTutorial;
+window.showWithdrawUI          = window.showWithdrawUI;
+window.submitWithdrawRequest   = window.submitWithdrawRequest;
