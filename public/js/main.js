@@ -59,6 +59,20 @@ function handleProfileClick() {
     }
 }
 
+// ===============================
+// PREVENT AUTO-SCROLL ON PAGE LOAD
+// ===============================
+if ('scrollRestoration' in history) {
+    history.scrollRestoration = 'manual';
+}
+// Force the page to start at the absolute top
+window.scrollTo(0, 0);
+
+// Remove any lingering #hash from the URL that might force a scroll
+if (window.location.hash) {
+    window.history.replaceState(null, null, window.location.pathname);
+}
+
 
 
 // ===============================
