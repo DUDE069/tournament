@@ -1815,211 +1815,6 @@ function backToLogin() {
     document.querySelector(".back-btn").style.display   = "none";
 }
 
-// ===============================
-// AUTHENTICATION
-// ===============================
-async function createAccount() {
-    const email   = document.getElementById("regEmail")?.value.trim();
-    const pass    = document.getElementById("regPass")?.value;
-    const confirm = document.getElementById("regConfirm")?.value;
-    const age     = parseInt(document.getElementById("regAge")?.value);
-
-    if (!email || !pass || !confirm || !age) { showMessage("Fill all fields including age"); return; }
-    if (pass !== confirm)  { showMessage("Passwords do not match"); return; }
-    if (age < 12 || age > 60) { showMessage("Age must be between 12 and 60"); return; }
-
-    // Show loading state
-    const createBtn = document.querySelector('#createView button[onclick="createAccount()"]');
-    const originalText = createBtn?.textContent;
-    if (createBtn) {
-        createBtn.disabled = true;
-        createBtn.textContent = "Creating Account...";
-    }
-
-    try {
-        const userCred = await createUserWithEmailAndPassword(auth, email, pass);
-        const user     = userCred.user;
-        const uid      = user.uid;
-
-        let userData = {
-            uid, email, age,
-            role:     selectedRole || "viewer",
-            isAdmin:  false,
-            isLeader: false,
-            teamId:   null,
-            teamName: null,
-            teamCode: null,
-            createdAt: serverTimestamp(),
-            stats: { tournamentsJoined: 0, tournamentsWon: 0, matchesPlayed: 0 }
-        };
-
-        if (selectedRole === "leader") {
-            const teamName = document.getElementById("teamNameInput")?.value.trim();
-            const teamCode = document.getElementById("generatedCode")?.textContent?.replace("Code: ", "").trim();
-
-            if (!teamName || !teamCode) {
-                showMessage("Enter team name and generate code");
-                await user.delete();
-                return;
-            }
-
-            const teamId = "team_" + Math.random().toString(36).substr(2, 9);
-            
-            // Create team first
-            await setDoc(doc(db, "teams", teamId), {
-                teamId, teamName,
-                leaderId:   uid,
-                leaderName: email.split('@')[0],
-                code:       teamCode,
-                members:    [uid],
-                maxMembers: 5, // Changed to 5 for 4+1 squad
-                createdAt:  serverTimestamp()
-            });
-
-            userData.isLeader = true;
-            userData.teamId   = teamId;
-            userData.teamName = teamName;
-            userData.teamCode = teamCode;
-            userData.role     = "leader";
-
-        } else if (selectedRole === "join") {
-            const enteredCode = document.getElementById("joinCode")?.value.trim().toUpperCase(); // Normalize
-            
-            if (!enteredCode) { 
-                showMessage("Enter team code"); 
-                await user.delete(); 
-                return; 
-            }
-
-            // Query for team with matching code
-            const teamsQuery = query(collection(db, "teams"), where("code", "==", enteredCode));
-            const teamSnap   = await getDocs(teamsQuery);
-
-            if (teamSnap.empty) { 
-                showMessage("Invalid team code. Please check with your team leader."); 
-                await user.delete(); 
-                if (createBtn) {
-                    createBtn.disabled = false;
-                    createBtn.textContent = originalText;
-                }
-                return; 
-            }
-
-            const teamDoc  = teamSnap.docs[0];
-            const teamData = teamDoc.data();
-
-            // Validate team isn't full
-            const currentMembers = teamData.members || [];
-            if (currentMembers.length >= (teamData.maxMembers || 5)) {
-                showMessage("Team is full. Maximum 5 members allowed.");
-                await user.delete();
-                if (createBtn) {
-                    createBtn.disabled = false;
-                    createBtn.textContent = originalText;
-                }
-                return;
-            }
-
-            // Add user to team
-            await updateDoc(doc(db, "teams", teamData.teamId), { 
-                members: arrayUnion(uid) 
-            });
-
-            userData.teamId   = teamData.teamId;
-            userData.teamName = teamData.teamName;
-            userData.teamCode = enteredCode;
-            userData.role     = "member";
-            
-            // Store for welcome message
-            localStorage.setItem("welcomeTeam", teamData.teamName);
-        }
-
-                   // Create user document with verification
-        console.log("[CREATE] Writing user document for UID:", uid);
-        
-        let writeSuccess = false;
-        try {
-            // Use set() instead of setDoc() for more explicit behavior
-            await setDoc(doc(db, "users", uid), userData);
-            console.log("[CREATE] ✓ setDoc completed without error");
-            
-            // Small delay for Firestore to process
-            await new Promise(resolve => setTimeout(resolve, 200));
-            
-            // Verify the document was actually created by reading it
-            const verifyDoc = await getDoc(doc(db, "users", uid));
-            if (verifyDoc.exists()) {
-                console.log("[CREATE] ✓ Document verified in Firestore");
-                writeSuccess = true;
-            } else {
-                console.error("[CREATE] ✗ Document NOT found after write!");
-                // Try to recover by writing again
-                console.log("[CREATE] Retrying write...");
-                await setDoc(doc(db, "users", uid), userData);
-                await new Promise(resolve => setTimeout(resolve, 500));
-                
-                const retryVerify = await getDoc(doc(db, "users", uid));
-                if (retryVerify.exists()) {
-                    console.log("[CREATE] ✓ Document verified on retry");
-                    writeSuccess = true;
-                }
-            }
-        } catch (writeErr) {
-            console.error("[CREATE] Error writing document:", writeErr.message);
-            console.error("[CREATE] Error code:", writeErr.code);
-            console.error("[CREATE] Full error:", writeErr);
-        }
-        
-        // Extended delay if write had issues
-        if (!writeSuccess) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        
-        // Success message
-        if (writeSuccess) {
-            showMessage("Account created successfully!");
-        } else {
-            showMessage("Account created! Refreshing...");
-            // Force page reload to re-authenticate properly
-            setTimeout(() => location.reload(), 1500);
-        }
-
-
-        closeModal();
-        
-        // Show team welcome if applicable
-        if (selectedRole === "join") {
-            const welcomeTeam = localStorage.getItem("welcomeTeam");
-            if (welcomeTeam) {
-                setTimeout(() => {
-                    showMessage(`Welcome to team "${welcomeTeam}"!`);
-                    localStorage.removeItem("welcomeTeam");
-                }, 500);
-            }
-        } else if (selectedRole === "leader") {
-            setTimeout(() => {
-                showMessage(`Team "${userData.teamName}" created! Share code: ${userData.teamCode}`);
-            }, 500);
-        }
-
-        backToLogin();
-
-   } catch (err) {
-        console.error("Registration error:", err);
-        showMessage("Error: " + err.message);
-        // Clean up orphaned Auth account so the user can try again cleanly
-        try {
-            if (auth.currentUser) await auth.currentUser.delete();
-        } catch (deleteErr) {
-            console.warn("Could not clean up auth account:", deleteErr.message);
-        }
-    } finally {
-        if (createBtn) {
-            createBtn.disabled = false;
-            createBtn.textContent = originalText || "Create Account";
-        }
-    }
-}
 
 async function login() {
     const email = document.getElementById("loginEmail")?.value;
@@ -4148,31 +3943,19 @@ let signupOTP = null;
 let otpExpiry = null;
 let resendCooldown = 0;
 
+// ==========================================
+// 1. SEND SIGNUP OTP (Creates Auth User & Sends Email)
+// ==========================================
 window.sendSignupOTP = async function() {
     const email = document.getElementById("regEmail").value.trim();
     const pass = document.getElementById("regPass").value;
     const age = parseInt(document.getElementById("regAge").value);
 
-    // Validate inputs first
-    if (!email.includes("@gmail.com")) { 
-        showMessage("Please use a valid Gmail ID"); 
-        return; 
-    }
-    if (pass.length < 6) { 
-        showMessage("Password too short (min 6 characters)"); 
-        return; 
-    }
-    if (isNaN(age) || age < 12 || age > 60) { 
-        showMessage("Age must be between 12 and 60"); 
-        return; 
-    }
-
-    // Check if passwords match
-    const confirm = document.getElementById("regConfirm")?.value;
-    if (pass !== confirm) {
-        showMessage("Passwords do not match");
-        return;
-    }
+    // Validations
+    if (!email.includes("@gmail.com")) { showMessage("Please use a valid Gmail ID"); return; }
+    if (pass.length < 6) { showMessage("Password too short (min 6 characters)"); return; }
+    if (isNaN(age) || age < 12 || age > 60) { showMessage("Age must be between 12 and 60"); return; }
+    if (pass !== document.getElementById("regConfirm")?.value) { showMessage("Passwords do not match"); return; }
 
     const btn = document.getElementById("btnSendOTP");
     const originalText = btn.textContent;
@@ -4180,67 +3963,64 @@ window.sendSignupOTP = async function() {
     btn.textContent = "Sending...";
 
     try {
-        console.log("[SIGNUP] Creating new account for:", email);
+        console.log("[SIGNUP] Creating auth account for:", email);
         
-        // Step 1: Create Firebase Auth user
+        // Step 1: Create Auth user
         const userCred = await createUserWithEmailAndPassword(auth, email, pass);
+        await userCred.user.sendEmailVerification();
         
-        // IMPORTANT: Verify userCred and user exist
-        if (!userCred || !userCred.user) {
-            throw new Error("Account creation failed - no user returned");
-        }
-        
-        const user = userCred.user;
-        console.log("[SIGNUP] User created, UID:", user.uid);
-        
-        // Step 2: Store data temporarily
-        localStorage.setItem('pendingUid', user.uid);
-        localStorage.setItem('pendingEmail', email);
-        localStorage.setItem('pendingAge', age);
-        
-        // Step 3: Send verification email
-        console.log("[SIGNUP] Sending verification email...");
-        await user.sendEmailVerification();
-        console.log("✅ Verification email sent to:", email);
-
-        // Step 4: Show step 2
+        // Step 2: Setup UI for Email Verification phase
         document.getElementById("signupStep1").style.display = "none";
         document.getElementById("signupStep2").style.display = "block";
-        document.getElementById("roleSelectionArea").style.display = "block";
+        document.getElementById("roleSelectionArea").style.display = "none"; // Hide until verified
+        
+        // Hide the final submit button until roles are chosen
+        const finalBtn = document.querySelector('#createView button[onclick="createAccount()"]');
+        if (finalBtn) finalBtn.style.display = "none";
         
         showMessage("📧 Check your Gmail! Click the verification link.");
         startResendTimer();
         
     } catch (err) {
-        console.error("[SIGNUP] Error:", err.code, err.message);
+        console.error("[SIGNUP] Error:", err.code);
         
-        // Reset button
-        btn.disabled = false;
-        btn.textContent = originalText;
-        
-        // Handle specific errors
+        // Ghost Account Recovery
         if (err.code === 'auth/email-already-in-use') {
-            showMessage("⚠️ Email already registered! Please login instead.");
-            // Offer to login instead
-            setTimeout(() => {
-                if (confirm("Would you like to login instead?")) {
-                    backToLogin();
-                    document.getElementById("loginEmail").value = email;
+            try {
+                const userCred = await signInWithEmailAndPassword(auth, email, pass);
+                const user = userCred.user;
+                
+                if (!user.emailVerified) {
+                    await user.sendEmailVerification();
+                    document.getElementById("signupStep1").style.display = "none";
+                    document.getElementById("signupStep2").style.display = "block";
+                    document.getElementById("roleSelectionArea").style.display = "none";
+                    const finalBtn = document.querySelector('#createView button[onclick="createAccount()"]');
+                    if (finalBtn) finalBtn.style.display = "none";
+                    
+                    showMessage("⚠️ Unverified account found. New link sent to Gmail!");
+                    startResendTimer();
+                } else {
+                    // Account already verified! Skip to role selection
+                    document.getElementById("signupStep1").style.display = "none";
+                    document.getElementById("signupStep2").style.display = "none";
+                    document.getElementById("roleSelectionArea").style.display = "block";
+                    const finalBtn = document.querySelector('#createView button[onclick="createAccount()"]');
+                    if (finalBtn) finalBtn.style.display = "block";
+                    
+                    showMessage("Account already verified! Please finalize your profile below.");
                 }
-            }, 1000);
-        } else if (err.code === 'auth/weak-password') {
-            showMessage("Password is too weak. Use at least 6 characters.");
-        } else if (err.code === 'auth/invalid-email') {
-            showMessage("Invalid email format.");
-        } else if (err.code === 'auth/network-request-failed') {
-            showMessage("Network error. Check your connection.");
+            } catch (loginErr) {
+                showMessage("⚠️ Email already registered. Please login instead.");
+                setTimeout(() => { backToLogin(); document.getElementById("loginEmail").value = email; }, 1500);
+            }
         } else {
-            showMessage("Error: " + (err.message || "Unknown error occurred"));
+            showMessage("Error: " + err.message);
         }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = originalText; }
     }
 };
-
-
 
 function startResendTimer() {
     resendCooldown = 60;
@@ -4258,172 +4038,47 @@ function startResendTimer() {
     }, 1000);
 }
 
+// ==========================================
+// 2. VERIFY AND PROCEED (Checks Email Status)
+// ==========================================
 window.verifyAndCreate = async function() {
     const btn = document.querySelector('#signupStep2 button');
-    if (!btn) {
-        showMessage("Button not found. Please refresh the page.");
-        return;
-    }
+    if (!btn) return;
     
     const originalText = btn.textContent;
     btn.disabled = true;
     btn.textContent = "Verifying...";
 
     try {
-        // Step 1: Get current user from Firebase Auth
         const user = auth.currentUser;
-        
         if (!user) {
-            showMessage("❌ No active session. Please sign up again.");
-            btn.disabled = false;
-            btn.textContent = originalText;
-            return;
-        }
-
-        console.log("[VERIFY] Current user:", user.uid, "Email verified:", user.emailVerified);
-
-        // Step 2: Reload user to get fresh verification status
-        await user.reload();
-        
-        // Step 3: Check if email is verified
-        if (!user.emailVerified) {
-            showMessage("⚠️ Please click the link in your Gmail FIRST, then click this button!");
-            btn.disabled = false;
-            btn.textContent = "I've Verified ✅";
-            return;
-        }
-
-        console.log("[VERIFY] Email is verified! Creating profile...");
-
-        // Step 4: Get stored data
-        const uid = localStorage.getItem('pendingUid');
-        const email = localStorage.getItem('pendingEmail');
-        const age = parseInt(localStorage.getItem('pendingAge'));
-        
-        if (!uid || !email) {
             showMessage("❌ Session expired. Please sign up again.");
             btn.disabled = false;
             btn.textContent = originalText;
             return;
         }
 
-        // Verify UID matches
-        if (user.uid !== uid) {
-            console.warn("[VERIFY] UID mismatch! User:", user.uid, "Pending:", uid);
-            // Use current user's UID instead
-        }
-
-        // Step 5: Create user profile
-        let userData = {
-            uid: user.uid,
-            email: email,
-            age: age,
-            role: selectedRole || "viewer",
-            isAdmin: false,
-            isLeader: false,
-            teamId: null,
-            teamName: null,
-            teamCode: null,
-            emailVerified: true,
-            createdAt: serverTimestamp(),
-            stats: { 
-                tournamentsJoined: 0, 
-                tournamentsWon: 0, 
-                matchesPlayed: 0 
-            }
-        };
-
-        // Handle team creation
-        if (selectedRole === "leader") {
-            const teamName = document.getElementById("teamNameInput")?.value.trim();
-            const generatedCode = document.getElementById("generatedCode")?.textContent?.replace("Code: ", "").trim();
-            
-            if (!teamName || !generatedCode) {
-                showMessage("Please enter team name and generate code");
-                btn.disabled = false;
-                btn.textContent = originalText;
-                return;
-            }
-
-            const teamId = "team_" + Math.random().toString(36).substr(2, 9);
-            
-            await setDoc(doc(db, "teams", teamId), {
-                teamId: teamId,
-                teamName: teamName,
-                leaderId: user.uid,
-                leaderName: email.split('@')[0],
-                code: generatedCode,
-                members: [user.uid],
-                maxMembers: 5,
-                createdAt: serverTimestamp()
-            });
-
-            userData.isLeader = true;
-            userData.teamId = teamId;
-            userData.teamName = teamName;
-            userData.teamCode = generatedCode;
-            userData.role = "leader";
-
-        } else if (selectedRole === "join") {
-            const enteredCode = document.getElementById("joinCode")?.value.trim().toUpperCase();
-            
-            if (!enteredCode) {
-                showMessage("Please enter team code");
-                btn.disabled = false;
-                btn.textContent = originalText;
-                return;
-            }
-
-            const teamsQuery = query(collection(db, "teams"), where("code", "==", enteredCode));
-            const teamSnap = await getDocs(teamsQuery);
-
-            if (teamSnap.empty) {
-                showMessage("Invalid team code. Check with your team leader.");
-                btn.disabled = false;
-                btn.textContent = originalText;
-                return;
-            }
-
-            const teamDoc = teamSnap.docs[0];
-            const teamData = teamDoc.data();
-
-            await updateDoc(doc(db, "teams", teamData.teamId), {
-                members: arrayUnion(user.uid)
-            });
-
-            userData.teamId = teamData.teamId;
-            userData.teamName = teamData.teamName;
-            userData.teamCode = enteredCode;
-            userData.role = "member";
-            localStorage.setItem("welcomeTeam", teamData.teamName);
-        }
-
-        // Step 6: Create user document in Firestore
-        await setDoc(doc(db, "users", user.uid), userData);
-        console.log("✅ User profile created in Firestore");
-
-        // Step 7: Clear temp data
-        localStorage.removeItem('pendingUid');
-        localStorage.removeItem('pendingEmail');
-        localStorage.removeItem('pendingAge');
-        localStorage.removeItem('pendingPass');
-
-        // Step 8: Success!
-        showMessage("🎉 Account created and verified!");
-        btn.textContent = "✅ Done!";
+        // Fetch fresh verification status
+        await user.reload();
         
-        setTimeout(() => {
-            backToLogin();
-            if (selectedRole === "leader") {
-                showMessage(`Team "${userData.teamName}" created! Code: ${userData.teamCode}`);
-            } else {
-                showMessage("Account ready! Login to continue.");
-            }
-        }, 1500);
+        if (!user.emailVerified) {
+            showMessage("⚠️ Please click the link in your Gmail FIRST!");
+            btn.disabled = false;
+            btn.textContent = "✅ I've Verified My Email";
+            return;
+        }
+
+        // Email is verified! Unlock the final step (Roles/Teams)
+        document.getElementById("signupStep2").style.display = "none";
+        document.getElementById("roleSelectionArea").style.display = "block";
+        
+        const finalCreateBtn = document.querySelector('#createView button[onclick="createAccount()"]');
+        if (finalCreateBtn) finalCreateBtn.style.display = "block";
+        
+        showMessage("✅ Verified! Choose your role below.");
 
     } catch (err) {
-        console.error("[VERIFY] Error:", err.code, err.message);
-        showMessage("Error: " + (err.message || "Unknown error"));
+        showMessage("Error: " + err.message);
         btn.disabled = false;
         btn.textContent = originalText;
     }
@@ -4525,6 +4180,134 @@ window.resendSignupOTP = async function() {
         } else {
             showMessage("Failed to resend. Try again.");
         }
+    }
+};
+
+// ==========================================
+// 3. FINAL CREATE ACCOUNT (Writes to Firestore)
+// ==========================================
+window.createAccount = async function() {
+    const user = auth.currentUser;
+    if (!user || !user.emailVerified) {
+        showMessage("Please verify your email first.");
+        return;
+    }
+
+    const email = user.email;
+    const uid = user.uid;
+    const age = parseInt(document.getElementById("regAge").value) || 18;
+
+    const createBtn = document.querySelector('#createView button[onclick="createAccount()"]');
+    const originalText = createBtn?.textContent;
+    
+    if (createBtn) {
+        createBtn.disabled = true;
+        createBtn.textContent = "Finalizing Account...";
+    }
+
+    try {
+        // Prevent double-writing existing profiles
+        const existingDoc = await getDoc(doc(db, "users", uid));
+        if (existingDoc.exists()) {
+            showMessage("🎉 Account is already fully set up!");
+            setTimeout(() => location.reload(), 1500);
+            return;
+        }
+
+        let userData = {
+            uid, email, age,
+            role: selectedRole || "viewer",
+            isAdmin: false,
+            isLeader: false,
+            teamId: null,
+            teamName: null,
+            teamCode: null,
+            emailVerified: true,
+            createdAt: serverTimestamp(),
+            stats: { tournamentsJoined: 0, tournamentsWon: 0, matchesPlayed: 0 }
+        };
+
+        // Team Leader Logic
+        if (selectedRole === "leader") {
+            const teamName = document.getElementById("teamNameInput")?.value.trim();
+            const teamCode = document.getElementById("generatedCode")?.textContent?.replace("Code: ", "").trim();
+
+            if (!teamName || !teamCode) {
+                showMessage("Enter team name and generate code");
+                if (createBtn) { createBtn.disabled = false; createBtn.textContent = originalText; }
+                return;
+            }
+
+            const teamId = "team_" + Math.random().toString(36).substr(2, 9);
+            await setDoc(doc(db, "teams", teamId), {
+                teamId, teamName,
+                leaderId: uid,
+                leaderName: email.split('@')[0],
+                code: teamCode,
+                members: [uid],
+                maxMembers: 5,
+                createdAt: serverTimestamp()
+            });
+
+            userData.isLeader = true;
+            userData.teamId = teamId;
+            userData.teamName = teamName;
+            userData.teamCode = teamCode;
+            userData.role = "leader";
+
+        // Join Team Logic
+        } else if (selectedRole === "join") {
+            const enteredCode = document.getElementById("joinCode")?.value.trim().toUpperCase();
+            if (!enteredCode) {
+                showMessage("Enter team code");
+                if (createBtn) { createBtn.disabled = false; createBtn.textContent = originalText; }
+                return;
+            }
+
+            const teamsQuery = query(collection(db, "teams"), where("code", "==", enteredCode));
+            const teamSnap = await getDocs(teamsQuery);
+
+            if (teamSnap.empty) {
+                showMessage("Invalid team code. Please check with your team leader.");
+                if (createBtn) { createBtn.disabled = false; createBtn.textContent = originalText; }
+                return;
+            }
+
+            const teamData = teamSnap.docs[0].data();
+            if ((teamData.members || []).length >= (teamData.maxMembers || 5)) {
+                showMessage("Team is full.");
+                if (createBtn) { createBtn.disabled = false; createBtn.textContent = originalText; }
+                return;
+            }
+
+            await updateDoc(doc(db, "teams", teamData.teamId), { members: arrayUnion(uid) });
+            userData.teamId = teamData.teamId;
+            userData.teamName = teamData.teamName;
+            userData.teamCode = enteredCode;
+            userData.role = "member";
+            localStorage.setItem("welcomeTeam", teamData.teamName);
+        }
+
+        // Write Final User Data to Firestore
+        await setDoc(doc(db, "users", uid), userData);
+        
+        showMessage("Account created successfully!");
+        closeModal();
+        
+        if (selectedRole === "leader") {
+            setTimeout(() => showMessage(`Team "${userData.teamName}" created! Share code: ${userData.teamCode}`), 1000);
+        } else if (selectedRole === "join") {
+            const welcomeTeam = localStorage.getItem("welcomeTeam");
+            setTimeout(() => { showMessage(`Welcome to team "${welcomeTeam}"!`); localStorage.removeItem("welcomeTeam"); }, 1000);
+        }
+
+        backToLogin();
+        
+    } catch (err) {
+        console.error("Account Finalization Error:", err);
+        showMessage("Error: " + err.message);
+    } finally {
+        if (createBtn) { createBtn.disabled = false; createBtn.textContent = originalText || "Create Account"; }
     }
 };
 
