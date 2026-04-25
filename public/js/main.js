@@ -4151,24 +4151,55 @@ let resendCooldown = 0;
 window.sendSignupOTP = async function() {
     const email = document.getElementById("regEmail").value.trim();
     const pass = document.getElementById("regPass").value;
-    const age = document.getElementById("regAge").value;
+    const age = parseInt(document.getElementById("regAge").value);
 
-    if (!email.includes("@gmail.com")) { showMessage("Please use a valid Gmail ID"); return; }
+    if (!email.includes("@gmail.com")) { 
+        showMessage("Please use a valid Gmail ID"); 
+        return; 
+    }
     if (pass.length < 6) { showMessage("Password too short"); return; }
-    if (age < 12 || age > 60) { showMessage("Invalid age (12-60)"); return; }
+    if (isNaN(age) || age < 12 || age > 60) { showMessage("Age must be 12-60"); return; }
 
-    // Simulate OTP Generation
-    signupOTP = Math.floor(100000 + Math.random() * 900000).toString();
-    otpExpiry = Date.now() + 300000; // 5 mins
-    
-    console.log(`[NPC OTP DEBUG] Code for ${email}: ${signupOTP}`);
-    
-    showMessage("OTP Code sent to your Gmail!");
-    document.getElementById("signupStep1").style.display = "none";
-    document.getElementById("signupStep2").style.display = "block";
-    document.getElementById("roleSelectionArea").style.display = "block";
-    startResendTimer();
+    const btn = document.getElementById("btnSendOTP");
+    btn.disabled = true;
+    btn.textContent = "Sending...";
+
+    try {
+        // Create Firebase Auth user (unverified)
+        const userCred = await createUserWithEmailAndPassword(auth, email, pass);
+        const user = userCred.user;
+        
+        // Store data temporarily for after verification
+        localStorage.setItem('pendingUid', user.uid);
+        localStorage.setItem('pendingEmail', email);
+        localStorage.setItem('pendingAge', age);
+        localStorage.setItem('pendingPass', pass);
+        
+        // Send Firebase verification email (LINK method)
+        await user.sendEmailVerification();
+        console.log("✅ Verification email sent to:", email);
+
+        // Show step 2
+        document.getElementById("signupStep1").style.display = "none";
+        document.getElementById("signupStep2").style.display = "block";
+        document.getElementById("roleSelectionArea").style.display = "block";
+        
+        showMessage("📧 Check your Gmail! Click the verification link.");
+        startResendTimer();
+        
+    } catch (err) {
+        console.error("Signup error:", err);
+        btn.disabled = false;
+        btn.textContent = "Send Code";
+        
+        if (err.code === 'auth/email-already-in-use') {
+            showMessage("Email already registered. Try logging in.");
+        } else {
+            showMessage("Error: " + err.message);
+        }
+    }
 };
+
 
 function startResendTimer() {
     resendCooldown = 60;
@@ -4187,16 +4218,147 @@ function startResendTimer() {
 }
 
 window.verifyAndCreate = async function() {
-    const enteredOTP = document.getElementById("regOTP").value.trim();
-    if (enteredOTP !== signupOTP || Date.now() > otpExpiry) {
-        showMessage("Invalid or expired OTP");
-        return;
+    const btn = document.querySelector('#signupStep2 button');
+    btn.disabled = true;
+    btn.textContent = "Verifying...";
+
+    try {
+        // Check if user is logged in
+        const user = auth.currentUser;
+        
+        if (!user) {
+            showMessage("Session expired. Please sign up again.");
+            btn.disabled = false;
+            btn.textContent = "Verify Email";
+            return;
+        }
+
+        // Reload user to get fresh verification status
+        await user.reload();
+        
+        // Check if email is verified
+        if (!user.emailVerified) {
+            showMessage("⚠️ Click the link in your Gmail first, then click here again!");
+            btn.disabled = false;
+            btn.textContent = "Verify Email";
+            return;
+        }
+
+        // Email verified! Create full profile in Firestore
+        const uid = localStorage.getItem('pendingUid');
+        const email = localStorage.getItem('pendingEmail');
+        const age = parseInt(localStorage.getItem('pendingAge'));
+        
+        let userData = {
+            uid: uid,
+            email: email,
+            age: age,
+            role: selectedRole || "viewer",
+            isAdmin: false,
+            isLeader: false,
+            teamId: null,
+            teamName: null,
+            teamCode: null,
+            emailVerified: true,
+            createdAt: serverTimestamp(),
+            stats: { 
+                tournamentsJoined: 0, 
+                tournamentsWon: 0, 
+                matchesPlayed: 0 
+            }
+        };
+
+        // Handle team creation
+        if (selectedRole === "leader") {
+            const teamName = document.getElementById("teamNameInput")?.value.trim();
+            const generatedCode = document.getElementById("generatedCode")?.textContent?.replace("Code: ", "").trim();
+            
+            if (!teamName || !generatedCode) {
+                showMessage("Enter team name and generate code");
+                btn.disabled = false;
+                btn.textContent = "Verify Email";
+                return;
+            }
+
+            const teamId = "team_" + Math.random().toString(36).substr(2, 9);
+            
+            await setDoc(doc(db, "teams", teamId), {
+                teamId: teamId,
+                teamName: teamName,
+                leaderId: uid,
+                leaderName: email.split('@')[0],
+                code: generatedCode,
+                members: [uid],
+                maxMembers: 5,
+                createdAt: serverTimestamp()
+            });
+
+            userData.isLeader = true;
+            userData.teamId = teamId;
+            userData.teamName = teamName;
+            userData.teamCode = generatedCode;
+            userData.role = "leader";
+
+        } else if (selectedRole === "join") {
+            const enteredCode = document.getElementById("joinCode")?.value.trim().toUpperCase();
+            
+            if (!enteredCode) {
+                showMessage("Enter team code");
+                btn.disabled = false;
+                btn.textContent = "Verify Email";
+                return;
+            }
+
+            const teamsQuery = query(collection(db, "teams"), where("code", "==", enteredCode));
+            const teamSnap = await getDocs(teamsQuery);
+
+            if (teamSnap.empty) {
+                showMessage("Invalid team code");
+                btn.disabled = false;
+                btn.textContent = "Verify Email";
+                return;
+            }
+
+            const teamDoc = teamSnap.docs[0];
+            const teamData = teamDoc.data();
+
+            await updateDoc(doc(db, "teams", teamData.teamId), {
+                members: arrayUnion(uid)
+            });
+
+            userData.teamId = teamData.teamId;
+            userData.teamName = teamData.teamName;
+            userData.teamCode = enteredCode;
+            userData.role = "member";
+            localStorage.setItem("welcomeTeam", teamData.teamName);
+        }
+
+        // Create user document
+        await setDoc(doc(db, "users", uid), userData);
+        console.log("✅ User profile created");
+
+        // Clear temp data
+        localStorage.removeItem('pendingUid');
+        localStorage.removeItem('pendingEmail');
+        localStorage.removeItem('pendingAge');
+        localStorage.removeItem('pendingPass');
+
+        showMessage("✅ Account created and verified!");
+        btn.textContent = "Done!";
+        
+        setTimeout(() => {
+            backToLogin();
+            showMessage(selectedRole === "leader" ? `Team "${userData.teamName}" created!` : "Login to continue!");
+        }, 1000);
+
+    } catch (err) {
+        console.error("Verification error:", err);
+        showMessage("Error: " + err.message);
+        btn.disabled = false;
+        btn.textContent = "Verify Email";
     }
-    // If OTP is correct, proceed to existing createAccount function logic
-    await createAccount();
-    // After success inside createAccount, ensure we redirect:
-    // backToLogin(); 
 };
+
 
 
 window.openEditProfile = function() {
@@ -4263,6 +4425,26 @@ window.verifyRecoveryOTP = function() {
 
 window.closeCustomModal = () => document.getElementById("customActionModal").classList.remove("active");
 
+
+
+window.resendSignupOTP = async function() {
+    const email = localStorage.getItem('pendingEmail');
+    const user = auth.currentUser;
+    
+    if (!email || !user) {
+        showMessage("Session expired. Start again.");
+        return;
+    }
+
+    try {
+        await user.sendEmailVerification();
+        showMessage("📧 Verification email resent!");
+        startResendTimer();
+    } catch (err) {
+        console.error("Resend error:", err);
+        showMessage("Failed to resend. Try again.");
+    }
+};
 
 
 

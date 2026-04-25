@@ -653,11 +653,32 @@
           <button onclick="sendSignupOTP()" id="btnSendOTP">Send Code</button>
         </div>
         <div id="signupStep2" style="display:none;margin-top:15px;">
-          <p style="color:#888;font-size:13px;margin-bottom:10px;">Enter the 6-digit code sent to your Gmail</p>
-          <input type="text" id="regOTP" placeholder="Enter OTP" maxlength="6" style="text-align:center;letter-spacing:4px;">
-          <button onclick="verifyAndCreate()" style="background:#00ff88;color:#000;">Verify &amp; Create Account</button>
-          <p class="switch-text">Didn't get it? <span id="resendTimer" onclick="resendSignupOTP()">Resend Code</span></p>
-        </div>
+    <div style="background:#1a2a1a;padding:25px;border-radius:10px;border:1px solid #00ff88;text-align:center;margin-bottom:20px;">
+        <div style="font-size:50px;margin-bottom:15px;">📧</div>
+        <h3 style="color:#00ff88;margin:0 0 10px 0;">Verification Email Sent!</h3>
+        <p style="color:#888;font-size:13px;margin:0;">We've sent a verification link to your Gmail.</p>
+    </div>
+    
+    <div style="background:#1a1a1a;padding:20px;border-radius:8px;margin-bottom:20px;">
+        <p style="color:#ffd700;font-size:14px;font-weight:bold;margin:0 0 10px 0;">📋 What to do next:</p>
+        <ol style="color:#aaa;font-size:13px;margin:0;padding-left:20px;line-height:1.8;">
+            <li>Open your Gmail inbox</li>
+            <li>Find email from <b style="color:#fff;">noreply@npcesports.firebaseapp.com</b></li>
+            <li>Click the <b style="color:#00ff88;">"Verify Email"</b> button in the email</li>
+            <li>Come back here and click <b style="color:#00ff88;">"Verified ✅"</b> below</li>
+        </ol>
+    </div>
+    
+    <input type="hidden" id="regOTP" placeholder="Enter OTP">
+    <button onclick="verifyAndCreate()" style="background:#00ff88;color:#000;width:100%;padding:14px;font-size:16px;font-weight:bold;">
+        ✅ I've Verified My Email
+    </button>
+    
+    <p class="switch-text" style="margin-top:15px;" onclick="resendSignupOTP()">
+        Didn't get it? <span id="resendTimer" style="color:#3b82f6;">Resend Email</span>
+    </p>
+</div>
+
         <div id="roleSelectionArea" style="display:none;">
           <h3 style="margin-top:20px;">Select Role</h3>
           <div class="role-options">
