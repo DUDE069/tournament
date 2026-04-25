@@ -1,4 +1,21 @@
 <!DOCTYPE html>
+<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     FILE: public/index.html  →  TOURNAMENT WEBSITE (user-facing)
+     DO NOT confuse with admin/index.html (Admin Panel)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+     WHAT'S UPDATED vs previous version:
+     1. Push Notification Permission Banner
+        → Shown once after login. "Allow" → requests FCM permission.
+        → "Block / Later" → dismissed permanently (in-app still works).
+        → NEVER blocks or replaces in-app notifications.
+     2. Confirmation Button area placeholder
+        → paymentStage.js injects the overlay dynamically; HTML just
+          needs the correct body to receive it (already did).
+     3. customActionModal is now properly placed OUTSIDE loginModal
+        → Previously it was nested inside loginModal causing z-index issues.
+     4. Mobile menu improved — closes on nav link tap.
+     5. No structural changes to existing layout, sections, or IDs.
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -10,63 +27,465 @@
   <link rel="icon" type="image/png" href="logo.png">
   <title>NPC'S — Esports Tournaments</title>
   <link rel="stylesheet" href="css/style.css">
+
+  <style>
+    /* ══════════════════════════════════════════════════════
+       PUSH NOTIFICATION PERMISSION BANNER
+       NEW — shown once after login; dismisses permanently.
+       In-app notifications are NEVER affected by this banner.
+    ══════════════════════════════════════════════════════ */
+    #pushPermBanner {
+      display: none; /* shown by JS after login */
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #1a1a2e;
+      border-top: 2px solid #3b82f6;
+      padding: 14px 20px;
+      z-index: 8000;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+      animation: slideUpBanner .3s ease;
+    }
+    @keyframes slideUpBanner {
+      from { transform: translateY(100%); opacity: 0; }
+      to   { transform: translateY(0);    opacity: 1; }
+    }
+    #pushPermBanner .banner-text {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: #e0e0e0;
+      font-size: 14px;
+      flex: 1;
+      min-width: 200px;
+    }
+    #pushPermBanner .banner-text span {
+      font-size: 22px;
+    }
+    #pushPermBanner .banner-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .btn-allow-push {
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      padding: 9px 20px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 13px;
+      font-family: inherit;
+      transition: opacity .15s;
+    }
+    .btn-allow-push:hover { opacity: .85; }
+    .btn-deny-push {
+      background: transparent;
+      color: #666;
+      border: 1px solid #333;
+      padding: 9px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-family: inherit;
+      transition: all .15s;
+    }
+    .btn-deny-push:hover { color: #ccc; border-color: #555; }
+
+    /* ══════════════════════════════════════════════════════
+       PAYMENT OVERLAY STYLES
+       Used by paymentStage.js when it injects the overlay div.
+       Previously these were missing from style.css.
+    ══════════════════════════════════════════════════════ */
+    .payment-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.97);
+      z-index: 9000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .payment-card {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 16px;
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 460px;
+      text-align: center;
+    }
+    .payment-card h2 {
+      color: #fff;
+      font-size: 22px;
+      margin-bottom: 6px;
+    }
+    .payment-tournament-name {
+      color: #888;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+    .payment-status-badge {
+      display: inline-block;
+      padding: 6px 18px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .5px;
+      margin-bottom: 16px;
+    }
+    .payment-status-badge.pending {
+      background: rgba(59,130,246,.15);
+      color: #3b82f6;
+      border: 1px solid #3b82f6;
+    }
+    .payment-status-badge.failed {
+      background: rgba(255,68,68,.15);
+      color: #ff4444;
+      border: 1px solid #ff4444;
+    }
+    .payment-error-box {
+      background: rgba(255,68,68,.1);
+      border: 1px solid #ff4444;
+      border-radius: 8px;
+      padding: 12px;
+      color: #ff6666;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+
+    /* 4-step progress bar inside payment card */
+    .payment-steps {
+      display: flex;
+      justify-content: space-between;
+      margin: 20px 0;
+      position: relative;
+    }
+    .payment-steps::before {
+      content: "";
+      position: absolute;
+      top: 14px; left: 10%; right: 10%;
+      height: 2px;
+      background: #2a2a2a;
+      z-index: 0;
+    }
+    .payment-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #555;
+      position: relative;
+      z-index: 1;
+      flex: 1;
+    }
+    .payment-step.done  { color: #00ff88; }
+    .payment-step.active{ color: #ffd700; }
+    .step-dot {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #1a1a1a;
+      border: 2px solid #333;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 12px; font-weight: 700;
+    }
+    .payment-step.done  .step-dot { background: #00ff88; color: #000; border-color: #00ff88; }
+    .payment-step.active .step-dot{ background: #ffd700; color: #000; border-color: #ffd700; }
+
+    .payment-amount-card {
+      background: #0f0f0f;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+    .payment-amount-label { color: #888; font-size: 13px; }
+    .payment-amount-value { color: #ffd700; font-size: 22px; font-weight: 900; }
+
+    .payment-instructions {
+      text-align: left;
+      margin-bottom: 20px;
+    }
+    .payment-instructions p {
+      color: #888;
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+    .payment-upi-id {
+      background: #0f0f0f;
+      border: 1px dashed #3b82f6;
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #3b82f6;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-align: center;
+      margin-bottom: 10px;
+    }
+    .payment-note {
+      font-size: 12px !important;
+      color: #555 !important;
+      line-height: 1.6;
+    }
+    .btn-payment-done {
+      width: 100%;
+      padding: 14px;
+      background: #00ff88;
+      color: #000;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: opacity .15s;
+    }
+    .btn-payment-done:hover { opacity: .85; }
+    .btn-payment-done:disabled {
+      background: #333;
+      color: #666;
+      cursor: not-allowed;
+    }
+    .payment-footer {
+      margin-top: 14px;
+      font-size: 12px;
+      color: #555;
+    }
+    .payment-footer a { color: #3b82f6; }
+
+    /* Success screen */
+    .payment-success .success-icon {
+      width: 64px; height: 64px;
+      border-radius: 50%;
+      background: #00ff88;
+      color: #000;
+      font-size: 32px;
+      font-weight: 900;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 16px;
+    }
+    .payment-success h2 { color: #00ff88; }
+
+    /* ══════════════════════════════════════════════════════
+       CUSTOM ACTION MODAL  (Edit Profile / Change Password)
+       Moved OUTSIDE loginModal to fix z-index nesting issue.
+    ══════════════════════════════════════════════════════ */
+    #customActionModal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.85);
+      z-index: 7000;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #customActionModal.active {
+      display: flex;
+    }
+    #customActionContent {
+      background: #111;
+      border: 1px solid #2a2a2a;
+      border-radius: 14px;
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 420px;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    #customActionContent h2 {
+      color: #00ff88;
+      margin-bottom: 18px;
+      font-size: 20px;
+    }
+    #customActionContent input {
+      width: 100%;
+      padding: 11px 14px;
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      color: #fff;
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+      margin-bottom: 12px;
+      box-sizing: border-box;
+      transition: border-color .15s;
+    }
+    #customActionContent input:focus {
+      outline: none;
+      border-color: #00ff88;
+    }
+    #customActionContent label {
+      color: #666;
+      font-size: 12px;
+      display: block;
+      margin-bottom: 4px;
+      letter-spacing: .4px;
+    }
+    #customActionContent button {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      margin-bottom: 8px;
+      transition: opacity .15s;
+    }
+    #customActionContent button:hover { opacity: .85; }
+    #customActionContent .switch-text {
+      color: #888;
+      font-size: 13px;
+      text-align: center;
+      cursor: pointer;
+      margin-top: 6px;
+    }
+    #customActionContent .switch-text:hover { color: #00ff88; }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .modal-header h2 { margin: 0; }
+    .close-modal {
+      background: none !important;
+      border: none !important;
+      color: #666 !important;
+      font-size: 22px !important;
+      cursor: pointer !important;
+      width: auto !important;
+      padding: 0 6px !important;
+      margin: 0 !important;
+    }
+    .close-modal:hover { color: #fff !important; }
+
+    /* ══════════════════════════════════════════════════════
+       NOTIFICATION PANEL — extra polish for room_details
+       notification type (highlighted green card)
+    ══════════════════════════════════════════════════════ */
+    .notif-item-room {
+      background: rgba(0,255,136,.07);
+      border-left: 3px solid #00ff88 !important;
+    }
+    .notif-room-details {
+      display: inline-flex;
+      gap: 14px;
+      margin-top: 6px;
+      background: rgba(0,255,136,.1);
+      border-radius: 6px;
+      padding: 6px 10px;
+    }
+    .notif-room-details span {
+      color: #00ff88;
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: .5px;
+    }
+
+    /* ══════════════════════════════════════════════════════
+       MOBILE FIXES
+    ══════════════════════════════════════════════════════ */
+    @media (max-width: 600px) {
+      .payment-steps { gap: 2px; }
+      .payment-step  { font-size: 9px; }
+      .step-dot      { width: 22px; height: 22px; font-size: 10px; }
+      #pushPermBanner { flex-direction: column; text-align: center; }
+      #pushPermBanner .banner-actions { justify-content: center; width: 100%; }
+      .btn-allow-push, .btn-deny-push { flex: 1; }
+    }
+  </style>
 </head>
 <body>
 
-  <div class="welcome-text"> 
+  <!-- ══ WELCOME BAR ══════════════════════════════════════ -->
+  <div class="welcome-text">
     <h1>Welcome to NPC'S tournaments</h1>
     <p><b>play and earn something.</b></p>
   </div>
 
-<!-- NAVBAR -->
-<header class="navbar">
+  <!-- ══ NAVBAR ════════════════════════════════════════════ -->
+  <header class="navbar">
     <h1 class="logo">Enter the Arena</h1>
 
     <button class="mobile-menu-toggle" onclick="toggleMobileMenu()" aria-label="Menu">☰</button>
 
     <nav style="display: flex; align-items: center; gap: 25px;">
-        <a href="#" onclick="scrollToSection('home', this)">Home</a>
-        <a href="#" onclick="scrollToSection('tournaments', this)">Tournaments</a>
-        <a href="#" onclick="scrollToSection('leaderboard', this)">Leaderboard</a>
-        <!-- NEW: Dashboard link in menu -->
-        <a href="#dashboard" onclick="scrollToDashboard(event)">Dashboard</a>
+      <a href="#" onclick="scrollToSection('home', this)">Home</a>
+      <a href="#" onclick="scrollToSection('tournaments', this)">Tournaments</a>
+      <a href="#" onclick="scrollToSection('leaderboard', this)">Leaderboard</a>
+      <a href="#dashboard" onclick="scrollToDashboard(event)">Dashboard</a>
 
-        <a href="javascript:void(0)" id="loginBtn">Login</a>
+      <a href="javascript:void(0)" id="loginBtn">Login</a>
 
-        <div class="notif-bell-wrapper" id="notifBellWrapper">
-          <button class="notif-bell-btn" id="notifBellBtn" aria-label="Notifications">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
-            <span class="notif-badge hidden" id="notifBadge">0</span>
-          </button>
+      <!-- ── NOTIFICATION BELL ──────────────────────────── -->
+      <div class="notif-bell-wrapper" id="notifBellWrapper">
+        <button class="notif-bell-btn" id="notifBellBtn" aria-label="Notifications">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <span class="notif-badge hidden" id="notifBadge">0</span>
+        </button>
 
-          <div class="notif-panel hidden" id="notifPanel">
-            <div class="notif-panel-header">
-              <span>Notifications</span>
-              <button class="notif-mark-all" id="notifMarkAll">Mark all read</button>
-            </div>
-            <div class="notif-list" id="notifList">
-              <p class="notif-empty">No notifications yet.</p>
-            </div>
+        <div class="notif-panel hidden" id="notifPanel">
+          <div class="notif-panel-header">
+            <span>Notifications</span>
+            <button class="notif-mark-all" id="notifMarkAll">Mark all read</button>
+          </div>
+          <div class="notif-list" id="notifList">
+            <p class="notif-empty">No notifications yet.</p>
           </div>
         </div>
+      </div>
+      <!-- ── END NOTIFICATION BELL ──────────────────────── -->
     </nav>
-</header>
+  </header>
 
+  <!-- ══ PUSH NOTIFICATION PERMISSION BANNER ══════════════
+       NEW — shown by JS (showPushPermBanner()) after login.
+       • "Allow" calls requestPushPermission() in main.js
+       • "Later / Block" dismisses and stores dismissal in
+         localStorage so it never shows again if blocked.
+       In-app notifications are 100% unaffected by this.
+  ═══════════════════════════════════════════════════════ -->
+  <div id="pushPermBanner" role="banner" aria-label="Push notification permission">
+    <div class="banner-text">
+      <span>🔔</span>
+      <div>
+        <strong style="color:#fff;display:block;margin-bottom:2px;">Stay updated on match results!</strong>
+        <span style="color:#888;font-size:12px;">Get notified when your application is approved or when match details are shared.</span>
+      </div>
+    </div>
+    <div class="banner-actions">
+      <button class="btn-allow-push" onclick="handleAllowPush()">Allow Notifications</button>
+      <button class="btn-deny-push"  onclick="handleDenyPush()">Later</button>
+    </div>
+  </div>
 
-<!-- HERO SECTION -->
-<section class="hero" id="home">
+  <!-- ══ HERO ══════════════════════════════════════════════ -->
+  <section class="hero" id="home">
     <h2>Join Competitive Esports Tournaments</h2>
     <p>Play. Compete. Win Rewards.</p>
-    <!-- CHANGED: now triggers tutorial for first-time users -->
     <button class="join-btn" onclick="handleJoinNowTutorial()">Join Now</button>
-</section>
+  </section>
 
-<!-- TOURNAMENT SECTIONS -->
-<section id="tournaments">
+  <!-- ══ TOURNAMENT SECTIONS ════════════════════════════════ -->
+  <section id="tournaments">
     <h2>Ongoing Tournaments</h2>
     <div class="card-container" id="ongoingContainer"></div>
 
@@ -75,529 +494,552 @@
 
     <h2>Limited Tournaments</h2>
     <div class="card-container" id="limitedContainer"></div>
-</section>
+  </section>
 
-
-<!-- CALENDAR SECTION -->
-<section class="calendar">
+  <!-- ══ CALENDAR ══════════════════════════════════════════ -->
+  <section class="calendar">
     <h2>Event Calendar</h2>
     <div class="calendar-box">
-        <div class="calendar-ui" id="dynamicCalendar">
-            <div class="calendar-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <button onclick="changeMonth(-1)" style="background: #333; border: none; color: #fff; padding: 10px 20px; cursor: pointer; border-radius: 4px;">← Previous</button>
-                <h2 class="calendar-title" id="currentMonthYear">Loading...</h2>
-                <button onclick="changeMonth(1)" style="background: #333; border: none; color: #fff; padding: 10px 20px; cursor: pointer; border-radius: 4px;">Next →</button>
-            </div>
-            
-            <div class="calendar-days">
-                <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
-            </div>
-            
-            <div class="calendar-grid" id="calendarGrid"></div>
-
-            <div class="calendar-legend">
-                <div class="legend-item"><span class="legend-box upcoming"></span><span>Upcoming</span></div>
-                <div class="legend-item"><span class="legend-box special"></span><span>Special Event</span></div>
-                <div class="legend-item"><span class="legend-box completed"></span><span>Completed</span></div>
-                <div class="legend-item"><span class="legend-box today"></span><span>Today</span></div>
-            </div>
+      <div class="calendar-ui" id="dynamicCalendar">
+        <div class="calendar-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <button onclick="changeMonth(-1)" style="background:#333;border:none;color:#fff;padding:10px 20px;cursor:pointer;border-radius:4px;">← Previous</button>
+          <h2 class="calendar-title" id="currentMonthYear">Loading...</h2>
+          <button onclick="changeMonth(1)"  style="background:#333;border:none;color:#fff;padding:10px 20px;cursor:pointer;border-radius:4px;">Next →</button>
         </div>
+        <div class="calendar-days">
+          <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+        <div class="calendar-legend">
+          <div class="legend-item"><span class="legend-box upcoming"></span><span>Upcoming</span></div>
+          <div class="legend-item"><span class="legend-box special"></span><span>Special Event</span></div>
+          <div class="legend-item"><span class="legend-box completed"></span><span>Completed</span></div>
+          <div class="legend-item"><span class="legend-box today"></span><span>Today</span></div>
+        </div>
+      </div>
     </div>
-</section>
+  </section>
 
-
-<!-- DASHBOARD SECTION - REFINED -->
-<section class="dashboard" id="dashboard">
+  <!-- ══ DASHBOARD SECTION ════════════════════════════════ -->
+  <section class="dashboard" id="dashboard">
     <h2>Your Dashboard</h2>
-
     <div class="dashboard-box">
 
-        <!-- MY PROFILE -->
-        <div class="dash-card" data-popup="profile">
-            <h3>My Profile</h3>
-            <p>Account details &amp; team info</p>
-        </div>
+      <!-- MY PROFILE — shows full team data (leader, teammates, emails, code) -->
+      <div class="dash-card" data-popup="profile">
+        <h3>My Profile</h3>
+        <p>Account details &amp; team info</p>
+      </div>
 
-        <!-- TOURNAMENT HISTORY -->
-        <div class="dash-card" data-popup="tournaments">
-            <h3>Tournament History</h3>
-            <p>Your confirmed registrations</p>
-        </div>
+      <!-- TOURNAMENT HISTORY -->
+      <div class="dash-card" data-popup="tournaments">
+        <h3>Tournament History</h3>
+        <p>Your confirmed registrations</p>
+      </div>
 
-        <!-- UPCOMING MATCHES -->
-        <div class="dash-card" data-popup="matches">
-            <h3>Upcoming Matches</h3>
-            <p>Check your scheduled matches</p>
-        </div>
+      <!-- UPCOMING MATCHES -->
+      <div class="dash-card" data-popup="matches">
+        <h3>Upcoming Matches</h3>
+        <p>Check your scheduled matches</p>
+      </div>
 
-        <!-- PERFORMANCE -->
-        <div class="dash-card" data-popup="performance">
-            <h3>Performance</h3>
-            <p>Wins &amp; earnings only</p>
-        </div>
+      <!-- PERFORMANCE -->
+      <div class="dash-card" data-popup="performance">
+        <h3>Performance</h3>
+        <p>Wins &amp; earnings only</p>
+      </div>
 
-        <!-- MY ACCOUNT -->
-        <div class="dash-card" data-popup="account">
-            <h3>My Account</h3>
-            <p>Wallet &amp; transactions</p>
-        </div>
+      <!-- MY ACCOUNT -->
+      <div class="dash-card" data-popup="account">
+        <h3>My Account</h3>
+        <p>Wallet &amp; transactions</p>
+      </div>
 
     </div>
-</section>
+  </section>
 
-<!-- DASHBOARD POPUP - INDEPENDENT SECTIONS -->
-<div class="dashboard-popup" id="dashboardPopup">
+  <!-- DASHBOARD POPUP -->
+  <div class="dashboard-popup" id="dashboardPopup">
     <div class="popup-content">
-        
-        <!-- Header -->
-        <div class="popup-header">
-            <h3 id="popupTitle">Dashboard</h3>
-            <button class="popup-close" onclick="closeDashboard()">✕</button>
-        </div>
-
-        <!-- Content Area -->
-        <div class="popup-body" id="dashboardContent">
-            <!-- Content injected by JS -->
-        </div>
+      <div class="popup-header">
+        <h3 id="popupTitle">Dashboard</h3>
+        <button class="popup-close" onclick="closeDashboard()">✕</button>
+      </div>
+      <div class="popup-body" id="dashboardContent">
+        <!-- Content injected by JS (main.js openDashboard()) -->
+      </div>
     </div>
-</div>
+  </div>
 
-
-<!--Leaderboard section-->
-<section class="leaderboard" id="leaderboard">
+  <!-- ══ LEADERBOARD ════════════════════════════════════════ -->
+  <section class="leaderboard" id="leaderboard">
     <h2>Leaderboard</h2>
-
     <div class="leaderboard-box">
-        <table class="leaderboard-table">
-            <thead>
-                <tr>
-                    <th>Rank</th>
-                    <th>Team Name</th>
-                    <th>Players</th>
-                    <th>Mode</th>
-                    <th>Total Wins</th>
-                </tr>
-            </thead>
-            <tbody id="leaderboardContainer"></tbody>
-        </table>
+      <table class="leaderboard-table">
+        <thead>
+          <tr>
+            <th>Rank</th>
+            <th>Team Name</th>
+            <th>Players</th>
+            <th>Mode</th>
+            <th>Total Wins</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboardContainer"></tbody>
+      </table>
     </div>
-</section>
+  </section>
 
-<!-- COMMUNITY / DISCORD JOIN — id="community" used by tutorial -->
-<section class="discord" id="community">
+  <!-- ══ COMMUNITY ════════════════════════════════════════ -->
+  <section class="discord" id="community">
     <h2>Join Our Community</h2>
     <p>Connect with players and participate in tournaments</p>
     <div class="community-btns">
-        <button class="discord-btn" onclick="joinDiscord()">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:8px;">
-                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.03.056a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
-            </svg>
-            Join Discord
-        </button>
-        <button class="discord-btn youtube-btn" onclick="window.open('https://www.youtube.com/@genzgamex00','_blank')">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:8px;">
-                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
-            </svg>
-            YouTube
-        </button>
-        <button class="discord-btn instagram-btn" onclick="window.open('https://www.instagram.com/genz_gamex/','_blank')">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:8px;">
-                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/>
-            </svg>
-            Instagram
-        </button>
+      <button class="discord-btn" onclick="joinDiscord()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:8px;">
+          <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.03.056a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/>
+        </svg>
+        Join Discord
+      </button>
+      <button class="discord-btn youtube-btn" onclick="window.open('https://www.youtube.com/@genzgamex00','_blank')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:8px;">
+          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+        </svg>
+        YouTube
+      </button>
+      <button class="discord-btn instagram-btn" onclick="window.open('https://www.instagram.com/genz_gamex/','_blank')">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:8px;">
+          <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/>
+        </svg>
+        Instagram
+      </button>
     </div>
-</section>
+  </section>
 
-<!-- FOOTER -->
-<footer class="footer">
+  <!-- ══ FOOTER ════════════════════════════════════════════ -->
+  <footer class="footer">
     <p>© 2026 Esports Arena | All Rights Reserved</p>
-</footer>
+  </footer>
 
-<!-- LOGIN MODAL -->
-<div id="loginModal" class="modal-overlay">
-<div class="modal-card">
+  <!-- ══ LOGIN MODAL ════════════════════════════════════════ -->
+  <div id="loginModal" class="modal-overlay">
+    <div class="modal-card">
 
-  <div class="modal-header">
-    <button class="back-btn" onclick="backToLogin()">← Back</button>
-    <button class="close-modal" onclick="closeModal()">×</button>
-  </div>
-
-    <!-- LOGIN VIEW -->
-    <div id="loginView">
-      <h2>NPC Arena Login</h2>
-      <input id="loginEmail" placeholder="Email" type="email">
-      <input id="loginPassword" type="password" placeholder="Password">
-      <button onclick="login()">Login</button>
-      <p class="switch-text">
-        Don't have an account?
-        <span onclick="showCreate()">Create new</span>
-      </p>
-    </div>
-
-    <!-- CREATE ACCOUNT VIEW -->
- <div id="createView" style="display:none;">
-    <h2>Create Account</h2>
-    <div id="signupStep1">
-        <input id="regEmail" placeholder="Gmail ID" type="email">
-        <input id="regPass" type="password" placeholder="Password">
-        <input id="regConfirm" type="password" placeholder="Confirm Password">
-        <input type="number" id="regAge" placeholder="Your Age (12-60)" min="12" max="60">
-        <button onclick="sendSignupOTP()" id="btnSendOTP">Send Code</button>
-    </div>
-
-    <div id="signupStep2" style="display:none; margin-top:15px;">
-        <p style="color:#888; font-size:13px; margin-bottom:10px;">Enter the 6-digit code sent to your Gmail</p>
-        <input type="text" id="regOTP" placeholder="Enter OTP" maxlength="6" style="text-align:center; letter-spacing:4px;">
-        <button onclick="verifyAndCreate()" style="background:#00ff88; color:#000;">Verify & Create Account</button>
-        <p class="switch-text">Didn't get it? <span id="resendTimer" onclick="resendSignupOTP()">Resend Code</span></p>
-    </div>
-
-    <div id="roleSelectionArea" style="display:none;">
-        <h3 style="margin-top:20px;">Select Role</h3>
-        <div class="role-options">
-            <div class="role-card" onclick="selectRole('viewer', this)">👁 Viewer</div>
-            <div class="role-card" onclick="selectRole('leader', this)">👑 Team Leader</div>
-            <div class="role-card" onclick="selectRole('join', this)">🔑 Join by Code</div>
-        </div>
-        </div>
-</div>
-
-<div id="customActionModal" class="modal-overlay">
-    <div class="modal-card" id="customActionContent">
-        </div>
-</div>
-
-      <div id="teamNameBox" style="display:none; margin: 15px 0; padding: 10px; border: 1px solid #444; border-radius: 8px;">
-        <h4 style="margin-bottom: 10px;">Create Your Team (Free Fire - Max 4)</h4>
-        <input type="text" id="teamNameInput" placeholder="Enter Team Name" style="margin-bottom: 10px;">
-        <button type="button" onclick="generateTeamCode()" style="background: #00ff88; color: #000; margin-right: 10px;">
-          Generate Team Code
-        </button>
-        <p id="generatedCode" style="color: #00ff88; font-weight: bold; margin-top: 10px; font-size: 14px;"></p>
-        <p style="font-size: 12px; color: #888; margin-top: 5px;">* Share this code with your 3 teammates</p>
+      <div class="modal-header">
+        <button class="back-btn" onclick="backToLogin()">← Back</button>
+        <button class="close-modal" onclick="closeModal()">×</button>
       </div>
 
-      <div id="joinBox" style="display:none; margin: 15px 0; padding: 10px; border: 1px solid #444; border-radius: 8px;">
-        <h4 style="margin-bottom: 10px;">Join Existing Team</h4>
-        <input type="text" id="joinCode" placeholder="Enter Team Code (e.g., NPC123456)">
-        <p id="joinStatus" style="font-size: 12px; color: #888; margin-top: 5px;">
-          Enter the code shared by your team leader
+      <!-- LOGIN VIEW -->
+      <div id="loginView">
+        <h2>NPC Arena Login</h2>
+        <input id="loginEmail"    placeholder="Email"    type="email">
+        <input id="loginPassword" type="password"        placeholder="Password">
+        <button onclick="login()">Login</button>
+        <p class="switch-text">
+          Don't have an account?
+          <span onclick="showCreate()">Create new</span>
         </p>
       </div>
 
-      <button onclick="createAccount()" style="margin-top: 20px;">Create Account</button>
+      <!-- CREATE ACCOUNT VIEW -->
+      <div id="createView" style="display:none;">
+        <h2>Create Account</h2>
+        <div id="signupStep1">
+          <input id="regEmail"   placeholder="Gmail ID"          type="email">
+          <input id="regPass"    type="password"                  placeholder="Password">
+          <input id="regConfirm" type="password"                  placeholder="Confirm Password">
+          <input type="number"   id="regAge"  placeholder="Your Age (12-60)" min="12" max="60">
+          <button onclick="sendSignupOTP()" id="btnSendOTP">Send Code</button>
+        </div>
+        <div id="signupStep2" style="display:none;margin-top:15px;">
+          <p style="color:#888;font-size:13px;margin-bottom:10px;">Enter the 6-digit code sent to your Gmail</p>
+          <input type="text" id="regOTP" placeholder="Enter OTP" maxlength="6" style="text-align:center;letter-spacing:4px;">
+          <button onclick="verifyAndCreate()" style="background:#00ff88;color:#000;">Verify &amp; Create Account</button>
+          <p class="switch-text">Didn't get it? <span id="resendTimer" onclick="resendSignupOTP()">Resend Code</span></p>
+        </div>
+        <div id="roleSelectionArea" style="display:none;">
+          <h3 style="margin-top:20px;">Select Role</h3>
+          <div class="role-options">
+            <div class="role-card" onclick="selectRole('viewer', this)">👁 Viewer</div>
+            <div class="role-card" onclick="selectRole('leader', this)">👑 Team Leader</div>
+            <div class="role-card" onclick="selectRole('join',   this)">🔑 Join by Code</div>
+          </div>
+        </div>
+        <div id="teamNameBox" style="display:none;margin:15px 0;padding:10px;border:1px solid #444;border-radius:8px;">
+          <h4 style="margin-bottom:10px;">Create Your Team (Free Fire - Max 4)</h4>
+          <input type="text" id="teamNameInput" placeholder="Enter Team Name" style="margin-bottom:10px;">
+          <button type="button" onclick="generateTeamCode()" style="background:#00ff88;color:#000;margin-right:10px;">Generate Team Code</button>
+          <p id="generatedCode" style="color:#00ff88;font-weight:bold;margin-top:10px;font-size:14px;"></p>
+          <p style="font-size:12px;color:#888;margin-top:5px;">* Share this code with your 3 teammates</p>
+        </div>
+        <div id="joinBox" style="display:none;margin:15px 0;padding:10px;border:1px solid #444;border-radius:8px;">
+          <h4 style="margin-bottom:10px;">Join Existing Team</h4>
+          <input type="text" id="joinCode" placeholder="Enter Team Code (e.g., NPC123456)">
+          <p id="joinStatus" style="font-size:12px;color:#888;margin-top:5px;">Enter the code shared by your team leader</p>
+        </div>
+        <button onclick="createAccount()" style="margin-top:20px;">Create Account</button>
+      </div>
+
     </div>
+  </div>
+  <!-- ══ END LOGIN MODAL ════════════════════════════════════ -->
 
-</div>
-</div>
+  <!-- ══ CUSTOM ACTION MODAL ════════════════════════════════
+       FIXED: moved OUTSIDE loginModal to prevent z-index nesting.
+       Used for: Edit Profile, Change Password (injected by main.js).
+       FIX: previously nested inside loginModal causing it to be
+       clipped/hidden behind the login overlay backdrop.
+  ═══════════════════════════════════════════════════════ -->
+  <div id="customActionModal">
+    <div id="customActionContent">
+      <!-- Content injected dynamically by openEditProfile() / openChangePassword() in main.js -->
+    </div>
+  </div>
 
-<div id="toast"></div>
+  <!-- ══ TOAST ════════════════════════════════════════════ -->
+  <div id="toast"></div>
 
-<!-- JOIN TOURNAMENT MODAL -->
-<div id="joinTournamentModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.98); z-index: 2000; overflow-y: auto;">
-    
+  <!-- ══ JOIN TOURNAMENT MODAL ════════════════════════════ -->
+  <div id="joinTournamentModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.98);z-index:2000;overflow-y:auto;">
+
     <!-- STICKY NAVBAR -->
-    <nav style="position: sticky; top: 0; background: #0a0a0a; padding: 15px 30px; border-bottom: 1px solid #222; z-index: 2001; display: flex; align-items: center; justify-content: space-between;">
-        <div style="display: flex; align-items: center; gap: 15px;">
-            <button onclick="closeJoinModal()" style="background: #222; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer;">← Back</button>
-            <span style="color: #00ff88; font-weight: bold; font-size: 18px;">NPC Arena</span>
-        </div>
-        <div style="display: flex; gap: 20px;">
-            <a href="#" onclick="scrollToSection('home'); closeJoinModal();" style="color: #888; text-decoration: none;">Home</a>
-            <a href="#" onclick="scrollToSection('tournaments'); closeJoinModal();" style="color: #888; text-decoration: none;">Tournaments</a>
-        </div>
+    <nav style="position:sticky;top:0;background:#0a0a0a;padding:15px 30px;border-bottom:1px solid #222;z-index:2001;display:flex;align-items:center;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:15px;">
+        <button onclick="closeJoinModal()" style="background:#222;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;">← Back</button>
+        <span style="color:#00ff88;font-weight:bold;font-size:18px;">NPC Arena</span>
+      </div>
+      <div style="display:flex;gap:20px;">
+        <a href="#" onclick="scrollToSection('home'); closeJoinModal();"       style="color:#888;text-decoration:none;">Home</a>
+        <a href="#" onclick="scrollToSection('tournaments'); closeJoinModal();" style="color:#888;text-decoration:none;">Tournaments</a>
+      </div>
     </nav>
 
     <!-- VIEWER BLOCKER -->
-    <div id="viewerBlocker" style="display: none; max-width: 600px; margin: 100px auto; text-align: center; padding: 40px; background: #1a1a1a; border-radius: 16px; border: 2px solid #ff4444;">
-        <div style="font-size: 60px; margin-bottom: 20px;">⚠️</div>
-        <h2 style="color: #ff4444; margin-bottom: 15px;">Team Required</h2>
-        <p style="color: #888; margin-bottom: 25px;">
-            This is a <b>Squad Tournament</b>. You cannot participate as a solo player.
-        </p>
-        <div style="display: flex; gap: 15px; justify-content: center;">
-            <button onclick="joinDiscord()" style="background: #5865F2; color: white; border: none; padding: 12px 30px; border-radius: 6px; cursor: pointer;">
-                Join Discord
-            </button>
-            <button onclick="closeJoinModal(); openDashboard('profile');" style="background: transparent; color: #00ff88; border: 1px solid #00ff88; padding: 12px 30px; border-radius: 6px; cursor: pointer;">
-                Create Team
-            </button>
-        </div>
+    <div id="viewerBlocker" style="display:none;max-width:600px;margin:100px auto;text-align:center;padding:40px;background:#1a1a1a;border-radius:16px;border:2px solid #ff4444;">
+      <div style="font-size:60px;margin-bottom:20px;">⚠️</div>
+      <h2 style="color:#ff4444;margin-bottom:15px;">Team Required</h2>
+      <p style="color:#888;margin-bottom:25px;">This is a <b>Squad Tournament</b>. You cannot participate as a solo player.</p>
+      <div style="display:flex;gap:15px;justify-content:center;">
+        <button onclick="joinDiscord()"                                         style="background:#5865F2;color:white;border:none;padding:12px 30px;border-radius:6px;cursor:pointer;">Join Discord</button>
+        <button onclick="closeJoinModal(); openDashboard('profile');"           style="background:transparent;color:#00ff88;border:1px solid #00ff88;padding:12px 30px;border-radius:6px;cursor:pointer;">Create Team</button>
+      </div>
     </div>
 
     <!-- MAIN REGISTRATION -->
-    <div id="registrationContainer" style="display: none; max-width: 1200px; margin: 30px auto; padding: 20px;">
-        
-        <!-- TOURNAMENT HEADER -->
-        <div style="background: linear-gradient(135deg, #1a1a2e 0%, #0f0f0f 100%); padding: 25px; border-radius: 12px; margin-bottom: 25px; border-left: 4px solid #00ff88;">
-            <h2 id="joinTournamentTitle" style="margin: 0 0 10px 0; color: #fff; font-size: 28px;">Tournament Name</h2>
-            <div style="display: flex; gap: 30px; color: #888; flex-wrap: wrap; align-items: center;">
-                <span>🎮 <b style="color: #fff;">Squad Mode</b></span>
-                <span style="background: linear-gradient(135deg, #ffd700 0%, #ffed4a 100%); color: #000; padding: 6px 16px; border-radius: 20px; font-weight: bold;">
-                    🏆 Winner Prize: ₹<span id="joinPrizeFirst">0</span>
-                </span>
-                <span>⏰ Starts: <b style="color: #ffd700;" id="joinStartTime">Today 6:00 PM</b></span>
-                <span style="background: #ff4444; color: #fff; padding: 4px 12px; border-radius: 20px; font-size: 14px; animation: pulse 2s infinite;">
-                    ⏳ <span id="headerTimer">Loading...</span>
-                </span>
+    <div id="registrationContainer" style="display:none;max-width:1200px;margin:30px auto;padding:20px;">
+
+      <!-- TOURNAMENT HEADER -->
+      <div style="background:linear-gradient(135deg,#1a1a2e 0%,#0f0f0f 100%);padding:25px;border-radius:12px;margin-bottom:25px;border-left:4px solid #00ff88;">
+        <h2 id="joinTournamentTitle" style="margin:0 0 10px 0;color:#fff;font-size:28px;">Tournament Name</h2>
+        <div style="display:flex;gap:30px;color:#888;flex-wrap:wrap;align-items:center;">
+          <span>🎮 <b style="color:#fff;">Squad Mode</b></span>
+          <span style="background:linear-gradient(135deg,#ffd700 0%,#ffed4a 100%);color:#000;padding:6px 16px;border-radius:20px;font-weight:bold;">
+            🏆 Winner Prize: ₹<span id="joinPrizeFirst">0</span>
+          </span>
+          <span>⏰ Starts: <b style="color:#ffd700;" id="joinStartTime">Today 6:00 PM</b></span>
+          <span style="background:#ff4444;color:#fff;padding:4px 12px;border-radius:20px;font-size:14px;animation:pulse 2s infinite;">
+            ⏳ <span id="headerTimer">Loading...</span>
+          </span>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:60% 40%;gap:25px;">
+
+        <!-- LEFT SIDE -->
+        <div style="display:flex;flex-direction:column;gap:20px;">
+
+          <!-- PROFILE CARD -->
+          <div style="background:#1a1a1a;padding:20px;border-radius:10px;border:1px solid #333;">
+            <h3 style="color:#00ff88;margin:0 0 15px 0;font-size:16px;">Your Profile</h3>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
+              <div style="background:#0f0f0f;padding:12px;border-radius:6px;">
+                <label style="color:#666;font-size:11px;">Email</label>
+                <div id="joinDisplayEmail" style="color:#fff;font-size:14px;">Loading...</div>
+              </div>
+              <div style="background:#0f0f0f;padding:12px;border-radius:6px;">
+                <label style="color:#666;font-size:11px;">Age</label>
+                <div id="joinDisplayAge" style="color:#fff;font-size:14px;">Loading...</div>
+              </div>
+              <div style="background:#0f0f0f;padding:12px;border-radius:6px;grid-column:1/-1;">
+                <label style="color:#666;font-size:11px;">Team</label>
+                <div style="display:flex;justify-content:space-between;">
+                  <div>
+                    <div id="joinDisplayTeam"   style="color:#00ff88;font-size:16px;font-weight:bold;">Loading...</div>
+                    <div id="joinDisplayLeader" style="color:#888;font-size:12px;"></div>
+                  </div>
+                  <span id="joinDisplayCode" style="background:#222;color:#666;padding:4px 8px;border-radius:4px;font-size:12px;font-family:monospace;"></span>
+                </div>
+              </div>
             </div>
+          </div>
+
+          <!-- PRIZE BREAKDOWN -->
+          <div style="background:#1a2a1a;padding:20px;border-radius:10px;border:1px solid #00ff88;">
+            <h3 style="color:#00ff88;margin:0 0 15px 0;">🏆 Prize Distribution</h3>
+            <div style="display:flex;justify-content:space-around;text-align:center;">
+              <div>
+                <div style="font-size:28px;color:#ffd700;font-weight:bold;">🥇</div>
+                <div style="color:#fff;font-size:20px;font-weight:bold;">₹<span id="prizeFirst">0</span></div>
+                <div style="color:#888;font-size:12px;">1st Position</div>
+              </div>
+              <div>
+                <div style="font-size:24px;color:#c0c0c0;font-weight:bold;">🥈</div>
+                <div style="color:#fff;font-size:18px;font-weight:bold;">₹<span id="prizeSecond">0</span></div>
+                <div style="color:#888;font-size:12px;">2nd Position</div>
+              </div>
+              <div>
+                <div style="font-size:20px;color:#cd7f32;font-weight:bold;">🥉</div>
+                <div style="color:#fff;font-size:16px;font-weight:bold;">₹<span id="prizeThird">0</span></div>
+                <div style="color:#888;font-size:12px;">3rd Position</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- RULES -->
+          <div style="background:#2a1a1a;padding:25px;border-radius:10px;border:1px solid #ff4444;">
+            <h3 style="color:#ff4444;margin:0 0 15px 0;">⚠️ Important Rules</h3>
+            <ul style="color:#ccc;line-height:2;margin:0;padding-left:20px;">
+              <li><b>Payment Required:</b> Entry fee must be paid before match starts</li>
+              <li><b>No Refunds:</b> For ongoing tournaments, entry fee is non-refundable</li>
+              <li><b>Join Custom Room:</b> Team must join custom room <b>15 minutes before</b> match start</li>
+              <li><b>Player Verification:</b> If any unidentified player seen in team, <b style="color:#ff4444;">whole team will be disqualified</b></li>
+              <li><b>Same Players:</b> Only registered Free Fire UIDs allowed to play</li>
+            </ul>
+            <div style="margin-top:15px;padding-top:15px;border-top:1px solid #444;">
+              <a href="#" onclick="showGuidelines()" style="color:#4a90e2;text-decoration:underline;font-size:14px;">📋 Read Complete Guidelines &amp; Terms</a>
+            </div>
+          </div>
+
+          <!-- ENTRY FEE -->
+          <div style="background:linear-gradient(135deg,#1a1a1a 0%,#2a1a2a 100%);padding:20px;border-radius:10px;border:2px solid #ffd700;text-align:center;">
+            <p style="color:#888;margin:0 0 5px 0;font-size:14px;">Entry Fee (Per Team)</p>
+            <p style="color:#ffd700;font-size:32px;font-weight:bold;margin:0;text-shadow:0 0 10px rgba(255,215,0,0.3);">₹<span id="joinEntryFeeDisplay">0</span></p>
+            <small style="color:#666;font-size:11px;">Not per person. Whole team pays once.</small>
+          </div>
+
+          <!-- SUPPORT -->
+          <div style="background:#1a1a1a;padding:15px;border-radius:8px;">
+            <p style="color:#666;margin:0;font-size:13px;"><b>Facing issues?</b> Contact Support<br>WhatsApp: +91 XXXXX XXXXX</p>
+          </div>
         </div>
 
-        <div style="display: grid; grid-template-columns: 60% 40%; gap: 25px;">
-            
-            <!-- LEFT SIDE -->
-            <div style="display: flex; flex-direction: column; gap: 20px;">
-                
-                <!-- PROFILE CARD -->
-                <div style="background: #1a1a1a; padding: 20px; border-radius: 10px; border: 1px solid #333;">
-                    <h3 style="color: #00ff88; margin: 0 0 15px 0; font-size: 16px;">Your Profile</h3>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div style="background: #0f0f0f; padding: 12px; border-radius: 6px;">
-                            <label style="color: #666; font-size: 11px;">Email</label>
-                            <div id="joinDisplayEmail" style="color: #fff; font-size: 14px;">Loading...</div>
-                        </div>
-                        <div style="background: #0f0f0f; padding: 12px; border-radius: 6px;">
-                            <label style="color: #666; font-size: 11px;">Age</label>
-                            <div id="joinDisplayAge" style="color: #fff; font-size: 14px;">Loading...</div>
-                        </div>
-                        <div style="background: #0f0f0f; padding: 12px; border-radius: 6px; grid-column: 1 / -1;">
-                            <label style="color: #666; font-size: 11px;">Team</label>
-                            <div style="display: flex; justify-content: space-between;">
-                                <div>
-                                    <div id="joinDisplayTeam" style="color: #00ff88; font-size: 16px; font-weight: bold;">Loading...</div>
-                                    <div id="joinDisplayLeader" style="color: #888; font-size: 12px;"></div>
-                                </div>
-                                <span id="joinDisplayCode" style="background: #222; color: #666; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-family: monospace;"></span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <!-- RIGHT SIDE — FORM -->
+        <div style="background:#1a1a1a;padding:25px;border-radius:10px;border:1px solid #333;height:fit-content;position:sticky;top:80px;">
 
-                <!-- PRIZE BREAKDOWN -->
-                <div style="background: #1a2a1a; padding: 20px; border-radius: 10px; border: 1px solid #00ff88;">
-                    <h3 style="color: #00ff88; margin: 0 0 15px 0;">🏆 Prize Distribution</h3>
-                    <div style="display: flex; justify-content: space-around; text-align: center;">
-                        <div>
-                            <div style="font-size: 28px; color: #ffd700; font-weight: bold;">🥇</div>
-                            <div style="color: #fff; font-size: 20px; font-weight: bold;">₹<span id="prizeFirst">0</span></div>
-                            <div style="color: #888; font-size: 12px;">1st Position</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 24px; color: #c0c0c0; font-weight: bold;">🥈</div>
-                            <div style="color: #fff; font-size: 18px; font-weight: bold;">₹<span id="prizeSecond">0</span></div>
-                            <div style="color: #888; font-size: 12px;">2nd Position</div>
-                        </div>
-                        <div>
-                            <div style="font-size: 20px; color: #cd7f32; font-weight: bold;">🥉</div>
-                            <div style="color: #fff; font-size: 16px; font-weight: bold;">₹<span id="prizeThird">0</span></div>
-                            <div style="color: #888; font-size: 12px;">3rd Position</div>
-                        </div>
-                    </div>
-                </div>
+          <h3 style="color:#fff;margin:0 0 20px 0;text-align:center;">Team Registration</h3>
 
-                <!-- IMPORTANT RULES -->
-                <div style="background: #2a1a1a; padding: 25px; border-radius: 10px; border: 1px solid #ff4444;">
-                    <h3 style="color: #ff4444; margin: 0 0 15px 0;">⚠️ Important Rules</h3>
-                    <ul style="color: #ccc; line-height: 2; margin: 0; padding-left: 20px;">
-                        <li><b>Payment Required:</b> Entry fee must be paid before match starts</li>
-                        <li><b>No Refunds:</b> For ongoing tournaments, entry fee is non-refundable</li>
-                        <li><b>Join Custom Room:</b> Team must join custom room <b>15 minutes before</b> match start</li>
-                        <li><b>Player Verification:</b> If any unidentified player seen in team, <b style="color: #ff4444;">whole team will be disqualified</b></li>
-                        <li><b>Same Players:</b> Only registered Free Fire UIDs allowed to play</li>
-                    </ul>
-                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #444;">
-                        <a href="#" onclick="showGuidelines()" style="color: #4a90e2; text-decoration: underline; font-size: 14px;">
-                            📋 Read Complete Guidelines &amp; Terms
-                        </a>
-                    </div>
-                </div>
+          <!-- WALLET AREA -->
+          <div style="background:linear-gradient(135deg,#2a2a2a 0%,#1a1a1a 100%);padding:20px;border-radius:8px;text-align:center;margin-bottom:25px;border:1px solid #333;">
+            <div style="font-size:40px;margin-bottom:10px;">💰</div>
+            <p style="color:#888;margin:0 0 10px 0;font-size:14px;">Your Wallet</p>
+            <div style="background:#0f0f0f;padding:12px;border-radius:6px;margin-bottom:10px;">
+              <span style="color:#00ff88;font-size:20px;font-weight:bold;">₹<span id="walletBalance">0</span></span>
+              <p style="color:#666;font-size:11px;margin:5px 0 0 0;">Available Balance</p>
+            </div>
+            <p style="color:#666;font-size:12px;margin:0;">Entry Fee: ₹<span id="paymentAmount">0</span></p>
+            <p style="color:#ffd700;font-size:11px;margin:5px 0 0 0;">Auto-deduct on registration</p>
+          </div>
 
-                <!-- ENTRY FEE -->
-                <div style="background: linear-gradient(135deg, #1a1a1a 0%, #2a1a2a 100%); padding: 20px; border-radius: 10px; border: 2px solid #ffd700; text-align: center;">
-                    <p style="color: #888; margin: 0 0 5px 0; font-size: 14px;">Entry Fee (Per Team)</p>
-                    <p style="color: #ffd700; font-size: 32px; font-weight: bold; margin: 0; text-shadow: 0 0 10px rgba(255,215,0,0.3);">₹<span id="joinEntryFeeDisplay">0</span></p>
-                    <small style="color: #666; font-size: 11px;">Not per person. Whole team pays once.</small>
-                </div>
+          <!-- REGISTRATION FORM -->
+          <form id="tournamentJoinForm" style="display:flex;flex-direction:column;gap:15px;">
 
-                <!-- SUPPORT -->
-                <div style="background: #1a1a1a; padding: 15px; border-radius: 8px;">
-                    <p style="color: #666; margin: 0; font-size: 13px;">
-                        <b>Facing issues?</b> Contact Support<br>
-                        WhatsApp: +91 XXXXX XXXXX
-                    </p>
-                </div>
+            <!-- UID FIELDS -->
+            <div style="background:#0f0f0f;padding:15px;border-radius:8px;border:1px solid #444;">
+              <label style="color:#fff;font-size:14px;display:block;margin-bottom:10px;"><b>Free Fire UIDs (Squad Members)</b></label>
+              <div style="margin-bottom:10px;">
+                <label style="color:#888;font-size:12px;">Player 1 (You - Leader) *</label>
+                <input type="number" id="uidPlayer1" placeholder="Your UID" required
+                  style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #00ff88;color:#fff;border-radius:4px;margin-top:5px;">
+              </div>
+              <div style="margin-bottom:10px;">
+                <label style="color:#888;font-size:12px;">Player 2 *</label>
+                <input type="number" id="uidPlayer2" placeholder="Teammate 2 UID" required
+                  style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #444;color:#fff;border-radius:4px;margin-top:5px;">
+              </div>
+              <div style="margin-bottom:10px;">
+                <label style="color:#888;font-size:12px;">Player 3 *</label>
+                <input type="number" id="uidPlayer3" placeholder="Teammate 3 UID" required
+                  style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #444;color:#fff;border-radius:4px;margin-top:5px;">
+              </div>
+              <div style="margin-bottom:10px;">
+                <label style="color:#888;font-size:12px;">Player 4 *</label>
+                <input type="number" id="uidPlayer4" placeholder="Teammate 4 UID" required
+                  style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #444;color:#fff;border-radius:4px;margin-top:5px;">
+              </div>
+              <div>
+                <label style="color:#888;font-size:12px;">Player 5 (Optional/Substitute)</label>
+                <input type="number" id="uidPlayer5" placeholder="Substitute UID (if any)"
+                  style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #333;color:#666;border-radius:4px;margin-top:5px;">
+              </div>
             </div>
 
-            <!-- RIGHT SIDE - FORM -->
-            <div style="background: #1a1a1a; padding: 25px; border-radius: 10px; border: 1px solid #333; height: fit-content; position: sticky; top: 80px;">
-                
-                <h3 style="color: #fff; margin: 0 0 20px 0; text-align: center;">Team Registration</h3>
-
-                <!-- WALLET AREA -->
-                <div style="background: linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%); padding: 20px; border-radius: 8px; text-align: center; margin-bottom: 25px; border: 1px solid #333;">
-                    <div style="font-size: 40px; margin-bottom: 10px;">💰</div>
-                    <p style="color: #888; margin: 0 0 10px 0; font-size: 14px;">Your Wallet</p>
-                    <div style="background: #0f0f0f; padding: 12px; border-radius: 6px; margin-bottom: 10px;">
-                        <span style="color: #00ff88; font-size: 20px; font-weight: bold;">₹<span id="walletBalance">0</span></span>
-                        <p style="color: #666; font-size: 11px; margin: 5px 0 0 0;">Available Balance</p>
-                    </div>
-                    <p style="color: #666; font-size: 12px; margin: 0;">Entry Fee: ₹<span id="paymentAmount">0</span></p>
-                    <p style="color: #ffd700; font-size: 11px; margin: 5px 0 0 0;">Auto-deduct on registration</p>
-                </div>
-
-                <!-- REGISTRATION FORM -->
-                <form id="tournamentJoinForm" style="display: flex; flex-direction: column; gap: 15px;">
-                    
-                    <!-- 5 UID FIELDS -->
-                    <div style="background: #0f0f0f; padding: 15px; border-radius: 8px; border: 1px solid #444;">
-                        <label style="color: #fff; font-size: 14px; display: block; margin-bottom: 10px;">
-                            <b>Free Fire UIDs (Squad Members)</b>
-                        </label>
-                        
-                        <div style="margin-bottom: 10px;">
-                            <label style="color: #888; font-size: 12px;">Player 1 (You - Leader) *</label>
-                            <input type="number" id="uidPlayer1" placeholder="Your UID" required
-                                style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #00ff88; color: #fff; border-radius: 4px; margin-top: 5px;">
-                        </div>
-
-                        <div style="margin-bottom: 10px;">
-                            <label style="color: #888; font-size: 12px;">Player 2 *</label>
-                            <input type="number" id="uidPlayer2" placeholder="Teammate 2 UID" required
-                                style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px; margin-top: 5px;">
-                        </div>
-
-                        <div style="margin-bottom: 10px;">
-                            <label style="color: #888; font-size: 12px;">Player 3 *</label>
-                            <input type="number" id="uidPlayer3" placeholder="Teammate 3 UID" required
-                                style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px; margin-top: 5px;">
-                        </div>
-
-                        <div style="margin-bottom: 10px;">
-                            <label style="color: #888; font-size: 12px;">Player 4 *</label>
-                            <input type="number" id="uidPlayer4" placeholder="Teammate 4 UID" required
-                                style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #444; color: #fff; border-radius: 4px; margin-top: 5px;">
-                        </div>
-
-                        <div>
-                            <label style="color: #888; font-size: 12px;">Player 5 (Optional/Substitute)</label>
-                            <input type="number" id="uidPlayer5" placeholder="Substitute UID (if any)"
-                                style="width: 100%; padding: 10px; background: #1a1a1a; border: 1px solid #333; color: #666; border-radius: 4px; margin-top: 5px;">
-                        </div>
-                    </div>
-
-                    <!-- Contact Details -->
-                    <div style="display: flex; gap: 0;">
-                        <span style="background: #333; color: #fff; padding: 12px; border-radius: 6px 0 0 6px; border: 1px solid #444; border-right: none; font-size: 14px;">+91</span>
-                        <input type="tel" id="joinPhone" placeholder="9876543210" maxlength="10" required
-                            style="width: 100%; padding: 12px; background: #0f0f0f; border: 1px solid #444; border-left: none; color: #fff; border-radius: 0 6px 6px 0; font-size: 14px;">
-                    </div>
-                    <small style="color: #666; font-size: 11px;">Enter 10-digit mobile number</small>
-
-                    <!-- Backup Email -->
-                    <div>
-                        <label style="color: #fff; font-size: 13px; display: block; margin-bottom: 5px;">
-                            Backup Email *
-                        </label>
-                        <input type="email" id="joinBackupEmail" placeholder="Enter email for updates" required
-                            style="width: 100%; padding: 12px; background: #0f0f0f; border: 1px solid #444; color: #fff; border-radius: 6px; font-size: 14px;">
-                        <small style="color: #666; font-size: 11px;">For match notifications &amp; updates</small>
-                    </div>
-
-                    <!-- Guidelines Checkbox -->
-                    <div style="padding: 12px; background: #2a2a1a; border-radius: 6px; border-left: 3px solid #ffd700;">
-                        <p style="color: #ccc; margin: 0; font-size: 13px; line-height: 1.5;">
-                            By registering, you agree to our 
-                            <a href="#" onclick="showGuidelines()" style="color: #ffd700; text-decoration: underline;">Tournament Guidelines</a>.
-                        </p>
-                    </div>
-
-                    <!-- Submit Button -->
-                    <button type="submit" id="joinSubmitBtn" 
-                        style="width: 100%; padding: 16px; background: #00ff88; color: #000; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 10px;">
-                        Submit for Verification →
-                    </button>
-                </form>
+            <!-- PHONE -->
+            <div style="display:flex;gap:0;">
+              <span style="background:#333;color:#fff;padding:12px;border-radius:6px 0 0 6px;border:1px solid #444;border-right:none;font-size:14px;">+91</span>
+              <input type="tel" id="joinPhone" placeholder="9876543210" maxlength="10" required
+                style="width:100%;padding:12px;background:#0f0f0f;border:1px solid #444;border-left:none;color:#fff;border-radius:0 6px 6px 0;font-size:14px;">
             </div>
+            <small style="color:#666;font-size:11px;">Enter 10-digit mobile number</small>
+
+            <!-- BACKUP EMAIL -->
+            <div>
+              <label style="color:#fff;font-size:13px;display:block;margin-bottom:5px;">Backup Email *</label>
+              <input type="email" id="joinBackupEmail" placeholder="Enter email for updates" required
+                style="width:100%;padding:12px;background:#0f0f0f;border:1px solid #444;color:#fff;border-radius:6px;font-size:14px;">
+              <small style="color:#666;font-size:11px;">For match notifications &amp; updates</small>
+            </div>
+
+            <!-- GUIDELINES CHECKBOX -->
+            <div style="padding:12px;background:#2a2a1a;border-radius:6px;border-left:3px solid #ffd700;">
+              <p style="color:#ccc;margin:0;font-size:13px;line-height:1.5;">
+                By registering, you agree to our
+                <a href="#" onclick="showGuidelines()" style="color:#ffd700;text-decoration:underline;">Tournament Guidelines</a>.
+              </p>
+            </div>
+
+            <!-- SUBMIT -->
+            <button type="submit" id="joinSubmitBtn"
+              style="width:100%;padding:16px;background:#00ff88;color:#000;border:none;border-radius:8px;font-size:18px;font-weight:bold;cursor:pointer;margin-top:10px;">
+              Submit for Verification →
+            </button>
+          </form>
         </div>
+      </div>
     </div>
 
     <!-- UID CHECKING OVERLAY -->
-    <div id="uidCheckingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 3000; align-items: center; justify-content: center; flex-direction: column;">
-        <div style="width: 60px; height: 60px; border: 4px solid #333; border-top: 4px solid #ffd700; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;"></div>
-        <h3 style="color: #ffd700; margin: 0; font-size: 24px;">Verifying Player UIDs...</h3>
-        <p style="color: #888; margin-top: 15px; max-width: 400px; text-align: center;">
-            Our admin team is verifying your squad's Free Fire UIDs.<br>
-            This may take a few moments. Please wait...
-        </p>
-        <div style="margin-top: 30px; padding: 20px; background: #1a1a1a; border-radius: 8px; border: 1px solid #333;">
-            <p style="color: #666; margin: 0; font-size: 13px;">Team: <span style="color: #fff;" id="checkingTeamName">...</span></p>
-            <p style="color: #666; margin: 5px 0 0 0; font-size: 13px;">Players: <span style="color: #00ff88;">5 UIDs submitted</span></p>
-        </div>
+    <div id="uidCheckingOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:3000;align-items:center;justify-content:center;flex-direction:column;">
+      <div style="width:60px;height:60px;border:4px solid #333;border-top:4px solid #ffd700;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:20px;"></div>
+      <h3 style="color:#ffd700;margin:0;font-size:24px;">Verifying Player UIDs...</h3>
+      <p style="color:#888;margin-top:15px;max-width:400px;text-align:center;">Our admin team is verifying your squad's Free Fire UIDs.<br>This may take a few moments. Please wait...</p>
+      <div style="margin-top:30px;padding:20px;background:#1a1a1a;border-radius:8px;border:1px solid #333;">
+        <p style="color:#666;margin:0;font-size:13px;">Team: <span style="color:#fff;" id="checkingTeamName">...</span></p>
+        <p style="color:#666;margin:5px 0 0 0;font-size:13px;">Players: <span style="color:#00ff88;">5 UIDs submitted</span></p>
+      </div>
     </div>
 
     <!-- GUIDELINES MODAL -->
-    <div id="guidelinesModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 4000; overflow-y: auto;">
-        <div style="max-width: 800px; margin: 50px auto; padding: 30px; background: #1a1a1a; border-radius: 12px; border: 1px solid #333;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <h2 style="color: #00ff88; margin: 0;">Tournament Guidelines</h2>
-                <button onclick="closeGuidelines()" style="background: #333; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Close</button>
-            </div>
-            <div style="color: #ccc; line-height: 1.8;">
-                <h3 style="color: #fff;">1. Registration</h3>
-                <p>• Only complete teams (4+1) can register</p>
-                <p>• UIDs cannot be changed after registration</p>
-                <p>• Entry fee must be paid before match starts</p>
-                
-                <h3 style="color: #fff; margin-top: 20px;">2. Match Rules</h3>
-                <p>• Join custom room 15 minutes early</p>
-                <p>• No emulators or third-party software</p>
-                <p>• Only registered players allowed</p>
-                
-                <h3 style="color: #fff; margin-top: 20px;">3. Disqualification</h3>
-                <p>• Unauthorized players in team</p>
-                <p>• Hacking or unfair gameplay</p>
-                <p>• Not joining room on time</p>
-            </div>
+    <div id="guidelinesModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:4000;overflow-y:auto;">
+      <div style="max-width:800px;margin:50px auto;padding:30px;background:#1a1a1a;border-radius:12px;border:1px solid #333;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+          <h2 style="color:#00ff88;margin:0;">Tournament Guidelines</h2>
+          <button onclick="closeGuidelines()" style="background:#333;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;">Close</button>
         </div>
+        <div style="color:#ccc;line-height:1.8;">
+          <h3 style="color:#fff;">1. Registration</h3>
+          <p>• Only complete teams (4+1) can register</p>
+          <p>• UIDs cannot be changed after registration</p>
+          <p>• Entry fee must be paid before match starts</p>
+          <h3 style="color:#fff;margin-top:20px;">2. Match Rules</h3>
+          <p>• Join custom room 15 minutes early</p>
+          <p>• No emulators or third-party software</p>
+          <p>• Only registered players allowed</p>
+          <h3 style="color:#fff;margin-top:20px;">3. Disqualification</h3>
+          <p>• Unauthorized players in team</p>
+          <p>• Hacking or unfair gameplay</p>
+          <p>• Not joining room on time</p>
+        </div>
+      </div>
     </div>
 
     <!-- ERROR MODAL -->
-    <div id="serverErrorModal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a1a; padding: 30px; border-radius: 12px; border: 2px solid #ff4444; z-index: 3500; text-align: center; max-width: 400px;">
-        <div style="font-size: 40px; margin-bottom: 15px;">⚠️</div>
-        <h3 style="color: #ff4444; margin-bottom: 10px;">Connection Error</h3>
-        <p style="color: #888; margin-bottom: 20px;">Unable to complete. Please try again or contact support.</p>
-        <button onclick="document.getElementById('serverErrorModal').style.display='none'" style="background: #333; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; margin-right: 10px;">Try Again</button>
-        <button onclick="joinDiscord()" style="background: #5865F2; color: #fff; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">Contact Support</button>
+    <div id="serverErrorModal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1a1a1a;padding:30px;border-radius:12px;border:2px solid #ff4444;z-index:3500;text-align:center;max-width:400px;">
+      <div style="font-size:40px;margin-bottom:15px;">⚠️</div>
+      <h3 style="color:#ff4444;margin-bottom:10px;">Connection Error</h3>
+      <p style="color:#888;margin-bottom:20px;">Unable to complete. Please try again or contact support.</p>
+      <button onclick="document.getElementById('serverErrorModal').style.display='none'" style="background:#333;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;margin-right:10px;">Try Again</button>
+      <button onclick="joinDiscord()" style="background:#5865F2;color:#fff;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;">Contact Support</button>
     </div>
-</div>
+  </div>
+  <!-- ══ END JOIN TOURNAMENT MODAL ══════════════════════════ -->
 
-<style>
-@keyframes spin  { 0%   { transform: rotate(0deg); }   100% { transform: rotate(360deg); } }
-@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
-</style>
+  <!-- ══ PROCESSING OVERLAY ════════════════════════════════ -->
+  <div id="processingOverlay" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:3000;align-items:center;justify-content:center;flex-direction:column;">
+    <div style="width:60px;height:60px;border:4px solid #333;border-top:4px solid #00ff88;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:20px;"></div>
+    <h3 style="color:#00ff88;margin:0;font-size:24px;">Processing Registration...</h3>
+    <p style="color:#888;margin-top:15px;max-width:400px;text-align:center;">Sending your team details to admin...</p>
+  </div>
 
+  <!-- ══ ANIMATIONS ════════════════════════════════════════ -->
+  <style>
+    @keyframes spin  { 0%   { transform: rotate(0deg);   } 100% { transform: rotate(360deg); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+  </style>
 
-<!-- PROCESSING OVERLAY -->
-<div id="processingOverlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 3000; align-items: center; justify-content: center; flex-direction: column;">
-    <div style="width: 60px; height: 60px; border: 4px solid #333; border-top: 4px solid #00ff88; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px;"></div>
-    <h3 style="color: #00ff88; margin: 0; font-size: 24px;">Processing Registration...</h3>
-    <p style="color: #888; margin-top: 15px; max-width: 400px; text-align: center;">Sending your team details to admin...</p>
-</div>
+  <!-- ══ INLINE HELPERS ════════════════════════════════════ -->
+  <script>
+    /* Tab switching — available immediately before main.js loads */
+    window.switchDashTab = function(type, el) {
+      document.querySelectorAll('.dash-nav-tab').forEach(t => t.classList.remove('active'));
+      if (el) el.classList.add('active');
+      if (window.openDashboard) window.openDashboard(type);
+    };
 
+    /* ── PUSH PERMISSION BANNER HANDLERS ─────────────────────
+       These functions are called by the banner buttons.
+       main.js is responsible for calling showPushPermBanner()
+       after the user logs in (if they haven't decided yet).
+    ─────────────────────────────────────────────────────────── */
 
-<!-- Tab switching helper — inline so it's available immediately -->
-<script>
-window.switchDashTab = function(type, el) {
-    // Update active tab highlight
-    document.querySelectorAll('.dash-nav-tab').forEach(t => t.classList.remove('active'));
-    if (el) el.classList.add('active');
-    // Load the tab content
-    if (window.openDashboard) window.openDashboard(type);
-};
-</script>
+    /**
+     * Called by main.js after login if push permission not yet decided.
+     * Only shows if browser supports Notification API.
+     */
+    window.showPushPermBanner = function() {
+      if (!('Notification' in window)) return;             // browser doesn't support push
+      if (localStorage.getItem('pushPermDecided')) return; // already decided
+      if (Notification.permission === 'granted') return;   // already granted
+      const banner = document.getElementById('pushPermBanner');
+      if (banner) banner.style.display = 'flex';
+    };
 
-<script type="module" src="js/main.js"></script>
+    /** User clicked "Allow Notifications" */
+    window.handleAllowPush = async function() {
+      dismissPushBanner();
+      if (!('Notification' in window)) return;
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          // main.js / pushHandler.js can now get the FCM token
+          if (window.onPushPermissionGranted) window.onPushPermissionGranted();
+          showBannerToast('🔔 Notifications enabled!', '#00ff88');
+        } else {
+          showBannerToast('Push notifications blocked. In-app notifications still work.', '#f57f17');
+        }
+      } catch (e) {
+        console.warn('[Push] Permission request failed:', e);
+      }
+    };
+
+    /** User clicked "Later" — dismiss without blocking */
+    window.handleDenyPush = function() {
+      dismissPushBanner();
+    };
+
+    function dismissPushBanner() {
+      localStorage.setItem('pushPermDecided', '1');
+      const banner = document.getElementById('pushPermBanner');
+      if (banner) {
+        banner.style.animation = 'slideUpBanner .25s ease reverse';
+        setTimeout(() => { banner.style.display = 'none'; }, 250);
+      }
+    }
+
+    /** Small inline toast specifically for the banner response */
+    function showBannerToast(msg, color) {
+      const t = document.createElement('div');
+      t.style.cssText = `position:fixed;bottom:70px;right:20px;background:${color};color:#000;
+        padding:10px 18px;border-radius:8px;font-size:13px;font-weight:700;z-index:9999;
+        animation:slideUpBanner .2s ease;box-shadow:0 4px 12px rgba(0,0,0,.4);`;
+      t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 3000);
+    }
+  </script>
+
+  <!-- ══ MAIN JS (module) ══════════════════════════════════ -->
+  <script type="module" src="js/main.js"></script>
 
 </body>
 </html>

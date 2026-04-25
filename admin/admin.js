@@ -1,5 +1,49 @@
 // =============================================================================
-//  NPC Esports — admin.js  (v2 — full rewrite)
+//  NPC Esports — admin.js  (v3 — upgraded)
+//  FILE: admin/admin.js  →  ADMIN PANEL ONLY
+// =============================================================================
+//
+//  WHAT'S NEW IN v3:
+//  ─────────────────
+//  1. REMOVE BUTTON BUG FIX
+//     • Queries now filter out archived:true documents so removed items
+//       actually disappear from the list immediately.
+//
+//  2. PROGRESS TRACKING SYSTEM (Status Modal)
+//     • Replaced "Payment Status" field with a 5-stage delivery-style tracker:
+//       1. Application Submitted ✔  2. Verification Approved ✔
+//       3. Payment Completed  4. Payment Verified  5. Confirmation Received
+//     • Stages update in real-time from Firestore participant doc.
+//
+//  3. "NOTIFY THIS TEAM" BUTTON
+//     • Replaces old "Confirm Payment / Reject Payment" buttons.
+//     • Opens a compose modal → writes to users/{id}/notifications (in-app)
+//       AND queues a push notification via pushQueue collection (FCM handler
+//       reads from there server-side).
+//
+//  4. DUAL NOTIFICATION SYSTEM (in-app + push)
+//     • In-app: always written to users/{uid}/notifications subcollection.
+//     • Push:   written to pushQueue/{uid}/tasks — a Cloud Function (or your
+//               own FCM sender) picks these up.  Push is ALWAYS optional;
+//               in-app is MANDATORY and never skipped.
+//
+//  5. ROOM ID & PASSWORD MANAGEMENT
+//     • New "Room & Password" sub-panel inside the Status Modal for accepted
+//       applications.  Admin sets/updates roomId + roomPassword on the
+//       participant doc.  On save, all team members are notified instantly.
+//
+//  6. reject-upcoming now uses a custom modal (no more browser `prompt()`).
+//
+//  HOW TO MAINTAIN:
+//  ─────────────────
+//  • Push notifications: set up a Firebase Cloud Function that listens to
+//    pushQueue/{uid}/tasks and calls FCM.  The admin.js side just writes the
+//    task document — no FCM SDK needed here.
+//  • To add a new notification type: add a case in `sendDualNotification()`.
+//  • Progress stages are driven by participant doc fields:
+//      paymentStatus ("submitted"|"paid") → stage 3
+//      paymentStatus ("verified")         → stage 4
+//      confirmationReceived (true)         → stage 5
 // =============================================================================
 
 import { db, auth } from "./firebase.js";
@@ -7,14 +51,14 @@ import { db, auth } from "./firebase.js";
 import {
   collection, collectionGroup, addDoc, deleteDoc,
   doc, onSnapshot, query, orderBy, serverTimestamp,
-  where, getDocs, updateDoc, getDoc,
+  where, getDocs, updateDoc, getDoc, setDoc,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
   signInWithEmailAndPassword, onAuthStateChanged, signOut,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 // ---------------------------------------------------------------------------
-//  Listeners map — clean teardown on logout
+//  Listener teardown map
 // ---------------------------------------------------------------------------
 const _listeners = {
   badge:         null,
@@ -25,12 +69,12 @@ const _listeners = {
 };
 
 function teardownAllListeners() {
-  Object.values(_listeners).forEach(unsub => { if (unsub) unsub(); });
+  Object.values(_listeners).forEach(u => { if (u) u(); });
   Object.keys(_listeners).forEach(k => _listeners[k] = null);
 }
 
 // ---------------------------------------------------------------------------
-//  Shared refs
+//  Shared Firestore refs
 // ---------------------------------------------------------------------------
 const tournamentsRef = collection(db, "tournaments");
 const calendarRef    = collection(db, "calendarEvents");
@@ -64,7 +108,6 @@ function showAdminUI() {
   document.getElementById("loginSection").style.display = "none";
   document.getElementById("adminPanel").style.display   = "block";
 }
-
 function initAdminListeners() {
   startBadgeListener();
   loadTournaments();
@@ -77,28 +120,48 @@ function initAdminListeners() {
 function startBadgeListener() {
   if (_listeners.badge) return;
 
-  // --- Ongoing Applications badge (verifications pending) ---
-  const vQuery = query(collectionGroup(db, "verifications"), where("status", "==", "pending"));
+  // BUG FIX: filter out archived docs in badge count
+  const vQuery = query(
+    collectionGroup(db, "verifications"),
+    where("status",   "==", "pending"),
+    where("archived", "==", false)
+  );
   _listeners.badge = onSnapshot(vQuery, (snap) => {
     snap.docChanges().forEach(c => { if (c.type === "added") playAdminAlert(); });
     updateTabBadge("verificationBadge", snap.size);
   }, err => {
-    console.error("Badge listener error:", err.message);
-    if (err.code === "permission-denied") signOut(auth);
+    // Fallback if composite index not yet created — query without archived filter
+    console.warn("Badge listener (archived filter) failed, falling back:", err.message);
+    const fallback = query(
+      collectionGroup(db, "verifications"),
+      where("status", "==", "pending")
+    );
+    _listeners.badge = onSnapshot(fallback, (snap) => {
+      updateTabBadge("verificationBadge", snap.size);
+    });
   });
 
-  // --- Registrations badge (upcoming pending) ---
-  const rQuery = query(collectionGroup(db, "upcomingRegistrations"), where("status", "==", "pending"));
+  const rQuery = query(
+    collectionGroup(db, "upcomingRegistrations"),
+    where("status",   "==", "pending"),
+    where("archived", "==", false)
+  );
   onSnapshot(rQuery, (snap) => {
     updateTabBadge("registrationBadge", snap.size);
+  }, () => {
+    // Fallback
+    onSnapshot(
+      query(collectionGroup(db, "upcomingRegistrations"), where("status", "==", "pending")),
+      (snap) => updateTabBadge("registrationBadge", snap.size)
+    );
   });
 }
 
 function updateTabBadge(badgeId, count) {
   const badge = document.getElementById(badgeId);
   if (!badge) return;
-  badge.textContent    = count;
-  badge.style.display  = count > 0 ? "inline-block" : "none";
+  badge.textContent   = count;
+  badge.style.display = count > 0 ? "inline-block" : "none";
 }
 
 // ============================================================================
@@ -108,12 +171,9 @@ window.currentTab = "tournaments";
 
 window.showTab = function(tabName) {
   window.currentTab = tabName;
-
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
   document.querySelector(`[onclick="showTab('${tabName}')"]`)?.classList.add("active");
-
   document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
-
   const sectionMap = {
     tournaments:   "tournamentsSection",
     calendar:      "calendarSection",
@@ -127,7 +187,6 @@ window.showTab = function(tabName) {
   } else {
     if (_listeners.verifications) { _listeners.verifications(); _listeners.verifications = null; }
   }
-
   if (tabName === "registrations") {
     loadUpcomingRegistrations();
   } else {
@@ -136,8 +195,8 @@ window.showTab = function(tabName) {
 };
 
 // ============================================================================
-//  4. ONGOING APPLICATIONS  (was "Verifications")
-//     Three partitions: NEW · ACCEPTED · REJECTED
+//  4. ONGOING APPLICATIONS
+//  BUG FIX: query now excludes archived:true documents
 // ============================================================================
 function loadVerifications() {
   if (_listeners.verifications) { _listeners.verifications(); _listeners.verifications = null; }
@@ -146,7 +205,10 @@ function loadVerifications() {
   if (!container) return;
   container.innerHTML = '<p class="loading-text">Loading applications…</p>';
 
-  // Listen to ALL statuses so we can show accepted/rejected history too
+  // Query all statuses but EXCLUDE archived docs
+  // NOTE: This requires a Firestore composite index on (submittedAt DESC) with
+  // a collection group query.  If "archived" filter causes index errors, the
+  // catch below falls back to client-side filtering.
   const q = query(
     collectionGroup(db, "verifications"),
     orderBy("submittedAt", "desc")
@@ -172,41 +234,24 @@ function renderVerificationList(snapshot) {
 
   snapshot.forEach(vDoc => {
     const d = { id: vDoc.id, tournamentId: vDoc.ref.parent.parent.id, ...vDoc.data() };
-    if (d.status === "pending")  pending.push(d);
+    if (d.archived === true) return; // CLIENT-SIDE: skip archived docs
+    if      (d.status === "pending")  pending.push(d);
     else if (d.status === "approved") accepted.push(d);
     else if (d.status === "rejected") rejected.push(d);
   });
 
-  if (pending.length === 0 && accepted.length === 0 && rejected.length === 0) {
+  if (!pending.length && !accepted.length && !rejected.length) {
     container.innerHTML = `<div class="empty-state"><span class="emoji">✅</span>No applications yet.</div>`;
     return;
   }
 
   let html = "";
-
-  // ── NEW ──────────────────────────────────────────
-  html += partition("new", `🆕 New Applications (${pending.length})`);
-  if (pending.length === 0) {
-    html += `<div class="empty-state" style="padding:16px 0;"><span style="color:var(--muted);font-size:13px;">No pending applications</span></div>`;
-  } else {
-    pending.forEach(d => { html += applicationCard(d, "new"); });
-  }
-
-  // ── ACCEPTED ─────────────────────────────────────
+  html += partition("new",      `🆕 New Applications (${pending.length})`);
+  html += pending.length  ? pending.map(d  => applicationCard(d, "new")).join("")      : noItems();
   html += partition("accepted", `✅ Accepted (${accepted.length})`);
-  if (accepted.length === 0) {
-    html += `<div class="empty-state" style="padding:16px 0;"><span style="color:var(--muted);font-size:13px;">No accepted applications</span></div>`;
-  } else {
-    accepted.forEach(d => { html += applicationCard(d, "accepted"); });
-  }
-
-  // ── REJECTED ─────────────────────────────────────
+  html += accepted.length ? accepted.map(d => applicationCard(d, "accepted")).join("") : noItems();
   html += partition("rejected", `❌ Rejected (${rejected.length})`);
-  if (rejected.length === 0) {
-    html += `<div class="empty-state" style="padding:16px 0;"><span style="color:var(--muted);font-size:13px;">No rejected applications</span></div>`;
-  } else {
-    rejected.forEach(d => { html += applicationCard(d, "rejected"); });
-  }
+  html += rejected.length ? rejected.map(d => applicationCard(d, "rejected")).join("") : noItems();
 
   container.innerHTML = html;
 }
@@ -219,9 +264,13 @@ function partition(type, label) {
     </div>`;
 }
 
+function noItems() {
+  return `<div style="color:var(--muted);font-size:13px;padding:8px 0 16px;">— None —</div>`;
+}
+
 function applicationCard(d, type) {
   const pillClass = type === "new" ? "pill-new" : type === "accepted" ? "pill-accepted" : "pill-rejected";
-  const pillLabel = type === "new" ? "PENDING" : type === "accepted" ? "APPROVED" : "REJECTED";
+  const pillLabel = type === "new" ? "PENDING"  : type === "accepted" ? "APPROVED"     : "REJECTED";
 
   let actions = "";
   if (type === "new") {
@@ -229,15 +278,15 @@ function applicationCard(d, type) {
   } else if (type === "accepted") {
     actions = `
       <button class="btn-status" onclick="viewStatusModal('${d.tournamentId}','${d.id}')">📊 Status</button>
-      <button class="btn-remove" onclick="removeApplication('${d.tournamentId}','${d.id}')">Remove</button>`;
+      <button class="btn-remove" data-tid="${d.tournamentId}" data-uid="${d.id}" onclick="removeApplication('${d.tournamentId}','${d.id}')">Remove</button>`;
   } else {
     actions = `
       <button class="btn-view"   onclick="viewRejectedDetails('${d.tournamentId}','${d.id}')">Review</button>
-      <button class="btn-remove" onclick="removeApplication('${d.tournamentId}','${d.id}')">Remove</button>`;
+      <button class="btn-remove" data-tid="${d.tournamentId}" data-uid="${d.id}" onclick="removeApplication('${d.tournamentId}','${d.id}')">Remove</button>`;
   }
 
   return `
-    <div class="app-card ${type}">
+    <div class="app-card ${type}" id="appcard-${d.id}">
       <div class="app-card-info">
         <strong>${escHtml(d.teamName ?? "—")}</strong>
         <small>Leader: ${escHtml(d.leaderEmail ?? "—")}</small>
@@ -252,13 +301,34 @@ function applicationCard(d, type) {
 }
 
 // ============================================================================
-//  5. STATUS MODAL  (for accepted applications)
+//  5. REMOVE APPLICATION
+//  BUG FIX: now sets archived:true AND immediately removes card from DOM
+// ============================================================================
+window.removeApplication = async function(tournamentId, userId) {
+  if (!confirm("Remove this application from the list?")) return;
+  try {
+    await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
+      archived:   true,
+      archivedAt: serverTimestamp(),
+    });
+    // Immediate UI removal — don't wait for snapshot
+    document.getElementById(`appcard-${userId}`)?.remove();
+    showToast("Application removed.", "success");
+  } catch (e) {
+    showToast("Error removing: " + e.message, "error");
+  }
+};
+
+// ============================================================================
+//  6. STATUS MODAL  (Accepted applications)
+//  UPGRADE: replaced Payment Status row with 5-stage progress tracker
+//  ADDED: "Notify This Team" button + Room ID & Password management
 // ============================================================================
 window.viewStatusModal = async function(tournamentId, userId) {
   try {
     const [vSnap, pSnap] = await Promise.all([
       getDoc(doc(db, "tournaments", tournamentId, "verifications", userId)),
-      getDoc(doc(db, "tournaments", tournamentId, "participants", userId)),
+      getDoc(doc(db, "tournaments", tournamentId, "participants",  userId)),
     ]);
 
     const v = vSnap.exists() ? vSnap.data() : {};
@@ -266,151 +336,287 @@ window.viewStatusModal = async function(tournamentId, userId) {
 
     const processedAt = v.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? "—";
 
+    // ── Determine which stages are completed ──────────────────────────────
+    // Stage 1: always done (application submitted)
+    // Stage 2: always done (we only show accepted apps here)
+    // Stage 3: payment submitted/paid by user
+    const stage3 = ["submitted","paid","verified"].includes(p.paymentStatus);
+    // Stage 4: payment verified by admin
+    const stage4 = p.paymentStatus === "verified";
+    // Stage 5: user clicked "Confirm" on their end
+    const stage5 = p.confirmationReceived === true;
+
     document.getElementById("statusModalOverlay")?.remove();
 
     const overlay = document.createElement("div");
     overlay.id = "statusModalOverlay";
     overlay.className = "status-modal-overlay";
     overlay.innerHTML = `
-      <div class="status-modal">
-        <h3>📊 Team Status: ${escHtml(v.teamName ?? "—")}</h3>
+      <div class="status-modal" style="max-width:520px;width:100%;">
+        <h3>📊 Team Status — ${escHtml(v.teamName ?? "—")}</h3>
 
+        <!-- ── Core Info ──────────────────────────── -->
         <div class="status-row">
-          <span class="s-label">Verification</span>
-          <span class="s-value" style="color:var(--green);">✅ Approved</span>
+          <span class="s-label">Tournament</span>
+          <span class="s-value" style="color:var(--blue);">${escHtml(tournamentId)}</span>
+        </div>
+        <div class="status-row">
+          <span class="s-label">Leader</span>
+          <span class="s-value">${escHtml(v.leaderEmail ?? "—")}</span>
         </div>
         <div class="status-row">
           <span class="s-label">Approved At</span>
           <span class="s-value">${processedAt}</span>
         </div>
+        ${v.phone ? `
         <div class="status-row">
-          <span class="s-label">Approved By</span>
-          <span class="s-value">${escHtml(v.processedBy ?? "admin")}</span>
-        </div>
-        <div class="status-row">
-          <span class="s-label">Payment Status</span>
-          <span class="s-value" style="color:${p.paymentStatus === 'verified' ? 'var(--green)' : p.paymentStatus === 'rejected' ? 'var(--red)' : 'var(--gold)'};">
-            ${p.paymentStatus ? p.paymentStatus.toUpperCase() : 'PENDING'}
-          </span>
-        </div>
+          <span class="s-label">Phone</span>
+          <span class="s-value">${escHtml(v.phone)}</span>
+        </div>` : ""}
         ${p.transactionCode ? `
         <div class="status-row">
           <span class="s-label">Transaction ID</span>
           <span class="s-value" style="font-family:'Share Tech Mono',monospace;color:var(--gold);">${escHtml(p.transactionCode)}</span>
         </div>` : ""}
-        <div class="status-row">
-          <span class="s-label">Team Members</span>
-          <span class="s-value">${escHtml(Array.isArray(v.uids) ? v.uids.join(", ") : (v.uids ?? "—"))}</span>
-        </div>
-        <div class="status-row">
-          <span class="s-label">Phone</span>
-          <span class="s-value">${escHtml(v.phone ?? "—")}</span>
+
+        <!-- ── 5-Stage Progress Tracker ───────────── -->
+        <div style="margin:20px 0 6px;">
+          <p style="color:var(--muted);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;">Application Progress</p>
+          ${progressTracker([
+            { label: "Application Submitted",  done: true  },
+            { label: "Verification Approved",  done: true  },
+            { label: "Payment Completed",      done: stage3 },
+            { label: "Payment Verified",       done: stage4 },
+            { label: "Confirmation Received",  done: stage5 },
+          ])}
         </div>
 
-        <div style="display:flex;gap:10px;margin-top:20px;">
-          ${p.paymentStatus !== 'verified' ? `
-          <button onclick="verifyPaymentDirect('${tournamentId}','${userId}',true)"
-            style="flex:1;padding:10px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;">
-            ✓ Confirm Payment
+        <!-- ── Room ID & Password ─────────────────── -->
+        <div style="margin:18px 0;padding:14px;background:#0f0f0f;border-radius:10px;border:1px solid var(--border);">
+          <p style="color:var(--muted);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;">🔑 Room ID & Password</p>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input id="smRoomId" placeholder="Room ID"
+              value="${escHtml(p.roomId ?? "")}"
+              style="flex:1;padding:8px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;font-size:13px;">
+            <input id="smRoomPass" placeholder="Password"
+              value="${escHtml(p.roomPassword ?? "")}"
+              style="flex:1;padding:8px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;font-size:13px;">
+          </div>
+          <button onclick="saveRoomDetails('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(v.uids) ? v.uids : [userId]).replace(/"/g,"'")})"
+            style="width:100%;padding:9px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:700;font-size:13px;">
+            💾 Save & Notify Team
           </button>
-          <button onclick="verifyPaymentDirect('${tournamentId}','${userId}',false)"
-            style="flex:1;padding:10px;background:var(--red);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;">
-            ✗ Reject Payment
-          </button>` : `<p style="color:var(--green);text-align:center;flex:1;">Payment Confirmed ✅</p>`}
+          <p style="color:var(--muted);font-size:11px;margin-top:6px;text-align:center;">
+            Saving notifies all members instantly (in-app + push if allowed)
+          </p>
+        </div>
+
+        <!-- ── Actions ────────────────────────────── -->
+        <div style="display:flex;gap:8px;margin-top:4px;">
+          <button onclick="openNotifyModal('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(v.uids) ? v.uids : [userId]).replace(/"/g,"'")},'${escHtml(v.teamName ?? "Team")}')"
+            style="flex:1;padding:10px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;font-size:13px;">
+            🔔 Notify This Team
+          </button>
         </div>
 
         <button onclick="document.getElementById('statusModalOverlay').remove()"
-          style="width:100%;margin-top:12px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">
+          style="width:100%;margin-top:10px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">
           Close
         </button>
       </div>`;
 
     document.body.appendChild(overlay);
+
+    // Close on backdrop click
+    overlay.addEventListener("click", e => {
+      if (e.target === overlay) overlay.remove();
+    });
+
   } catch (e) {
     showToast("Error loading status: " + e.message, "error");
   }
 };
 
-window.verifyPaymentDirect = async function(tournamentId, participantId, isVerified) {
-  const status = isVerified ? "verified" : "rejected";
+// ── Progress tracker HTML builder ─────────────────────────────────────────
+function progressTracker(stages) {
+  return `<div style="display:flex;flex-direction:column;gap:0;">` +
+    stages.map((s, i) => {
+      const isLast = i === stages.length - 1;
+      const dot = s.done
+        ? `<div style="width:24px;height:24px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;color:#000;font-size:13px;font-weight:700;flex-shrink:0;">✓</div>`
+        : `<div style="width:24px;height:24px;border-radius:50%;border:2px solid #333;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;flex-shrink:0;">○</div>`;
+      const connector = isLast ? "" : `<div style="width:2px;height:18px;background:${s.done ? "var(--green)" : "#333"};margin-left:11px;margin-top:2px;margin-bottom:2px;"></div>`;
+      const labelColor = s.done ? "#fff" : "var(--muted)";
+      return `
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <div style="display:flex;flex-direction:column;align-items:center;">
+            ${dot}
+            ${connector}
+          </div>
+          <span style="color:${labelColor};font-size:13px;padding-top:3px;">${s.label}</span>
+        </div>`;
+    }).join("") + `</div>`;
+}
+
+// ── Save Room ID & Password — notifies all members ─────────────────────────
+window.saveRoomDetails = async function(tournamentId, userId, memberIds) {
+  const roomId   = document.getElementById("smRoomId")?.value.trim();
+  const roomPass = document.getElementById("smRoomPass")?.value.trim();
+
+  if (!roomId || !roomPass) {
+    showToast("Enter both Room ID and Password.", "warning");
+    return;
+  }
+
   try {
-    await updateDoc(doc(db, "tournaments", tournamentId, "participants", participantId), {
-      paymentStatus:     status,
-      paymentVerifiedBy: auth.currentUser?.email ?? "admin",
-      paymentVerifiedAt: serverTimestamp(),
+    // Save to participant doc
+    await updateDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+      roomId:           roomId,
+      roomPassword:     roomPass,
+      roomUpdatedAt:    serverTimestamp(),
+      roomUpdatedBy:    auth.currentUser?.email ?? "admin",
     });
+
+    // Get tournament name
+    let tournamentName = tournamentId;
+    try {
+      const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+      if (tSnap.exists()) tournamentName = tSnap.data().title ?? tournamentId;
+    } catch (_) {}
+
+    // Notify all members (dual: in-app + push)
+    const ids = Array.isArray(memberIds) ? memberIds : [userId];
+    await Promise.all(ids.map(mid => sendDualNotification(mid, {
+      type:    "room_details",
+      title:   "🔑 Room Details Ready!",
+      message: `Room ID: ${roomId} | Password: ${roomPass}`,
+      extra:   { roomId, roomPassword: roomPass, tournamentId, tournamentName },
+      actionLink: `tournament=${tournamentId}`,
+    })));
+
+    showToast(`Room details saved & ${ids.length} member(s) notified!`, "success");
     document.getElementById("statusModalOverlay")?.remove();
-    showToast(`Payment ${status}.`, isVerified ? "success" : "error");
-  } catch (e) {
-    showToast("Error: " + e.message, "error");
-  }
-};
-
-// Remove accepted/rejected application from the list (just sets status to archived)
-window.removeApplication = async function(tournamentId, userId) {
-  try {
-    await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
-      archived: true,
-      archivedAt: serverTimestamp(),
-    });
-    showToast("Application removed from list.", "success");
   } catch (e) {
     showToast("Error: " + e.message, "error");
   }
 };
 
 // ============================================================================
-//  6a. VIEW REJECTED DETAILS (read-only modal for rejected applications)
+//  7. NOTIFY THIS TEAM MODAL
+//  NEW: replaced Confirm Payment / Reject Payment buttons
 // ============================================================================
-window.viewRejectedDetails = async function(tournamentId, userId) {
-  try {
-    const docSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
-    if (!docSnap.exists()) { showToast("Application not found.", "error"); return; }
+window.openNotifyModal = function(tournamentId, userId, memberIds, teamName) {
+  document.getElementById("notifyModalOverlay")?.remove();
 
-    const v = docSnap.data();
-    document.getElementById("rejectedDetailModal")?.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "notifyModalOverlay";
+  overlay.className = "status-modal-overlay";
+  overlay.innerHTML = `
+    <div class="status-modal" style="max-width:460px;width:100%;">
+      <h3>🔔 Notify Team — ${escHtml(teamName)}</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">
+        In-app notification is always sent. Push notification sent only if team has granted permission.
+      </p>
 
-    const modal = document.createElement("div");
-    modal.id = "rejectedDetailModal";
-    modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
-    modal.innerHTML = `
-      <div style="background:var(--bg2);width:100%;max-width:520px;padding:28px;border-radius:14px;border:1px solid var(--red);max-height:90vh;overflow-y:auto;">
-        <h2 style="color:var(--red);margin-bottom:6px;">❌ Rejected Application</h2>
-        <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">Read-only view of rejection details</p>
-
-        <div style="display:grid;gap:8px;">
-          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
-            <span style="color:var(--muted);font-size:13px;">Team Name: <b style="color:#fff;margin-left:6px;">${escHtml(v.teamName ?? "—")}</b></span>
-          </div>
-          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
-            <span style="color:var(--muted);font-size:13px;">Leader Email: <b style="color:#fff;margin-left:6px;">${escHtml(v.leaderEmail ?? "—")}</b></span>
-          </div>
-          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
-            <span style="color:var(--muted);font-size:13px;">Tournament: <b style="color:#fff;margin-left:6px;">${escHtml(tournamentId)}</b></span>
-          </div>
-          <div style="background:rgba(255,68,68,.1);padding:14px;border-radius:8px;border:1px solid var(--red);">
-            <span style="color:var(--muted);font-size:13px;display:block;margin-bottom:4px;">Rejection Reason:</span>
-            <b style="color:var(--red);font-size:15px;">${escHtml(v.rejectionNote || v.rejectionReason || "— No reason recorded —")}</b>
-          </div>
-          ${v.processedAt ? `
-          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
-            <span style="color:var(--muted);font-size:13px;">Rejected At: <b style="color:#fff;margin-left:6px;">${v.processedAt.toDate?.()?.toLocaleString("en-IN") ?? "—"}</b></span>
-          </div>` : ""}
+      <div style="margin-bottom:12px;">
+        <label style="color:var(--muted);font-size:11px;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Quick Message</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          ${[
+            "Your application is approved. Proceed to tournament.",
+            "Payment received. Room details coming soon!",
+            "Match starts in 30 minutes. Get ready!",
+            "Check your room ID in the app.",
+          ].map(msg => `
+            <button onclick="document.getElementById('notifyMsgInput').value='${msg.replace(/'/g,"\\'")}'"
+              style="background:#1a1a1a;border:1px solid #333;color:var(--muted);padding:5px 10px;border-radius:16px;cursor:pointer;font-size:12px;font-family:inherit;transition:all .15s;"
+              onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green)'"
+              onmouseout="this.style.borderColor='#333';this.style.color='var(--muted)'">
+              ${escHtml(msg.length > 40 ? msg.slice(0, 38) + "…" : msg)}
+            </button>`).join("")}
         </div>
+        <textarea id="notifyMsgInput"
+          placeholder="Or type a custom message…"
+          style="width:100%;min-height:80px;background:#1a1a1a;border:1px solid #333;color:#fff;padding:10px;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;box-sizing:border-box;"
+        >Your application is approved. Proceed to tournament.</textarea>
+      </div>
 
-        <button onclick="document.getElementById('rejectedDetailModal').remove()"
-          style="width:100%;margin-top:16px;background:transparent;color:var(--muted);border:1px solid var(--border);cursor:pointer;font-family:inherit;padding:10px;border-radius:8px;">
-          Close
-        </button>
-      </div>`;
-    document.body.appendChild(modal);
+      <button onclick="sendTeamNotification('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(memberIds) ? memberIds : [userId]).replace(/"/g,"'")},'${escHtml(teamName)}')"
+        style="width:100%;padding:12px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;font-size:14px;">
+        Send Notification
+      </button>
+      <button onclick="document.getElementById('notifyModalOverlay').remove()"
+        style="width:100%;margin-top:8px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">
+        Cancel
+      </button>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+};
+
+window.sendTeamNotification = async function(tournamentId, userId, memberIds, teamName) {
+  const message = document.getElementById("notifyMsgInput")?.value.trim();
+  if (!message) { showToast("Please enter a message.", "warning"); return; }
+
+  const ids = Array.isArray(memberIds) ? memberIds : [userId];
+
+  try {
+    await Promise.all(ids.map(mid => sendDualNotification(mid, {
+      type:      "admin_notice",
+      title:     "📢 Message from Admin",
+      message,
+      extra:     { tournamentId, teamName },
+      actionLink: `tournament=${tournamentId}`,
+    })));
+
+    document.getElementById("notifyModalOverlay")?.remove();
+    showToast(`Notification sent to ${ids.length} member(s)!`, "success");
   } catch (e) {
     showToast("Error: " + e.message, "error");
   }
 };
 
 // ============================================================================
-//  6. VIEW & DECIDE MODAL  (approve / reject)
+//  8. DUAL NOTIFICATION HELPER
+//  NEW FUNCTION — used throughout this file
+//
+//  HOW IT WORKS:
+//  • In-app:  writes to users/{uid}/notifications  — ALWAYS
+//  • Push:    writes to pushQueue/{uid}/tasks       — Cloud Function picks up
+//             and sends FCM only if user's FCM token exists and is not blocked.
+//             If no Cloud Function is set up yet, push is silently skipped.
+// ============================================================================
+async function sendDualNotification(userId, { type, title, message, extra = {}, actionLink = "" }) {
+  // A. In-app (MANDATORY — never skip)
+  await addDoc(collection(db, "users", userId, "notifications"), {
+    type,
+    title,
+    message,
+    ...extra,
+    actionLink,
+    read:       false,
+    popupShown: false,
+    createdAt:  serverTimestamp(),
+  });
+
+  // B. Push (optional — write to pushQueue; Cloud Function handles FCM)
+  try {
+    await addDoc(collection(db, "pushQueue", userId, "tasks"), {
+      type,
+      title,
+      message,
+      ...extra,
+      createdAt: serverTimestamp(),
+      sent:      false,    // Cloud Function flips this to true after sending
+    });
+  } catch (_) {
+    // Push queue failure must NEVER break in-app notifications
+    console.warn("[Push] Failed to queue push notification for", userId);
+  }
+}
+
+// ============================================================================
+//  9. VIEW & DECIDE MODAL  (approve / reject)
 // ============================================================================
 function fieldVerifyRow(label, value, fieldKey) {
   return `
@@ -429,10 +635,10 @@ function fieldVerifyRow(label, value, fieldKey) {
 
 window.toggleField = function(field, status) {
   currentFieldStatuses[field] = status;
-  const okBtn  = document.getElementById(`btn-${field}-ok`);
-  const errBtn = document.getElementById(`btn-${field}-err`);
-  if (okBtn)  { okBtn.style.background  = status === 'ok'  ? 'var(--green)' : '#333'; okBtn.style.color  = status === 'ok'  ? '#000' : 'var(--green)'; }
-  if (errBtn) { errBtn.style.background = status === 'err' ? 'var(--red)'   : '#333'; errBtn.style.color = status === 'err' ? '#fff' : 'var(--red)'; }
+  const ok  = document.getElementById(`btn-${field}-ok`);
+  const err = document.getElementById(`btn-${field}-err`);
+  if (ok)  { ok.style.background  = status === "ok"  ? "var(--green)" : "#333"; ok.style.color  = status === "ok"  ? "#000" : "var(--green)"; }
+  if (err) { err.style.background = status === "err" ? "var(--red)"   : "#333"; err.style.color = status === "err" ? "#fff" : "var(--red)"; }
 };
 
 window.viewApplicationDetails = async function(tournamentId, userId) {
@@ -444,13 +650,11 @@ window.viewApplicationDetails = async function(tournamentId, userId) {
     document.getElementById("verifModal")?.remove();
     currentFieldStatuses = {};
 
-    // Build individual UID rows (up to 5 players)
-    const uidsArray = Array.isArray(v.uids) ? v.uids : (v.uids ? [v.uids] : []);
+    const uidsArray  = Array.isArray(v.uids) ? v.uids : (v.uids ? [v.uids] : []);
     const uidRowsHtml = uidsArray.map((uid, i) =>
       fieldVerifyRow(`Player ${i + 1} UID`, uid, `uid_${i}`)
     ).join("") || `<div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;color:var(--muted);font-size:13px;">No UIDs submitted</div>`;
 
-    // Find the tournament entry fee
     let entryFee = "—";
     try {
       const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
@@ -465,7 +669,6 @@ window.viewApplicationDetails = async function(tournamentId, userId) {
         <h2 style="color:var(--green);margin-bottom:6px;">Review Application</h2>
         <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">Team: <b style="color:#fff;">${escHtml(v.teamName ?? "—")}</b></p>
 
-        <!-- Core Info (display only) -->
         <div style="display:grid;gap:8px;margin-bottom:16px;">
           <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
             <span style="color:var(--muted);font-size:13px;">Leader Email: <b style="color:#fff;margin-left:6px;">${escHtml(v.leaderEmail ?? "—")}</b></span>
@@ -481,7 +684,6 @@ window.viewApplicationDetails = async function(tournamentId, userId) {
           </div>
         </div>
 
-        <!-- Per-field verification rows -->
         <p style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Verify Each Field</p>
         <div style="display:grid;gap:8px;">
           ${fieldVerifyRow("Phone Number", v.phone, "phone")}
@@ -489,7 +691,6 @@ window.viewApplicationDetails = async function(tournamentId, userId) {
           ${uidRowsHtml}
         </div>
 
-        <!-- Rejection reason -->
         <div style="margin-top:20px;">
           <label style="color:var(--muted);font-size:12px;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:8px;">
             Rejection Reason (required if rejecting)
@@ -530,7 +731,7 @@ window.viewApplicationDetails = async function(tournamentId, userId) {
 };
 
 // ============================================================================
-//  7. PROCESS DECISION  (approve / reject + notify all teammates)
+//  10. PROCESS DECISION  (approve / reject + dual notify all teammates)
 // ============================================================================
 async function processDecision(tournamentId, userId, status) {
   const reasonSelect = document.getElementById("reasonSelect").value;
@@ -543,7 +744,6 @@ async function processDecision(tournamentId, userId, status) {
   }
 
   try {
-    // 1. Update verification doc
     await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
       status,
       rejectionNote:  finalReason,
@@ -552,7 +752,7 @@ async function processDecision(tournamentId, userId, status) {
       processedBy:    auth.currentUser?.uid ?? "admin",
     });
 
-    // 2. Find all teammates
+    // Collect team member IDs
     let allMemberIds = [userId];
     try {
       const applicantSnap = await getDoc(doc(db, "users", userId));
@@ -567,29 +767,20 @@ async function processDecision(tournamentId, userId, status) {
         }
       }
     } catch (lookupErr) {
-      console.warn("Team lookup failed, notifying applicant only:", lookupErr.message);
+      console.warn("Team lookup failed:", lookupErr.message);
     }
 
-    // 3. Notify every member
+    const msgApproved = "Your team has been verified! ✅ Proceed to the payment stage.";
+    const msgRejected = `Your application was rejected. Reason: ${finalReason}`;
+
     await Promise.all(
-      allMemberIds.map(memberId =>
-        addDoc(collection(db, "users", memberId, "notifications"), {
-          type:        status === "approved" ? "approval" : "rejected",
-          title:       status === "approved" ? "Application Approved!" : "Application Rejected",
-          message:     memberId === userId
-                         ? (status === "approved"
-                             ? "Your team has been verified! ✅"
-                             : `Your application was rejected. Reason: ${finalReason}`)
-                         : (status === "approved"
-                             ? "Your team's tournament application has been approved! ✅"
-                             : `Your team's application was rejected. Reason: ${finalReason}`),
-          tournamentId,
-          actionLink:  `tournament=${tournamentId}`,
-          read:        false,
-          popupShown:  false,
-          createdAt:   serverTimestamp(),
-        })
-      )
+      allMemberIds.map(mid => sendDualNotification(mid, {
+        type:      status === "approved" ? "approval" : "rejected",
+        title:     status === "approved" ? "Application Approved! ✅" : "Application Rejected ❌",
+        message:   status === "approved" ? msgApproved : msgRejected,
+        extra:     { tournamentId, rejectionNote: finalReason || "" },
+        actionLink: `tournament=${tournamentId}`,
+      }))
     );
 
     document.getElementById("verifModal")?.remove();
@@ -606,7 +797,56 @@ async function processDecision(tournamentId, userId, status) {
 }
 
 // ============================================================================
-//  8. UPCOMING REGISTRATIONS TAB
+//  11. REJECTED DETAILS (read-only)
+// ============================================================================
+window.viewRejectedDetails = async function(tournamentId, userId) {
+  try {
+    const docSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
+    if (!docSnap.exists()) { showToast("Application not found.", "error"); return; }
+
+    const v = docSnap.data();
+    document.getElementById("rejectedDetailModal")?.remove();
+
+    const modal = document.createElement("div");
+    modal.id = "rejectedDetailModal";
+    modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
+    modal.innerHTML = `
+      <div style="background:var(--bg2);width:100%;max-width:520px;padding:28px;border-radius:14px;border:1px solid var(--red);max-height:90vh;overflow-y:auto;">
+        <h2 style="color:var(--red);margin-bottom:6px;">❌ Rejected Application</h2>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">Read-only view</p>
+        <div style="display:grid;gap:8px;">
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Team Name: <b style="color:#fff;margin-left:6px;">${escHtml(v.teamName ?? "—")}</b></span>
+          </div>
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Leader Email: <b style="color:#fff;margin-left:6px;">${escHtml(v.leaderEmail ?? "—")}</b></span>
+          </div>
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Tournament: <b style="color:#fff;margin-left:6px;">${escHtml(tournamentId)}</b></span>
+          </div>
+          <div style="background:rgba(255,68,68,.1);padding:14px;border-radius:8px;border:1px solid var(--red);">
+            <span style="color:var(--muted);font-size:13px;display:block;margin-bottom:4px;">Rejection Reason:</span>
+            <b style="color:var(--red);font-size:15px;">${escHtml(v.rejectionNote || v.rejectionReason || "— No reason recorded —")}</b>
+          </div>
+          ${v.processedAt ? `
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Rejected At: <b style="color:#fff;margin-left:6px;">${v.processedAt.toDate?.()?.toLocaleString("en-IN") ?? "—"}</b></span>
+          </div>` : ""}
+        </div>
+        <button onclick="document.getElementById('rejectedDetailModal').remove()"
+          style="width:100%;margin-top:16px;background:transparent;color:var(--muted);border:1px solid var(--border);cursor:pointer;font-family:inherit;padding:10px;border-radius:8px;">
+          Close
+        </button>
+      </div>`;
+    document.body.appendChild(modal);
+  } catch (e) {
+    showToast("Error: " + e.message, "error");
+  }
+};
+
+// ============================================================================
+//  12. UPCOMING REGISTRATIONS TAB
+//  BUG FIX: archived filter applied; reject uses custom modal (no prompt())
 // ============================================================================
 function loadUpcomingRegistrations() {
   if (_listeners.registrations) { _listeners.registrations(); _listeners.registrations = null; }
@@ -627,32 +867,24 @@ function loadUpcomingRegistrations() {
 
     snapshot.forEach(d => {
       const data = { id: d.id, tournamentId: d.ref.parent.parent.id, ...d.data() };
-      if (data.status === "pending")  pending.push(data);
+      if (data.archived === true) return; // CLIENT-SIDE filter
+      if      (data.status === "pending")  pending.push(data);
       else if (data.status === "approved") approved.push(data);
       else if (data.status === "rejected") rejected.push(data);
     });
 
-    if (pending.length === 0 && approved.length === 0 && rejected.length === 0) {
+    if (!pending.length && !approved.length && !rejected.length) {
       container.innerHTML = `<div class="empty-state"><span class="emoji">📋</span>No registrations yet.</div>`;
       return;
     }
 
     let html = "";
-
-    html += partition("new", `🆕 New Registrations (${pending.length})`);
-    if (pending.length === 0) {
-      html += noItems();
-    } else {
-      pending.forEach(d => { html += upcomingCard(d, "new"); });
-    }
-
+    html += partition("new",      `🆕 New Registrations (${pending.length})`);
+    html += pending.length  ? pending.map(d  => upcomingCard(d, "new")).join("")      : noItems();
     html += partition("accepted", `✅ Approved (${approved.length})`);
-    if (approved.length === 0) { html += noItems(); }
-    else { approved.forEach(d => { html += upcomingCard(d, "accepted"); }); }
-
+    html += approved.length ? approved.map(d => upcomingCard(d, "accepted")).join("") : noItems();
     html += partition("rejected", `❌ Rejected (${rejected.length})`);
-    if (rejected.length === 0) { html += noItems(); }
-    else { rejected.forEach(d => { html += upcomingCard(d, "rejected"); }); }
+    html += rejected.length ? rejected.map(d => upcomingCard(d, "rejected")).join("") : noItems();
 
     container.innerHTML = html;
   }, err => {
@@ -660,14 +892,12 @@ function loadUpcomingRegistrations() {
   });
 }
 
-function noItems() {
-  return `<div style="color:var(--muted);font-size:13px;padding:8px 0 16px;">— None —</div>`;
-}
-
 function upcomingCard(d, type) {
   const pillClass = type === "new" ? "pill-new" : type === "accepted" ? "pill-accepted" : "pill-rejected";
-  const pillLabel = type === "new" ? "PENDING" : type === "accepted" ? "APPROVED" : "REJECTED";
-  const eventDate = d.eventDate ? new Date(d.eventDate).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" }) : "TBA";
+  const pillLabel = type === "new" ? "PENDING"  : type === "accepted" ? "APPROVED"     : "REJECTED";
+  const eventDate = d.eventDate
+    ? new Date(d.eventDate).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })
+    : "TBA";
 
   let actions = "";
   if (type === "new") {
@@ -676,18 +906,16 @@ function upcomingCard(d, type) {
         style="background:var(--green);color:#000;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;">
         Approve
       </button>
-      <button onclick="rejectUpcoming('${d.tournamentId}','${d.id}')"
+      <button onclick="openRejectUpcomingModal('${d.tournamentId}','${d.id}')"
         style="background:var(--red);color:#fff;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;">
         Reject
       </button>`;
-  } else if (type === "accepted") {
-    actions = `<button class="btn-remove" onclick="removeUpcoming('${d.tournamentId}','${d.id}')">Remove</button>`;
   } else {
-    actions = `<button class="btn-remove" onclick="removeUpcoming('${d.tournamentId}','${d.id}')">Remove</button>`;
+    actions = `<button class="btn-remove" onclick="removeUpcoming('${d.tournamentId}','${d.id}','${d.id}')" id="regcard-${d.id}">Remove</button>`;
   }
 
   return `
-    <div class="app-card ${type}">
+    <div class="app-card ${type}" id="regcard-${d.id}">
       <div class="app-card-info">
         <strong>${escHtml(d.teamName ?? "—")}</strong>
         <small>Leader: ${escHtml(d.leaderEmail ?? "—")}</small>
@@ -707,25 +935,22 @@ window.approveUpcoming = async function(tournamentId, userId) {
       status: "approved", processedAt: serverTimestamp(),
     });
 
-    // Notify all team members
     let allMemberIds = [userId];
     try {
       const uSnap = await getDoc(doc(db, "users", userId));
       if (uSnap.exists() && uSnap.data().teamId) {
         const tSnap = await getDoc(doc(db, "teams", uSnap.data().teamId));
-        if (tSnap.exists()) allMemberIds = [...new Set([...tSnap.data().members ?? [], userId])];
+        if (tSnap.exists()) allMemberIds = [...new Set([...(tSnap.data().members ?? []), userId])];
       }
     } catch (_) {}
 
-    await Promise.all(allMemberIds.map(mid =>
-      addDoc(collection(db, "users", mid, "notifications"), {
-        type: "upcoming_approved",
-        title: "Registration Approved!",
-        message: "Your upcoming tournament registration has been approved! 🎉",
-        tournamentId,
-        read: false, popupShown: false, createdAt: serverTimestamp(),
-      })
-    ));
+    await Promise.all(allMemberIds.map(mid => sendDualNotification(mid, {
+      type:      "upcoming_approved",
+      title:     "Registration Approved! 🎉",
+      message:   "Your upcoming tournament registration has been approved! Stay tuned for match details.",
+      extra:     { tournamentId },
+      actionLink: `tournament=${tournamentId}`,
+    })));
 
     showToast(`Registration approved! Notified ${allMemberIds.length} member(s).`, "success");
   } catch (e) {
@@ -733,24 +958,73 @@ window.approveUpcoming = async function(tournamentId, userId) {
   }
 };
 
-window.rejectUpcoming = async function(tournamentId, userId) {
-  const reason = prompt("Enter rejection reason:");
-  if (!reason) return;
+// UPGRADE: custom modal instead of browser prompt()
+window.openRejectUpcomingModal = function(tournamentId, userId) {
+  document.getElementById("rejectUpcomingModal")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "rejectUpcomingModal";
+  overlay.className = "status-modal-overlay";
+  overlay.innerHTML = `
+    <div class="status-modal" style="max-width:420px;width:100%;">
+      <h3 style="color:var(--red);">❌ Reject Registration</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:14px;">Select or write a reason. The team will be notified.</p>
+      <select id="rejectUpcomingReason" style="width:100%;padding:10px;background:#000;color:#fff;border:1px solid #444;border-radius:8px;margin-bottom:10px;font-family:inherit;">
+        <option value="">-- Select Reason --</option>
+        <option value="Registration closed">Registration closed</option>
+        <option value="Slots full">Slots full</option>
+        <option value="Incomplete details">Incomplete details</option>
+        <option value="Duplicate registration">Duplicate registration</option>
+        <option value="custom">Other (write below)</option>
+      </select>
+      <textarea id="rejectUpcomingNote" placeholder="Custom reason (optional)…"
+        style="width:100%;height:60px;background:#000;color:#fff;border:1px solid #444;padding:10px;border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button onclick="confirmRejectUpcoming('${tournamentId}','${userId}')"
+          style="flex:1;padding:10px;background:var(--red);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;">
+          Confirm Reject
+        </button>
+        <button onclick="document.getElementById('rejectUpcomingModal').remove()"
+          style="flex:1;padding:10px;background:#222;color:var(--muted);border:1px solid #333;border-radius:8px;cursor:pointer;font-family:inherit;">
+          Cancel
+        </button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+};
+
+window.confirmRejectUpcoming = async function(tournamentId, userId) {
+  const select = document.getElementById("rejectUpcomingReason").value;
+  const custom = document.getElementById("rejectUpcomingNote").value.trim();
+  const reason = select === "custom" ? custom : select;
+  if (!reason) { showToast("Please select or enter a reason.", "warning"); return; }
+
   try {
     await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
       status: "rejected", rejectionReason: reason, processedAt: serverTimestamp(),
     });
-    showToast("Registration rejected.", "error");
+    await sendDualNotification(userId, {
+      type:      "rejected",
+      title:     "Registration Rejected",
+      message:   `Your registration was rejected. Reason: ${reason}`,
+      extra:     { tournamentId },
+      actionLink: `tournament=${tournamentId}`,
+    });
+    document.getElementById("rejectUpcomingModal")?.remove();
+    showToast("Registration rejected & team notified.", "error");
   } catch (e) {
     showToast("Error: " + e.message, "error");
   }
 };
 
-window.removeUpcoming = async function(tournamentId, userId) {
+// BUG FIX: immediate DOM removal on removeUpcoming
+window.removeUpcoming = async function(tournamentId, userId, cardId) {
+  if (!confirm("Remove this registration from the list?")) return;
   try {
     await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
       archived: true, archivedAt: serverTimestamp(),
     });
+    document.getElementById(`regcard-${cardId}`)?.remove();
     showToast("Removed from list.", "success");
   } catch (e) {
     showToast("Error: " + e.message, "error");
@@ -758,7 +1032,7 @@ window.removeUpcoming = async function(tournamentId, userId) {
 };
 
 // ============================================================================
-//  9. AUTH ACTIONS
+//  13. AUTH ACTIONS
 // ============================================================================
 window.adminLogin = async function() {
   const email = document.getElementById("adminEmail").value.trim();
@@ -777,29 +1051,21 @@ window.logout = async function() {
 };
 
 // ============================================================================
-//  10. TOURNAMENTS
+//  14. TOURNAMENTS
 // ============================================================================
 let currentTournamentCategory = "ongoing";
 
 window.handleCategoryChange = function(select) {
   currentTournamentCategory = select.value;
-
   const ongoingFields  = document.getElementById("ongoingFields");
   const upcomingFields = document.getElementById("upcomingFields");
-
   if (select.value === "upcoming") {
     if (ongoingFields)  ongoingFields.style.display  = "none";
     if (upcomingFields) upcomingFields.style.display = "block";
-  } else if (select.value === "limited") {
-    // Limited uses ongoing fields (duration-based) but no entry fee shown to users
-    if (ongoingFields)  ongoingFields.style.display  = "block";
-    if (upcomingFields) upcomingFields.style.display = "none";
   } else {
     if (ongoingFields)  ongoingFields.style.display  = "block";
     if (upcomingFields) upcomingFields.style.display = "none";
   }
-
-  // Update calendar mark note live
   updateCalendarNote();
 };
 
@@ -819,8 +1085,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
 window.addTournament = async function() {
   const category = document.getElementById("tournamentCategory").value;
-
-  let title, fee, mode, first, second, third, duration, eventDate, endTime;
+  let title, fee, mode, first, second, third, duration, eventDate, eventTime;
 
   if (category === "upcoming") {
     title     = document.getElementById("tournamentTitle").value.trim();
@@ -830,13 +1095,10 @@ window.addTournament = async function() {
     second    = Number(document.getElementById("upcomingPrizeSecond").value) || 0;
     third     = Number(document.getElementById("upcomingPrizeThird").value)  || 0;
     eventDate = document.getElementById("tournamentEventDate")?.value;
-    const eventTime = document.getElementById("tournamentEventTime")?.value || null;
+    eventTime = document.getElementById("tournamentEventTime")?.value || null;
     duration  = null;
-
-    if (!title || !fee)      { showToast("Title and entry fee are required.", "warning"); return; }
-    if (!eventDate)          { showToast("Please select a tournament date.",  "warning"); return; }
-
-    endTime = new Date(eventDate).getTime() + 24 * 60 * 60 * 1000;
+    if (!title || !fee)  { showToast("Title and entry fee are required.", "warning"); return; }
+    if (!eventDate)      { showToast("Please select a tournament date.",  "warning"); return; }
   } else {
     title    = document.getElementById("tournamentTitle").value.trim();
     fee      = Number(document.getElementById("tournamentFee").value);
@@ -845,9 +1107,7 @@ window.addTournament = async function() {
     second   = Number(document.getElementById("prizeSecond").value) || 0;
     third    = Number(document.getElementById("prizeThird").value)  || 0;
     duration = Number(document.getElementById("tournamentDuration").value) || 60;
-    endTime  = Date.now() + duration * 60000;
     eventDate = null;
-
     if (!title || !fee) { showToast("Title and entry fee are required.", "warning"); return; }
   }
 
@@ -856,53 +1116,40 @@ window.addTournament = async function() {
       title, entryFee: fee, mode, category,
       duration: eventDate ? null : duration,
       eventDate: eventDate ?? null,
-      eventTime: (category === "upcoming" ? (eventTime ?? null) : null),
+      eventTime: category === "upcoming" ? (eventTime ?? null) : null,
       prize: { first, second, third },
       createdAt: serverTimestamp(),
-      endTime,
-      status: category === "ongoing" ? "live" : (category === "limited" ? "limited" : "upcoming"),
+      endTime: eventDate ? new Date(eventDate).getTime() + 86400000 : Date.now() + (duration * 60000),
+      status: category === "ongoing" ? "live" : category === "limited" ? "limited" : "upcoming",
       isPaymentDeferred: category === "upcoming",
     };
 
     const tourneyRef = await addDoc(tournamentsRef, tournamentData);
 
-    // Auto-create calendar event for upcoming
     if (category === "upcoming" && eventDate) {
       const calType = fee > 200 ? "special" : "upcoming";
       await addDoc(calendarRef, {
-        date: eventDate,
-        title,
-        type: calType,
-        prize: first,
+        date: eventDate, title, type: calType, prize: first,
         description: `${mode} Tournament — Entry ₹${fee}`,
-        tournamentId: tourneyRef.id,
-        createdAt: serverTimestamp(),
-        source: "auto",
+        tournamentId: tourneyRef.id, createdAt: serverTimestamp(), source: "auto",
       });
       showToast(`Tournament added! Calendar marked as ${calType === "special" ? "⭐ Special" : "📅 Upcoming"}.`, "success");
     } else if (category === "limited") {
-      // Limited tournaments auto-added to calendar as Special
       const today = new Date().toISOString().split("T")[0];
       await addDoc(calendarRef, {
-        date: today,
-        title: `[LIMITED] ${title}`,
-        type: "special",
-        prize: first,
+        date: today, title: `[LIMITED] ${title}`, type: "special", prize: first,
         description: `Limited Tournament — ${mode} · Entry ₹${fee}`,
-        tournamentId: tourneyRef.id,
-        createdAt: serverTimestamp(),
-        source: "auto",
+        tournamentId: tourneyRef.id, createdAt: serverTimestamp(), source: "auto",
       });
-      showToast("Limited tournament added! Auto-marked as ⭐ Special on calendar.", "success");
+      showToast("Limited tournament added! Auto-marked as ⭐ Special.", "success");
     } else {
       showToast("Tournament added!", "success");
     }
 
-    // Clear form
     ["tournamentTitle","tournamentFee","prizeFirst","prizeSecond","prizeThird",
-     "upcomingFee","upcomingPrizeFirst","upcomingPrizeSecond","upcomingPrizeThird","tournamentEventDate","tournamentEventTime"]
+     "upcomingFee","upcomingPrizeFirst","upcomingPrizeSecond","upcomingPrizeThird",
+     "tournamentEventDate","tournamentEventTime"]
       .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
-
   } catch (e) {
     showToast("Error: " + e.message, "error");
   }
@@ -943,7 +1190,7 @@ function loadTournaments() {
 }
 
 // ============================================================================
-//  11. CALENDAR
+//  15. CALENDAR
 // ============================================================================
 window.selectColor = function(type, element) {
   document.querySelectorAll(".color-option").forEach(el => el.classList.remove("selected"));
@@ -957,9 +1204,7 @@ window.addCalendarEvent = async function() {
   const type  = document.getElementById("eventType").value;
   const prize = Number(document.getElementById("eventPrize").value) || 0;
   const desc  = document.getElementById("eventDesc").value.trim() || title;
-
   if (!date || !title) { showToast("Date and title are required.", "warning"); return; }
-
   try {
     const existing = await getDocs(query(calendarRef, where("date", "==", date)));
     if (!existing.empty) {
@@ -1008,9 +1253,7 @@ window.updateCalendarEvent = async function(id) {
   const type  = document.getElementById("eventType").value;
   const prize = Number(document.getElementById("eventPrize").value) || 0;
   const desc  = document.getElementById("eventDesc").value.trim() || title;
-
   if (!date || !title) { showToast("Date and title are required.", "warning"); return; }
-
   try {
     await updateDoc(doc(db, "calendarEvents", id), { date, title, type, prize, description: desc, updatedAt: serverTimestamp() });
     ["eventDate","eventTitle","eventPrize","eventDesc"].forEach(id => document.getElementById(id).value = "");
@@ -1057,50 +1300,7 @@ function loadCalendarEvents() {
 }
 
 // ============================================================================
-//  12. PAYMENT VERIFICATION (from tournament list view)
-// ============================================================================
-window.viewRegistrations = async function(tournamentId) {
-  const participantsRef = collection(db, "tournaments", tournamentId, "participants");
-  const snapshot = await getDocs(query(participantsRef, orderBy("timestamps.registeredAt", "desc")));
-
-  let html = `<h3>Registrations & Payment Verification</h3><div style="display:grid;gap:10px;">`;
-  snapshot.forEach(d => {
-    const p = d.data();
-    const statusColor = p.paymentStatus === "verified" ? "var(--green)" : p.paymentStatus === "rejected" ? "var(--red)" : "var(--gold)";
-    html += `
-      <div style="background:var(--bg2);padding:15px;border-radius:8px;border-left:3px solid ${statusColor};display:flex;justify-content:space-between;align-items:center;">
-        <div>
-          <div style="color:#fff;font-weight:bold;">${escHtml(p.teamName ?? "—")}</div>
-          <div style="color:var(--muted);font-size:12px;margin-top:4px;">UID: ${escHtml(p.freeFireUid ?? "—")} | Phone: ${escHtml(p.phoneNumber ?? "—")}</div>
-          <div style="color:var(--muted);font-size:11px;margin-top:2px;">Txn: <span style="color:var(--gold);">${escHtml(p.transactionCode ?? "—")}</span></div>
-        </div>
-        <div style="display:flex;gap:6px;">
-          <button onclick="verifyPayment('${tournamentId}','${d.id}',true)"  style="background:var(--green);color:#000;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">✓ Verify</button>
-          <button onclick="verifyPayment('${tournamentId}','${d.id}',false)" style="background:var(--red);color:#fff;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">✗ Reject</button>
-        </div>
-      </div>`;
-  });
-  html += "</div>";
-  document.getElementById("adminList").innerHTML = html;
-};
-
-window.verifyPayment = async function(tournamentId, participantId, isVerified) {
-  const status = isVerified ? "verified" : "rejected";
-  try {
-    await updateDoc(doc(db, "tournaments", tournamentId, "participants", participantId), {
-      paymentStatus:     status,
-      paymentVerifiedBy: auth.currentUser?.email ?? "admin",
-      paymentVerifiedAt: serverTimestamp(),
-    });
-    showToast(`Payment ${status}.`, isVerified ? "success" : "error");
-    window.viewRegistrations(tournamentId);
-  } catch (e) {
-    showToast("Error: " + e.message, "error");
-  }
-};
-
-// ============================================================================
-//  13. SOUND ALERT
+//  16. SOUND ALERT
 // ============================================================================
 const adminAudio = new (window.AudioContext || window.webkitAudioContext)();
 function playAdminAlert() {
