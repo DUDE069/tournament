@@ -4307,7 +4307,10 @@ window.createAccount = async function() {
             setTimeout(() => { showMessage(`Welcome to team "${welcomeTeam}"!`); localStorage.removeItem("welcomeTeam"); }, 1000);
         }
 
-        backToLogin();
+        // THE FIX: Force a page reload so the local memory grabs the newly created profile!
+        setTimeout(() => {
+            location.reload();
+        }, 2000);
         
     } catch (err) {
         console.error("Account Finalization Error:", err);
