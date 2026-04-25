@@ -16,7 +16,8 @@ import {
     signInWithEmailAndPassword,
     onAuthStateChanged,
     signOut,
-    updatePassword
+    updatePassword,
+    sendEmailVerification // <-- ADD THIS HERE
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 const tournamentsRef = collection(db, "tournaments");
@@ -3967,7 +3968,9 @@ window.sendSignupOTP = async function() {
         
         // Step 1: Create Auth user
         const userCred = await createUserWithEmailAndPassword(auth, email, pass);
-        await userCred.user.sendEmailVerification();
+        
+        // THE FIX: Use Firebase v10 syntax for sending the email
+        await sendEmailVerification(userCred.user);
         
         // Step 2: Setup UI for Email Verification phase
         document.getElementById("signupStep1").style.display = "none";
@@ -3982,7 +3985,7 @@ window.sendSignupOTP = async function() {
         startResendTimer();
         
     } catch (err) {
-        console.error("[SIGNUP] Error:", err.code);
+        console.error("[SIGNUP] Error:", err.code || err.message);
         
         // Ghost Account Recovery
         if (err.code === 'auth/email-already-in-use') {
@@ -3991,7 +3994,9 @@ window.sendSignupOTP = async function() {
                 const user = userCred.user;
                 
                 if (!user.emailVerified) {
-                    await user.sendEmailVerification();
+                    // THE FIX: Use Firebase v10 syntax here too
+                    await sendEmailVerification(user);
+                    
                     document.getElementById("signupStep1").style.display = "none";
                     document.getElementById("signupStep2").style.display = "block";
                     document.getElementById("roleSelectionArea").style.display = "none";
@@ -4015,13 +4020,12 @@ window.sendSignupOTP = async function() {
                 setTimeout(() => { backToLogin(); document.getElementById("loginEmail").value = email; }, 1500);
             }
         } else {
-            showMessage("Error: " + err.message);
+            showMessage("Error: " + (err.message || "Unknown error"));
         }
     } finally {
         if (btn) { btn.disabled = false; btn.textContent = originalText; }
     }
 };
-
 function startResendTimer() {
     resendCooldown = 60;
     const timerEl = document.getElementById("resendTimer");
@@ -4169,7 +4173,10 @@ window.resendSignupOTP = async function() {
 
     try {
         console.log("[RESEND] Sending verification email...");
-        await user.sendEmailVerification();
+        
+        // THE FIX: Use Firebase v10 syntax
+        await sendEmailVerification(user);
+        
         console.log("✅ Verification email resent!");
         showMessage("📧 New verification email sent!");
         startResendTimer();
@@ -4182,7 +4189,6 @@ window.resendSignupOTP = async function() {
         }
     }
 };
-
 // ==========================================
 // 3. FINAL CREATE ACCOUNT (Writes to Firestore)
 // ==========================================
