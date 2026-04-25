@@ -4153,33 +4153,57 @@ window.sendSignupOTP = async function() {
     const pass = document.getElementById("regPass").value;
     const age = parseInt(document.getElementById("regAge").value);
 
+    // Validate inputs first
     if (!email.includes("@gmail.com")) { 
         showMessage("Please use a valid Gmail ID"); 
         return; 
     }
-    if (pass.length < 6) { showMessage("Password too short"); return; }
-    if (isNaN(age) || age < 12 || age > 60) { showMessage("Age must be 12-60"); return; }
+    if (pass.length < 6) { 
+        showMessage("Password too short (min 6 characters)"); 
+        return; 
+    }
+    if (isNaN(age) || age < 12 || age > 60) { 
+        showMessage("Age must be between 12 and 60"); 
+        return; 
+    }
+
+    // Check if passwords match
+    const confirm = document.getElementById("regConfirm")?.value;
+    if (pass !== confirm) {
+        showMessage("Passwords do not match");
+        return;
+    }
 
     const btn = document.getElementById("btnSendOTP");
+    const originalText = btn.textContent;
     btn.disabled = true;
     btn.textContent = "Sending...";
 
     try {
-        // Create Firebase Auth user (unverified)
-        const userCred = await createUserWithEmailAndPassword(auth, email, pass);
-        const user = userCred.user;
+        console.log("[SIGNUP] Creating new account for:", email);
         
-        // Store data temporarily for after verification
+        // Step 1: Create Firebase Auth user
+        const userCred = await createUserWithEmailAndPassword(auth, email, pass);
+        
+        // IMPORTANT: Verify userCred and user exist
+        if (!userCred || !userCred.user) {
+            throw new Error("Account creation failed - no user returned");
+        }
+        
+        const user = userCred.user;
+        console.log("[SIGNUP] User created, UID:", user.uid);
+        
+        // Step 2: Store data temporarily
         localStorage.setItem('pendingUid', user.uid);
         localStorage.setItem('pendingEmail', email);
         localStorage.setItem('pendingAge', age);
-        localStorage.setItem('pendingPass', pass);
         
-        // Send Firebase verification email (LINK method)
+        // Step 3: Send verification email
+        console.log("[SIGNUP] Sending verification email...");
         await user.sendEmailVerification();
         console.log("✅ Verification email sent to:", email);
 
-        // Show step 2
+        // Step 4: Show step 2
         document.getElementById("signupStep1").style.display = "none";
         document.getElementById("signupStep2").style.display = "block";
         document.getElementById("roleSelectionArea").style.display = "block";
@@ -4188,17 +4212,34 @@ window.sendSignupOTP = async function() {
         startResendTimer();
         
     } catch (err) {
-        console.error("Signup error:", err);
-        btn.disabled = false;
-        btn.textContent = "Send Code";
+        console.error("[SIGNUP] Error:", err.code, err.message);
         
+        // Reset button
+        btn.disabled = false;
+        btn.textContent = originalText;
+        
+        // Handle specific errors
         if (err.code === 'auth/email-already-in-use') {
-            showMessage("Email already registered. Try logging in.");
+            showMessage("⚠️ Email already registered! Please login instead.");
+            // Offer to login instead
+            setTimeout(() => {
+                if (confirm("Would you like to login instead?")) {
+                    backToLogin();
+                    document.getElementById("loginEmail").value = email;
+                }
+            }, 1000);
+        } else if (err.code === 'auth/weak-password') {
+            showMessage("Password is too weak. Use at least 6 characters.");
+        } else if (err.code === 'auth/invalid-email') {
+            showMessage("Invalid email format.");
+        } else if (err.code === 'auth/network-request-failed') {
+            showMessage("Network error. Check your connection.");
         } else {
-            showMessage("Error: " + err.message);
+            showMessage("Error: " + (err.message || "Unknown error occurred"));
         }
     }
 };
+
 
 
 function startResendTimer() {
@@ -4219,38 +4260,62 @@ function startResendTimer() {
 
 window.verifyAndCreate = async function() {
     const btn = document.querySelector('#signupStep2 button');
+    if (!btn) {
+        showMessage("Button not found. Please refresh the page.");
+        return;
+    }
+    
+    const originalText = btn.textContent;
     btn.disabled = true;
     btn.textContent = "Verifying...";
 
     try {
-        // Check if user is logged in
+        // Step 1: Get current user from Firebase Auth
         const user = auth.currentUser;
         
         if (!user) {
-            showMessage("Session expired. Please sign up again.");
+            showMessage("❌ No active session. Please sign up again.");
             btn.disabled = false;
-            btn.textContent = "Verify Email";
+            btn.textContent = originalText;
             return;
         }
 
-        // Reload user to get fresh verification status
+        console.log("[VERIFY] Current user:", user.uid, "Email verified:", user.emailVerified);
+
+        // Step 2: Reload user to get fresh verification status
         await user.reload();
         
-        // Check if email is verified
+        // Step 3: Check if email is verified
         if (!user.emailVerified) {
-            showMessage("⚠️ Click the link in your Gmail first, then click here again!");
+            showMessage("⚠️ Please click the link in your Gmail FIRST, then click this button!");
             btn.disabled = false;
-            btn.textContent = "Verify Email";
+            btn.textContent = "I've Verified ✅";
             return;
         }
 
-        // Email verified! Create full profile in Firestore
+        console.log("[VERIFY] Email is verified! Creating profile...");
+
+        // Step 4: Get stored data
         const uid = localStorage.getItem('pendingUid');
         const email = localStorage.getItem('pendingEmail');
         const age = parseInt(localStorage.getItem('pendingAge'));
         
+        if (!uid || !email) {
+            showMessage("❌ Session expired. Please sign up again.");
+            btn.disabled = false;
+            btn.textContent = originalText;
+            return;
+        }
+
+        // Verify UID matches
+        if (user.uid !== uid) {
+            console.warn("[VERIFY] UID mismatch! User:", user.uid, "Pending:", uid);
+            // Use current user's UID instead
+        }
+
+        // Step 5: Create user profile
         let userData = {
-            uid: uid,
+            uid: user.uid,
             email: email,
             age: age,
             role: selectedRole || "viewer",
@@ -4274,9 +4339,9 @@ window.verifyAndCreate = async function() {
             const generatedCode = document.getElementById("generatedCode")?.textContent?.replace("Code: ", "").trim();
             
             if (!teamName || !generatedCode) {
-                showMessage("Enter team name and generate code");
+                showMessage("Please enter team name and generate code");
                 btn.disabled = false;
-                btn.textContent = "Verify Email";
+                btn.textContent = originalText;
                 return;
             }
 
@@ -4285,10 +4350,10 @@ window.verifyAndCreate = async function() {
             await setDoc(doc(db, "teams", teamId), {
                 teamId: teamId,
                 teamName: teamName,
-                leaderId: uid,
+                leaderId: user.uid,
                 leaderName: email.split('@')[0],
                 code: generatedCode,
-                members: [uid],
+                members: [user.uid],
                 maxMembers: 5,
                 createdAt: serverTimestamp()
             });
@@ -4303,9 +4368,9 @@ window.verifyAndCreate = async function() {
             const enteredCode = document.getElementById("joinCode")?.value.trim().toUpperCase();
             
             if (!enteredCode) {
-                showMessage("Enter team code");
+                showMessage("Please enter team code");
                 btn.disabled = false;
-                btn.textContent = "Verify Email";
+                btn.textContent = originalText;
                 return;
             }
 
@@ -4313,9 +4378,9 @@ window.verifyAndCreate = async function() {
             const teamSnap = await getDocs(teamsQuery);
 
             if (teamSnap.empty) {
-                showMessage("Invalid team code");
+                showMessage("Invalid team code. Check with your team leader.");
                 btn.disabled = false;
-                btn.textContent = "Verify Email";
+                btn.textContent = originalText;
                 return;
             }
 
@@ -4323,7 +4388,7 @@ window.verifyAndCreate = async function() {
             const teamData = teamDoc.data();
 
             await updateDoc(doc(db, "teams", teamData.teamId), {
-                members: arrayUnion(uid)
+                members: arrayUnion(user.uid)
             });
 
             userData.teamId = teamData.teamId;
@@ -4333,31 +4398,37 @@ window.verifyAndCreate = async function() {
             localStorage.setItem("welcomeTeam", teamData.teamName);
         }
 
-        // Create user document
-        await setDoc(doc(db, "users", uid), userData);
-        console.log("✅ User profile created");
+        // Step 6: Create user document in Firestore
+        await setDoc(doc(db, "users", user.uid), userData);
+        console.log("✅ User profile created in Firestore");
 
-        // Clear temp data
+        // Step 7: Clear temp data
         localStorage.removeItem('pendingUid');
         localStorage.removeItem('pendingEmail');
         localStorage.removeItem('pendingAge');
         localStorage.removeItem('pendingPass');
 
-        showMessage("✅ Account created and verified!");
-        btn.textContent = "Done!";
+        // Step 8: Success!
+        showMessage("🎉 Account created and verified!");
+        btn.textContent = "✅ Done!";
         
         setTimeout(() => {
             backToLogin();
-            showMessage(selectedRole === "leader" ? `Team "${userData.teamName}" created!` : "Login to continue!");
-        }, 1000);
+            if (selectedRole === "leader") {
+                showMessage(`Team "${userData.teamName}" created! Code: ${userData.teamCode}`);
+            } else {
+                showMessage("Account ready! Login to continue.");
+            }
+        }, 1500);
 
     } catch (err) {
-        console.error("Verification error:", err);
-        showMessage("Error: " + err.message);
+        console.error("[VERIFY] Error:", err.code, err.message);
+        showMessage("Error: " + (err.message || "Unknown error"));
         btn.disabled = false;
-        btn.textContent = "Verify Email";
+        btn.textContent = originalText;
     }
 };
+
 
 
 
@@ -4428,21 +4499,32 @@ window.closeCustomModal = () => document.getElementById("customActionModal").cla
 
 
 window.resendSignupOTP = async function() {
-    const email = localStorage.getItem('pendingEmail');
     const user = auth.currentUser;
     
-    if (!email || !user) {
-        showMessage("Session expired. Start again.");
+    if (!user) {
+        showMessage("❌ Session expired. Please sign up again.");
+        return;
+    }
+
+    const timerEl = document.getElementById("resendTimer");
+    if (timerEl && timerEl.style.pointerEvents === "none") {
+        showMessage("Please wait before resending.");
         return;
     }
 
     try {
+        console.log("[RESEND] Sending verification email...");
         await user.sendEmailVerification();
-        showMessage("📧 Verification email resent!");
+        console.log("✅ Verification email resent!");
+        showMessage("📧 New verification email sent!");
         startResendTimer();
     } catch (err) {
-        console.error("Resend error:", err);
-        showMessage("Failed to resend. Try again.");
+        console.error("[RESEND] Error:", err.code, err.message);
+        if (err.code === 'auth/too-many-requests') {
+            showMessage("Too many requests. Try again later.");
+        } else {
+            showMessage("Failed to resend. Try again.");
+        }
     }
 };
 
