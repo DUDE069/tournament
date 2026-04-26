@@ -1655,3 +1655,137 @@ button, .dash-card, .role-card {
         box-sizing: border-box !important;
     }
 }
+/* ==========================================================================
+   NEW HORIZONTAL/VERTICAL TUTORIAL SYSTEM
+   ========================================================================== */
+
+/* The Main Card Container */
+.tutorial-card {
+    background: linear-gradient(145deg, #1a1a2e, #16162a);
+    border: 1px solid rgba(0, 255, 136, 0.2);
+    border-radius: 20px;
+    padding: 32px;
+    width: 90%;
+    max-width: 850px; /* Wider for Horizontal Layout */
+    position: relative;
+    box-shadow: 0 0 60px rgba(0, 255, 136, 0.15), 0 25px 50px rgba(0, 0, 0, 0.5);
+    animation: slideUp 0.5s ease;
+}
+
+/* Horizontal Flexbox for Desktop */
+.tutorial-card-layout {
+    display: flex;
+    gap: 30px;
+    align-items: center;
+    text-align: left;
+}
+
+/* Image Side (Left) */
+.tutorial-media {
+    flex: 1;
+    max-width: 400px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.tutorial-img {
+    width: 100%;
+    height: auto;
+    border-radius: 12px;
+    border: 2px solid rgba(0, 255, 136, 0.3);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    object-fit: cover;
+}
+
+/* Text Side (Right) */
+.tutorial-info {
+    flex: 1;
+    min-width: 300px;
+    display: flex;
+    flex-direction: column;
+}
+
+.tutorial-info.no-image {
+    text-align: center;
+    align-items: center;
+}
+
+/* Align progress dots to the left on Desktop */
+.tutorial-progress {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-start;
+    margin-bottom: 20px;
+}
+.tutorial-info.no-image .tutorial-progress { justify-content: center; }
+
+/* Desktop controls aligned left */
+.tutorial-controls {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-start;
+    margin-top: 24px;
+}
+.tutorial-info.no-image .tutorial-controls { justify-content: center; }
+
+
+/* 📱 MOBILE RESPONSIVENESS (VERTICAL LAYOUT) */
+@media (max-width: 768px) {
+    /* CRITICAL FIX: Hide the spotlight entirely on mobile to prevent layout breaking/scrolling */
+    .tutorial-spotlight {
+        display: none !important;
+    }
+
+    /* Make the card take the full screen width and add scrolling if necessary */
+    .tutorial-card {
+        width: 95vw !important;
+        padding: 24px 16px !important;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    /* Switch to Vertical layout */
+    .tutorial-card-layout {
+        flex-direction: column;
+        text-align: center;
+        gap: 15px;
+    }
+
+    /* Image on top, full width */
+    .tutorial-media {
+        max-width: 100%;
+        width: 100%;
+        order: -1; /* Forces image to top */
+    }
+
+    .tutorial-info {
+        min-width: 100%;
+    }
+
+    /* Re-center everything for mobile */
+    .tutorial-progress, .tutorial-controls {
+        justify-content: center;
+    }
+
+    /* Make buttons split 50/50 side-by-side on mobile */
+    .tutorial-controls {
+        flex-direction: row;
+        width: 100%;
+    }
+
+    .tutorial-btn {
+        flex: 1;
+        padding: 12px 10px;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+    
+    /* Fix Skip button position on mobile */
+    .tutorial-skip {
+        position: relative !important;
+        float: right;
+        margin-bottom: 15px;
+        background: rgba(255, 255, 255, 0.1);
+    }
+}

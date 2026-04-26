@@ -3454,11 +3454,15 @@ window.handleJoinNowTutorial = function() {
     startTutorial();
 };
 
+// ========================================
+// PROFESSIONAL TUTORIAL SYSTEM
+// ========================================
 function startTutorial() {
     // Remove existing
     document.getElementById("tutorialOverlay")?.remove();
     document.querySelector(".tutorial-spotlight")?.remove();
 
+    // 🌟 ADD YOUR IMAGES HERE: Replace the "https://placehold.co/..." links with your actual image URLs or paths (e.g., "images/menu-tutorial.jpg")
     const tutorialSteps = [
         {
             id: "menu",
@@ -3466,6 +3470,7 @@ function startTutorial() {
             title: "Welcome to NPC Esports!",
             content: `Maps easily using our <span class="highlight-text">Menu</span> at the top.<br><br>
                       Access <strong>Tournaments</strong>, <strong>Leaderboard</strong>, <strong>Profile</strong>, and <strong>Dashboard</strong> from anywhere.`,
+            image: "https://placehold.co/600x400/1a1a2e/22c55e?text=Menu+Preview+Image",
             highlight: ".navbar"
         },
         {
@@ -3474,6 +3479,7 @@ function startTutorial() {
             title: "Find Your Tournament",
             content: `Browse <span class="highlight-text">Ongoing</span>, <span class="highlight-text">Upcoming</span>, and <span class="highlight-text">Limited</span> tournaments.<br><br>
                       Register your team, get verified, then pay the entry fee.`,
+            image: "https://placehold.co/600x400/1a1a2e/22c55e?text=Tournament+Preview+Image",
             highlight: "#tournaments"
         },
         {
@@ -3481,22 +3487,8 @@ function startTutorial() {
             icon: "📊",
             title: "Your Dashboard",
             content: `Track your <span class="highlight-text">Profile</span>, <span class="highlight-text">Tournament History</span>, <span class="highlight-text">Performance</span>, and <span class="highlight-text">Wallet</span> all in one place.`,
+            image: "https://placehold.co/600x400/1a1a2e/22c55e?text=Dashboard+Preview+Image",
             highlight: ".dashboard"
-        },
-        {
-            id: "dashboard-cards",
-            icon: "👤",
-            title: "Dashboard Features",
-            content: `Each dashboard section shows <span class="highlight-text">independent content</span>.<br><br>
-                      Click any card to see detailed information about that section.`,
-            highlight: ".dash-card[data-popup='profile']"
-        },
-        {
-            id: "community",
-            icon: "💬",
-            title: "Join Our Community",
-            content: `Connect through <span class="highlight-text">Discord</span>, <span class="highlight-text">YouTube</span>, and <span class="highlight-text">Instagram</span> for match updates and exclusive events!`,
-            highlight: "#community"
         },
         {
             id: "complete",
@@ -3504,6 +3496,7 @@ function startTutorial() {
             title: "You're All Set!",
             content: `Try a <span class="highlight-text">free tournament</span> to get started.<br><br>
                       Your journey to becoming a champion starts here. Good luck! 💪`,
+            image: null, // Set to null if you don't want an image for a specific step
             highlight: null
         }
     ];
@@ -3512,7 +3505,7 @@ function startTutorial() {
     let overlay = null;
     let spotlight = null;
 
-    // ✅ FIX: Define these functions BEFORE we use them in createCard and updateStep!
+    // Define functions globally
     window.completeTutorial = function() {
         localStorage.setItem(TUTORIAL_KEY, "1");
         overlay?.remove();
@@ -3537,6 +3530,7 @@ function startTutorial() {
         }
     };
 
+    // Build the Card HTML
     function createCard(step) {
         const s = tutorialSteps[step];
         const isLast = step === tutorialSteps.length - 1;
@@ -3545,47 +3539,48 @@ function startTutorial() {
             <div class="tutorial-card">
                 <button class="tutorial-skip" onclick="completeTutorial()">Skip</button>
                 
-                <div class="tutorial-progress">
-                    ${tutorialSteps.map((_, i) => `
-                        <div class="tutorial-dot ${i === step ? 'active' : ''} ${i < step ? 'completed' : ''}"></div>
-                    `).join('')}
-                </div>
-                
-                <span class="tutorial-icon">${s.icon}</span>
-                <h2 class="tutorial-title">${s.title}</h2>
-                <p class="tutorial-content">${s.content}</p>
-                <p class="tutorial-subtext">Step ${step + 1} of ${tutorialSteps.length}</p>
-                
-                <div class="tutorial-controls">
-                    ${step > 0 ? `
-                        <button class="tutorial-btn tutorial-btn-secondary" onclick="tutorialPrev()">← Previous</button>
+                <div class="tutorial-card-layout">
+                    ${s.image ? `
+                    <div class="tutorial-media">
+                        <img src="${s.image}" alt="Tutorial Image" class="tutorial-img">
+                    </div>
                     ` : ''}
-                    <button class="tutorial-btn tutorial-btn-primary" onclick="${isLast ? 'completeTutorial()' : 'tutorialNext()'}">
-                        ${isLast ? "Let's Go! 🚀" : "Next →"}
-                    </button>
+
+                    <div class="tutorial-info ${!s.image ? 'no-image' : ''}">
+                        <div class="tutorial-progress">
+                            ${tutorialSteps.map((_, i) => `
+                                <div class="tutorial-dot ${i === step ? 'active' : ''} ${i < step ? 'completed' : ''}"></div>
+                            `).join('')}
+                        </div>
+                        
+                        <span class="tutorial-icon">${s.icon}</span>
+                        <h2 class="tutorial-title">${s.title}</h2>
+                        <p class="tutorial-content">${s.content}</p>
+                        <p class="tutorial-subtext">Step ${step + 1} of ${tutorialSteps.length}</p>
+                        
+                        <div class="tutorial-controls">
+                            ${step > 0 ? `<button class="tutorial-btn tutorial-btn-secondary" onclick="tutorialPrev()">← Previous</button>` : ''}
+                            <button class="tutorial-btn tutorial-btn-primary" onclick="${isLast ? 'completeTutorial()' : 'tutorialNext()'}">
+                                ${isLast ? "Let's Go! 🚀" : "Next →"}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
     }
 
+    // ✅ FIXED: No more double Skip buttons
     function updateStep(step) {
         const s = tutorialSteps[step];
         
-        const card = overlay?.querySelector(".tutorial-card");
-        if (card) {
-            // Preserve skip button
-            const skipBtn = card.querySelector(".tutorial-skip");
-            card.innerHTML = createCard(step).replace('<div class="tutorial-card">', '').replace('</div>', '');
-            if (skipBtn) {
-                skipBtn.onclick = window.completeTutorial;
-                card.insertBefore(skipBtn, card.firstChild);
-            }
+        const cardContainer = overlay?.querySelector(".tutorial-card");
+        if (cardContainer) {
+            // Completely replace the inner HTML (Fixes the duplicate skip button bug)
+            cardContainer.outerHTML = createCard(step);
         }
 
-        overlay?.querySelectorAll(".tutorial-dot").forEach((dot, i) => {
-            dot.className = `tutorial-dot ${i === step ? 'active' : ''} ${i < step ? 'completed' : ''}`;
-        });
-
+        // Spotlight Logic (Only runs on Desktop, CSS hides it on mobile)
         if (s.highlight) {
             const el = document.querySelector(s.highlight);
             if (el) {
@@ -3616,10 +3611,9 @@ function startTutorial() {
     spotlight.className = "tutorial-spotlight";
     document.body.appendChild(spotlight);
 
-    // ✅ Run this last, now that everything is defined!
     updateStep(0);
 
-    // Update spotlight on resize
+    // Spotlight resize handler
     window.addEventListener("resize", () => {
         if (spotlight && spotlight.style.display !== "none") {
             const s = tutorialSteps[currentStep];
