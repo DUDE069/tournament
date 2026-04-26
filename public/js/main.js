@@ -1246,20 +1246,27 @@ async function checkTournamentPromotions() {
         
         // PROMOTION: If today is tournament date and status is still 'upcoming'
         if (t.category === 'upcoming' && t.eventDate === today && diffHours <= 0) {
-            // Move to ongoing (in reality, you'd update Firestore, here we simulate)
             console.log(`[AUTO] Promoting tournament ${t.id} to ongoing`);
             
-            // Update local state
+            // 1. Update local state for immediate UI change
             t.category = 'ongoing';
             t.status = 'live';
             t.endTime = eventDate.getTime() + (2 * 60 * 60 * 1000); // 2 hours duration
             
-            // Notify registered teams that tournament is starting NOW
-            notifyRegisteredTeams(t.id, 'tournament_starting');
+            // 2. ACTUAL FIX: Save the promotion to the database!
+            updateDoc(doc(db, "tournaments", t.id), {
+                category: 'ongoing',
+                status: 'live',
+                endTime: t.endTime
+            }).catch(err => console.error("Database promotion failed:", err));
+            
+            // Notify registered teams that tournament is starting NOW (if this function exists)
+            if (typeof notifyRegisteredTeams === 'function') {
+                notifyRegisteredTeams(t.id, 'tournament_starting');
+            }
             
             renderTournaments();
         }
-        
         // PAYMENT REMINDER: If 24-48 hours before tournament and not paid
         if (t.category === 'upcoming' && diffHours <= 48 && diffHours > 0) {
             remindPendingPayments(t.id, t.eventDate);
