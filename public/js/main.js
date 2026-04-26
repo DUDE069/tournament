@@ -4108,6 +4108,62 @@ window.openEditProfile = function() {
     `;
 };
 
+// ==========================================
+// SAVE PROFILE UPDATE (Missing Function)
+// ==========================================
+window.saveProfileUpdate = async function() {
+    const newEmail = document.getElementById("editEmail")?.value?.trim();
+    const newAge = parseInt(document.getElementById("editAge")?.value);
+
+    if (!newEmail || !newEmail.includes('@')) {
+        showMessage("Please enter a valid email");
+        return;
+    }
+
+    if (isNaN(newAge) || newAge < 12 || newAge > 60) {
+        showMessage("Age must be between 12 and 60");
+        return;
+    }
+
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+
+    try {
+        const userRef = doc(db, "users", currentUser.uid);
+        
+        await updateDoc(userRef, {
+            email: newEmail,
+            age: newAge
+        });
+
+        // Update local profile
+        if (userProfile) {
+            userProfile.email = newEmail;
+            userProfile.age = newAge;
+        }
+
+        closeCustomModal();
+        showMessage("Profile updated successfully!");
+
+        // Reload to refresh UI
+        setTimeout(() => location.reload(), 1000);
+
+    } catch (err) {
+        console.error("Profile update error:", err);
+        showMessage("Error updating profile: " + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+};
+
+
+
+
+
+
 window.openChangePassword = function() {
     const content = document.getElementById("customActionContent");
     document.getElementById("customActionModal").classList.add("active");
@@ -4366,3 +4422,4 @@ window.handleNotifyMe          = window.handleNotifyMe;
 window.handleJoinNowTutorial   = handleJoinNowTutorial;
 window.showWithdrawUI          = window.showWithdrawUI;
 window.submitWithdrawRequest   = window.submitWithdrawRequest;
+window.saveProfileUpdate = saveProfileUpdate;
