@@ -13,11 +13,12 @@ import {
 
 import {
     createUserWithEmailAndPassword,
-    signInWithEmailAndPassword,
+    signInWithEmailAndPassword, 
     onAuthStateChanged,
     signOut,
     updatePassword,
     sendEmailVerification,
+    sendPasswordResetEmail,
     reauthenticateWithCredential,
     EmailAuthProvider
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
@@ -3762,7 +3763,7 @@ window.openDashboard = async function(type) {
     // Load content based on type
     switch (type) {
         case "profile":
-            renderProfileContent(content);
+            await renderProfileContent(content); // <-- ADD await HERE
             break;
         case "tournaments":
             await renderTournamentHistoryContent(content);
@@ -3781,28 +3782,85 @@ window.openDashboard = async function(type) {
     }
 };
 
-// Content renderers
-function renderProfileContent(content) {
-    content.innerHTML = dashboardTemplates.profile;
+async function renderProfileContent(content) {
+    if (!userProfile) return;
     
-    if (userProfile) {
-        document.getElementById("dp-initials").textContent = (userProfile.email || "U").charAt(0).toUpperCase();
-        document.getElementById("dp-name").textContent = userProfile.email?.split("@")[0] || "User";
-        
-        let roleText = "👤 Viewer";
-        let roleColor = "#888";
-        if (userProfile.isLeader) {
-            roleText = "👑 Team Leader";
-            roleColor = "#ffd700";
-        } else if (userProfile.role === "member") {
-            roleText = "👥 Team Member";
+    let roleText = userProfile.isLeader ? "👑 Team Leader" : (userProfile.role === "member" ? "👥 Team Member" : "👤 Viewer");
+    let roleColor = userProfile.isLeader ? "#ffd700" : "#888";
+
+    // 1. Build the base HTML for Personal Quick-Look
+    let html = `
+        <div class="popup-section active">
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding: 20px; background: rgba(0,255,136,0.05); border-radius: 12px;">
+                <div style="width: 56px; height: 56px; background: var(--npc-glow); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #000; font-weight: bold;">
+                    ${(userProfile.nickname || userProfile.email || "U").charAt(0).toUpperCase()}
+                </div>
+                <div>
+                    <div style="color: #fff; font-weight: 600; font-size: 18px;">${userProfile.nickname || userProfile.email?.split("@")[0]}</div>
+                    <div style="color: ${roleColor}; font-size: 13px;">${roleText}</div>
+                </div>
+            </div>
+            
+            <div style="display: grid; gap: 12px; margin-bottom: 20px;">
+                <div style="padding: 14px; background: #1a1a1a; border-radius: 8px; display: flex; justify-content: space-between;">
+                    <span style="color: #666;">Email</span>
+                    <span style="color: #fff;">${userProfile.email || "—"}</span>
+                </div>
+                <div style="padding: 14px; background: #1a1a1a; border-radius: 8px; display: flex; justify-content: space-between;">
+                    <span style="color: #666;">Age</span>
+                    <span style="color: #fff;">${userProfile.age || "—"} years</span>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 24px;">
+                <button onclick="openEditProfile()" style="flex: 1; padding: 12px; background: #00ff88; color: #000; border: none; border-radius: 8px; cursor: pointer; font-weight:bold;">Edit Profile</button>
+                <button onclick="openChangePassword()" style="flex: 1; padding: 12px; background: transparent; color: #fff; border: 1px solid #333; border-radius: 8px; cursor: pointer;">Security</button>
+            </div>
+    `;
+
+    // 2. Set up a placeholder for the Team Roster
+    if (userProfile.teamId) {
+        html += `
+            <div style="border-top: 1px solid #333; padding-top: 20px; margin-top: 10px;">
+                <h4 style="color:#00ff88; margin-bottom: 10px;">🛡️ Team: ${userProfile.teamName}</h4>
+                <p style="color:#888; font-size:12px; margin-bottom:16px;">Team Code: <span style="color:#fff; font-family:monospace; background:#222; padding:3px 6px; border-radius:4px;">${userProfile.teamCode}</span></p>
+                <div id="dashboardRoster" style="display:grid; gap:8px; margin-bottom:20px;">
+                    <p style="color:#888; font-size:12px;">Loading teammates...</p>
+                </div>
+            </div>
+        `;
+    }
+
+    html += `<button onclick="logout()" style="width: 100%; padding: 12px; background: rgba(255,68,68,0.1); color: #ff4444; border: 1px solid #ff4444; border-radius: 8px; cursor: pointer;">Logout</button></div>`;
+    content.innerHTML = html;
+
+    // 3. Fetch Team Members from Firebase and Inject them
+    if (userProfile.teamId) {
+        try {
+            const teamDoc = await getDoc(doc(db, "teams", userProfile.teamId));
+            if (teamDoc.exists()) {
+                const members = teamDoc.data().members || [];
+                let rosterHtml = "";
+                
+                for (let uid of members) {
+                    const mDoc = await getDoc(doc(db, "users", uid));
+                    if (mDoc.exists()) {
+                        const mData = mDoc.data();
+                        rosterHtml += `
+                            <div style="background:#111; padding:12px 14px; border-radius:8px; border:1px solid #2a2a2a; display:flex; justify-content:space-between; align-items:center;">
+                                <span style="color:#fff; font-size:14px; font-weight: 500;">
+                                    ${mData.isLeader ? "👑" : "👤"} ${mData.nickname || mData.email.split('@')[0]}
+                                </span>
+                                <span style="color:#888; font-size:12px;">${mData.email}</span>
+                            </div>
+                        `;
+                    }
+                }
+                document.getElementById("dashboardRoster").innerHTML = rosterHtml;
+            }
+        } catch (e) {
+            document.getElementById("dashboardRoster").innerHTML = `<p style="color:#ff4444; font-size:12px;">Failed to load roster data.</p>`;
         }
-        document.getElementById("dp-role").textContent = roleText;
-        document.getElementById("dp-role").style.color = roleColor;
-        
-        document.getElementById("dp-email").textContent = userProfile.email || "—";
-        document.getElementById("dp-age").textContent = (userProfile.age || "—") + " years";
-        document.getElementById("dp-team").textContent = userProfile.teamName || "No Team";
     }
 }
 
@@ -4028,6 +4086,9 @@ window.sendSignupOTP = async function() {
     const email = document.getElementById("regEmail").value.trim();
     const pass = document.getElementById("regPass").value;
     const age = parseInt(document.getElementById("regAge").value);
+    
+    // Feature Addition: Nickname
+    const nickname = document.getElementById("regNickname") ? document.getElementById("regNickname").value.trim() : "";
 
     // Validations
     if (!email.includes("@gmail.com")) { showMessage("Please use a valid Gmail ID"); return; }
@@ -4037,8 +4098,12 @@ window.sendSignupOTP = async function() {
 
     const btn = document.getElementById("btnSendOTP");
     const originalText = btn.textContent;
+    
+    // UI Feedback: Disable button to prevent double-clicks
     btn.disabled = true;
-    btn.textContent = "Sending...";
+    btn.textContent = "Sending Verification...";
+    btn.style.opacity = "0.7";
+    btn.style.cursor = "not-allowed";
 
     try {
         console.log("[SIGNUP] Creating auth account for:", email);
@@ -4046,15 +4111,14 @@ window.sendSignupOTP = async function() {
         // Step 1: Create Auth user
         const userCred = await createUserWithEmailAndPassword(auth, email, pass);
         
-        // THE FIX: Use Firebase v10 syntax for sending the email
+        // Step 2: Send the verification link
         await sendEmailVerification(userCred.user);
         
-        // Step 2: Setup UI for Email Verification phase
+        // Step 3: Setup UI for Email Verification phase
         document.getElementById("signupStep1").style.display = "none";
         document.getElementById("signupStep2").style.display = "block";
-        document.getElementById("roleSelectionArea").style.display = "none"; // Hide until verified
+        document.getElementById("roleSelectionArea").style.display = "none"; 
         
-        // Hide the final submit button until roles are chosen
         const finalBtn = document.querySelector('#createView button[onclick="createAccount()"]');
         if (finalBtn) finalBtn.style.display = "none";
         
@@ -4064,14 +4128,13 @@ window.sendSignupOTP = async function() {
     } catch (err) {
         console.error("[SIGNUP] Error:", err.code || err.message);
         
-        // Ghost Account Recovery
+        // Ghost Account Recovery Flow
         if (err.code === 'auth/email-already-in-use') {
             try {
                 const userCred = await signInWithEmailAndPassword(auth, email, pass);
                 const user = userCred.user;
                 
                 if (!user.emailVerified) {
-                    // THE FIX: Use Firebase v10 syntax here too
                     await sendEmailVerification(user);
                     
                     document.getElementById("signupStep1").style.display = "none";
@@ -4094,31 +4157,48 @@ window.sendSignupOTP = async function() {
                 }
             } catch (loginErr) {
                 showMessage("⚠️ Email already registered. Please login instead.");
-                setTimeout(() => { backToLogin(); document.getElementById("loginEmail").value = email; }, 1500);
+                setTimeout(() => { 
+                    backToLogin(); 
+                    document.getElementById("loginEmail").value = email; 
+                }, 1500);
             }
         } else {
-            showMessage("Error: " + (err.message || "Unknown error"));
+            // General Error Handling
+            showMessage("Error: " + (err.message.replace("Firebase: ", "") || "Unknown error"));
         }
     } finally {
-        if (btn) { btn.disabled = false; btn.textContent = originalText; }
+        // ALWAYS restore the button state if they are still on step 1
+        if (document.getElementById("signupStep1").style.display !== "none") {
+            btn.disabled = false; 
+            btn.textContent = originalText;
+            btn.style.opacity = "1";
+            btn.style.cursor = "pointer";
+        }
     }
 };
-function startResendTimer() {
-    resendCooldown = 60;
+
+// Start Resend Timer
+window.startResendTimer = function() {
+    let resendCooldown = 60;
     const timerEl = document.getElementById("resendTimer");
+    if (!timerEl) return;
+    
     const interval = setInterval(() => {
         resendCooldown--;
         if (resendCooldown <= 0) {
             clearInterval(interval);
-            timerEl.innerText = "Resend Code";
+            timerEl.innerText = "Resend Email";
             timerEl.style.pointerEvents = "auto";
+            timerEl.style.color = "#3b82f6";
+            timerEl.style.cursor = "pointer";
         } else {
             timerEl.innerText = `Resend in ${resendCooldown}s`;
             timerEl.style.pointerEvents = "none";
+            timerEl.style.color = "#888";
+            timerEl.style.cursor = "not-allowed";
         }
     }, 1000);
-}
-
+};
 // ==========================================
 // 2. VERIFY AND PROCEED (Checks Email Status)
 // ==========================================
@@ -4174,9 +4254,11 @@ window.openEditProfile = function() {
     
     content.innerHTML = `
         <div class="modal-header">
-            <h2>Edit Profile</h2>
+            <h2>Edit Personal Profile</h2>
             <button class="close-modal" onclick="closeCustomModal()">×</button>
         </div>
+        <label style="color:#888; font-size:12px;">In-Game Nickname</label>
+        <input id="editNickname" value="${userProfile.nickname || ''}" type="text" placeholder="Nickname">
         <label style="color:#888; font-size:12px;">Gmail ID</label>
         <input id="editEmail" value="${userProfile.email}" type="email">
         <label style="color:#888; font-size:12px;">Age</label>
@@ -4184,58 +4266,44 @@ window.openEditProfile = function() {
         <button onclick="saveProfileUpdate()" style="background:#00ff88; color:#000;">Save Changes</button>
     `;
 };
-
 // ==========================================
 // SAVE PROFILE UPDATE (Missing Function)
 // ==========================================
 window.saveProfileUpdate = async function() {
+    const newNickname = document.getElementById("editNickname")?.value?.trim();
     const newEmail = document.getElementById("editEmail")?.value?.trim();
     const newAge = parseInt(document.getElementById("editAge")?.value);
 
-    if (!newEmail || !newEmail.includes('@')) {
-        showMessage("Please enter a valid email");
-        return;
-    }
-
-    if (isNaN(newAge) || newAge < 12 || newAge > 60) {
-        showMessage("Age must be between 12 and 60");
-        return;
-    }
+    if (!newEmail || !newEmail.includes('@')) { showMessage("Please enter a valid email"); return; }
+    if (isNaN(newAge) || newAge < 12 || newAge > 60) { showMessage("Age must be between 12 and 60"); return; }
 
     const btn = event.target;
     const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "Saving...";
+    btn.disabled = true; btn.textContent = "Saving...";
 
     try {
         const userRef = doc(db, "users", currentUser.uid);
-        
         await updateDoc(userRef, {
+            nickname: newNickname,
             email: newEmail,
             age: newAge
         });
 
-        // Update local profile
         if (userProfile) {
+            userProfile.nickname = newNickname;
             userProfile.email = newEmail;
             userProfile.age = newAge;
         }
 
         closeCustomModal();
         showMessage("Profile updated successfully!");
-
-        // Reload to refresh UI
         setTimeout(() => location.reload(), 1000);
-
     } catch (err) {
-        console.error("Profile update error:", err);
         showMessage("Error updating profile: " + err.message);
     } finally {
-        btn.disabled = false;
-        btn.textContent = originalText;
+        btn.disabled = false; btn.textContent = originalText;
     }
 };
-
 
 
 
@@ -4259,33 +4327,30 @@ window.openChangePassword = function() {
     `;
 };
 
-window.forgotPasswordFlow = function() {
-    const flow = document.getElementById("passFlowContent");
-    // Generate and Log OTP
-    signupOTP = Math.floor(100000 + Math.random() * 900000).toString();
-    console.log("[NPC DEBUG] Forgot Password OTP:", signupOTP);
+// ==========================================
+// FORGOT PASSWORD FLOW (REAL FIREBASE LINK)
+// ==========================================
+window.forgotPasswordFlow = async function() {
+    // Try to grab the email from the main login screen
+    const emailInput = document.getElementById("loginEmail")?.value.trim();
     
-    flow.innerHTML = `
-        <p style="color:#888; font-size:13px; text-align:center;">We've sent a code to your Gmail.</p>
-        <input id="recoveryOTP" placeholder="Enter OTP" maxlength="6" style="text-align:center;">
-        <button onclick="verifyRecoveryOTP()" style="background:#ffd700; color:#000;">Verify Code</button>
-    `;
-};
+    if (!emailInput) {
+        showMessage("⚠️ Please enter your email in the Login box first.");
+        closeCustomModal(); // Close modal so they can type the email
+        return;
+    }
 
-window.verifyRecoveryOTP = function() {
-    const entered = document.getElementById("recoveryOTP").value;
-    if (entered === signupOTP) {
-        const flow = document.getElementById("passFlowContent");
-        flow.innerHTML = `
-            <input id="finalNewPass" type="password" placeholder="New Password">
-            <input id="confirmNewPass" type="password" placeholder="Confirm Password">
-            <button onclick="updateUserPassword(true)" style="background:#00ff88; color:#000;">Set New Password</button>
-        `;
-    } else {
-        showMessage("Invalid Code");
+    try {
+        await sendPasswordResetEmail(auth, emailInput);
+        showMessage("✅ Password reset link sent! Check your Gmail (and Spam folder).");
+        closeCustomModal();
+    } catch (err) {
+        console.error(err);
+        showMessage("Error: " + err.message.replace("Firebase: ", ""));
     }
 };
 
+// You can safely delete window.verifyRecoveryOTP as we no longer need the fake 6-digit OTP
 window.closeCustomModal = () => document.getElementById("customActionModal").classList.remove("active");
 
 
@@ -4379,8 +4444,9 @@ window.createAccount = async function() {
             return;
         }
 
-        let userData = {
+       let userData = {
             uid, email, age,
+            nickname: document.getElementById("regNickname")?.value.trim() || "", // <-- ADD THIS
             role: selectedRole || "viewer",
             isAdmin: false,
             isLeader: false,

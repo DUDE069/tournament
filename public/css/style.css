@@ -1560,3 +1560,45 @@ button, .dash-card, .role-card {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+/* ==========================================================================
+   MOBILE RESPONSIVENESS PATCHES (Append to style.css)
+   ========================================================================== */
+@media (max-width: 768px) {
+  /* 1. Fix Registration Grid Overlap */
+  #registrationContainer > div[style*="grid-template-columns"] {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 15px !important;
+  }
+  
+  /* Right side sticky form fix on mobile */
+  #registrationContainer > div > div:nth-child(2) {
+    position: relative !important;
+    top: 0 !important;
+  }
+
+  /* 2. Fix Leaderboard Width (Issue #8) */
+  .leaderboard-box {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 10px;
+  }
+  .leaderboard-table {
+    min-width: 500px; /* Forces scroll instead of squishing text */
+  }
+
+  /* 3. Tutorial / Custom Action Controls (Issue #2) */
+  .tutorial-controls, .modal-footer {
+    flex-direction: column !important;
+    gap: 10px;
+  }
+  .tutorial-btn, #customActionContent button {
+    width: 100% !important;
+  }
+
+  /* 4. Fix Push Banner overlap */
+  #pushPermBanner {
+    padding-bottom: 25px; /* Extra padding for mobile bottom bars */
+  }
+}
