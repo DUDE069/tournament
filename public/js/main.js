@@ -17,8 +17,11 @@ import {
     onAuthStateChanged,
     signOut,
     updatePassword,
-    sendEmailVerification // <-- ADD THIS HERE
+    sendEmailVerification,
+    reauthenticateWithCredential,
+    EmailAuthProvider
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
 
 const tournamentsRef = collection(db, "tournaments");
 const calendarRef    = collection(db, "calendarEvents");
@@ -4213,6 +4216,32 @@ window.closeCustomModal = () => document.getElementById("customActionModal").cla
 
 
 
+window.updateUserPassword = async function(isForgotFlow = false) {
+    const newPass = document.getElementById("finalNewPass")?.value;
+    const confirmPass = document.getElementById("confirmNewPass")?.value;
+
+    if (newPass !== confirmPass) {
+        showMessage("Passwords do not match");
+        return;
+    }
+
+    if (newPass.length < 6) {
+        showMessage("Password must be at least 6 characters");
+        return;
+    }
+
+    try {
+        await updatePassword(currentUser, newPass);
+        closeCustomModal();
+        showMessage("Password updated successfully!");
+    } catch (err) {
+        showMessage("Error: " + err.message);
+    }
+};
+
+
+
+
 window.resendSignupOTP = async function() {
     const user = auth.currentUser;
     
@@ -4376,6 +4405,62 @@ window.createAccount = async function() {
     }
 };
 
+// ==========================================
+// CHANGE PASSWORD FUNCTION (Missing)
+// ==========================================
+window.requestPasswordOTP = async function() {
+    const currentPass = document.getElementById("currPass")?.value;
+    const newPass = document.getElementById("newPass")?.value;
+
+    if (!currentPass || currentPass.length < 6) {
+        showMessage("Please enter your current password");
+        return;
+    }
+
+    if (!newPass || newPass.length < 6) {
+        showMessage("New password must be at least 6 characters");
+        return;
+    }
+
+    const btn = event.target;
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Updating...";
+
+    try {
+        // Re-authenticate user first
+        const credential = firebase.auth.EmailAuthProvider.credential(
+            currentUser.email,
+            currentPass
+        );
+        
+        await currentUser.reauthenticateWithCredential(credential);
+        
+        // Now update password
+        await updatePassword(currentUser, newPass);
+
+        closeCustomModal();
+        showMessage("Password updated successfully!");
+
+    } catch (err) {
+        console.error("Password update error:", err);
+        
+        if (err.code === 'auth/wrong-password') {
+            showMessage("Current password is incorrect");
+        } else if (err.code === 'auth/weak-password') {
+            showMessage("New password is too weak");
+        } else {
+            showMessage("Error: " + err.message);
+        }
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
+    }
+};
+
+
+
+
 
 
 // ===============================
@@ -4423,3 +4508,8 @@ window.handleJoinNowTutorial   = handleJoinNowTutorial;
 window.showWithdrawUI          = window.showWithdrawUI;
 window.submitWithdrawRequest   = window.submitWithdrawRequest;
 window.saveProfileUpdate = saveProfileUpdate;
+window.requestPasswordOTP      = requestPasswordOTP;
+window.forgotPasswordFlow        = forgotPasswordFlow;
+window.verifyRecoveryOTP        = verifyRecoveryOTP;
+window.updateUserPassword      = updateUserPassword;
+
