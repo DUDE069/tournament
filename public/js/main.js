@@ -768,20 +768,28 @@ window.openPaymentInterface = async function(tournamentId) {
     const existing = document.getElementById("paymentInterface");
     if (existing) existing.remove();
 
+    // Added a smooth fade-in animation to the modal
     document.body.insertAdjacentHTML('beforeend', `
+        <style>
+            @keyframes modalFadeIn {
+                from { opacity: 0; transform: translateY(-10px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+        </style>
         <div id="paymentInterface" style="position:fixed;top:0;left:0;width:100%;height:100%;
-            background:rgba(0,0,0,0.98);z-index:5000;overflow-y:auto;">
+            background:rgba(0,0,0,0.98);z-index:5000;overflow-y:auto; animation: modalFadeIn 0.3s ease-out;">
 
             <nav style="position:sticky;top:0;background:#0a0a0a;padding:15px 30px;
                 border-bottom:1px solid #333;display:flex;align-items:center;
-                justify-content:space-between;">
+                justify-content:space-between; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
                 <div style="display:flex;align-items:center;gap:15px;">
                     <button onclick="closePaymentInterface()"
-                        style="background:#222;color:#fff;border:none;padding:8px 16px;
-                               border-radius:6px;cursor:pointer;">← Back</button>
-                    <span style="color:#00ff88;font-weight:bold;">Complete Payment</span>
+                        style="background:#222;color:#fff;border:1px solid #444;padding:8px 16px;
+                               border-radius:6px;cursor:pointer; transition: background 0.2s;"
+                        onmouseover="this.style.background='#333'" onmouseout="this.style.background='#222'">← Back</button>
+                    <span style="color:#00ff88;font-weight:bold; letter-spacing: 0.5px;">Complete Payment</span>
                 </div>
-                <div style="color:#ff4444;font-size:14px;animation:pulse 2s infinite;">
+                <div style="color:#ff4444;font-size:14px;animation:pulse 2s infinite; font-weight: 600;">
                     ⏱ Complete within 10 minutes
                 </div>
             </nav>
@@ -789,35 +797,34 @@ window.openPaymentInterface = async function(tournamentId) {
             <div style="max-width:1200px;margin:30px auto;padding:20px;">
                 <div style="display:grid;grid-template-columns:60% 40%;gap:25px;">
 
-                    <!-- LEFT -->
                     <div style="display:flex;flex-direction:column;gap:20px;">
 
                         <div style="background:#1a2a1a;padding:20px;border-radius:10px;
-                            border:2px solid #00ff88;text-align:center;">
+                            border:2px solid #00ff88;text-align:center; box-shadow: 0 0 20px rgba(0,255,136,0.1);">
                             <div style="font-size:40px;margin-bottom:10px;">✅</div>
-                            <h3 style="color:#00ff88;margin:0;">Team Verified!</h3>
+                            <h3 style="color:#00ff88;margin:0; letter-spacing: 1px;">Team Verified!</h3>
                             <p style="color:#aaa;margin:10px 0 0 0;">
                                 Your UIDs have been verified by admin.
                             </p>
                         </div>
 
-                        <div style="background:#1a1a1a;padding:20px;border-radius:10px;border:1px solid #333;">
+                        <div style="background:#1a1a1a;padding:20px;border-radius:10px;border:1px solid #333; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
                             <h3 style="color:#fff;margin:0 0 15px 0;">Team Details (Locked)</h3>
                             <div style="display:grid;gap:10px;">
-                                <div style="background:#0f0f0f;padding:12px;border-radius:6px;">
-                                    <label style="color:#666;font-size:11px;">Team Name</label>
+                                <div style="background:#0f0f0f;padding:12px;border-radius:6px; border-left: 3px solid #444;">
+                                    <label style="color:#666;font-size:11px; text-transform: uppercase;">Team Name</label>
                                     <p style="color:#fff;margin:5px 0 0;font-size:16px;font-weight:bold;">
                                         ${regData.teamName || 'N/A'}
                                     </p>
                                 </div>
-                                <div style="background:#0f0f0f;padding:12px;border-radius:6px;">
-                                    <label style="color:#666;font-size:11px;">Entry Fee</label>
+                                <div style="background:#0f0f0f;padding:12px;border-radius:6px; border-left: 3px solid #ffd700;">
+                                    <label style="color:#666;font-size:11px; text-transform: uppercase;">Entry Fee</label>
                                     <p style="color:#ffd700;margin:5px 0 0;font-size:24px;font-weight:bold;">
                                         ₹${regData.entryFee || 0}
                                     </p>
                                 </div>
-                                <div style="background:#0f0f0f;padding:12px;border-radius:6px;">
-                                    <label style="color:#666;font-size:11px;">Phone</label>
+                                <div style="background:#0f0f0f;padding:12px;border-radius:6px; border-left: 3px solid #444;">
+                                    <label style="color:#666;font-size:11px; text-transform: uppercase;">Phone</label>
                                     <p style="color:#fff;margin:5px 0 0;">
                                         ${regData.phone || 'N/A'}
                                     </p>
@@ -825,38 +832,37 @@ window.openPaymentInterface = async function(tournamentId) {
                             </div>
                         </div>
 
-                        <div style="background:#1a2a1a;padding:20px;border-radius:10px;border:1px solid #00ff88;">
+                        <div style="background:#1a2a1a;padding:20px;border-radius:10px;border:1px solid #00ff88; box-shadow: 0 4px 15px rgba(0,255,136,0.05);">
                             <h3 style="color:#00ff88;margin:0 0 15px 0;">🏆 Prize Pool</h3>
                             <div style="display:flex;justify-content:space-around;text-align:center;">
                                 <div>
-                                    <div style="font-size:24px;color:#ffd700;">🥇</div>
-                                    <div style="color:#fff;font-size:18px;">₹${tournament.prize?.first || 0}</div>
-                                    <div style="color:#888;font-size:12px;">1st</div>
+                                    <div style="font-size:24px;color:#ffd700; text-shadow: 0 0 10px rgba(255,215,0,0.5);">🥇</div>
+                                    <div style="color:#fff;font-size:18px; font-weight:bold;">₹${tournament.prize?.first || 0}</div>
+                                    <div style="color:#888;font-size:12px; text-transform:uppercase;">1st</div>
                                 </div>
                                 <div>
-                                    <div style="font-size:20px;color:#c0c0c0;">🥈</div>
-                                    <div style="color:#fff;font-size:16px;">₹${tournament.prize?.second || 0}</div>
-                                    <div style="color:#888;font-size:12px;">2nd</div>
+                                    <div style="font-size:20px;color:#c0c0c0; text-shadow: 0 0 10px rgba(192,192,192,0.5);">🥈</div>
+                                    <div style="color:#fff;font-size:16px; font-weight:bold;">₹${tournament.prize?.second || 0}</div>
+                                    <div style="color:#888;font-size:12px; text-transform:uppercase;">2nd</div>
                                 </div>
                                 <div>
-                                    <div style="font-size:18px;color:#cd7f32;">🥉</div>
-                                    <div style="color:#fff;font-size:14px;">₹${tournament.prize?.third || 0}</div>
-                                    <div style="color:#888;font-size:12px;">3rd</div>
+                                    <div style="font-size:18px;color:#cd7f32; text-shadow: 0 0 10px rgba(205,127,50,0.5);">🥉</div>
+                                    <div style="color:#fff;font-size:14px; font-weight:bold;">₹${tournament.prize?.third || 0}</div>
+                                    <div style="color:#888;font-size:12px; text-transform:uppercase;">3rd</div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- RIGHT -->
                     <div style="background:#1a1a1a;padding:25px;border-radius:10px;border:1px solid #333;
-                        height:fit-content;position:sticky;top:80px;">
+                        height:fit-content;position:sticky;top:80px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
                         <h3 style="color:#fff;margin:0 0 20px;text-align:center;">Scan to Pay</h3>
 
-                        <div style="background:#fff;padding:20px;border-radius:12px;text-align:center;margin-bottom:20px;">
+                        <div style="background:#fff;padding:20px;border-radius:12px;text-align:center;margin-bottom:20px; box-shadow: inset 0 0 10px rgba(0,0,0,0.1);">
                             <div style="background:#f0f0f0;padding:20px;border-radius:8px;">
                                 <div style="width:200px;height:200px;margin:0 auto;background:#fff;
                                     display:flex;align-items:center;justify-content:center;
-                                    border:2px dashed #ccc;">
+                                    border:2px dashed #ccc; border-radius: 8px;">
                                     <div style="text-align:center;">
                                         <div style="font-size:60px;margin-bottom:10px;">📱</div>
                                         <div style="font-size:14px;color:#333;font-weight:bold;">
@@ -865,16 +871,16 @@ window.openPaymentInterface = async function(tournamentId) {
                                     </div>
                                 </div>
                             </div>
-                            <p style="color:#333;margin:15px 0 5px;font-weight:bold;font-size:20px;">
+                            <p style="color:#333;margin:15px 0 5px;font-weight:900;font-size:24px;">
                                 ₹${regData.entryFee || 0}
                             </p>
-                            <p style="color:#666;margin:0;font-size:13px;">NPC Esports</p>
-                            <p style="color:#333;margin:5px 0 0;font-family:monospace;font-size:14px;">
+                            <p style="color:#666;margin:0;font-size:13px; text-transform: uppercase; font-weight:bold;">NPC Esports</p>
+                            <p style="color:#333;margin:5px 0 0;font-family:monospace;font-size:14px; background:#f5f5f5; padding:5px; border-radius:4px; display:inline-block;">
                                 npc-esports@upi
                             </p>
                         </div>
 
-                        <div style="background:#0f0f0f;padding:20px;border-radius:8px;border:1px solid #ffd700;">
+                        <div style="background:#0f0f0f;padding:20px;border-radius:8px;border:1px solid #ffd700; position: relative;">
                             <label style="color:#ffd700;font-size:14px;display:block;
                                 margin-bottom:10px;font-weight:bold;">
                                 Enter UTR/Transaction ID *
@@ -882,21 +888,25 @@ window.openPaymentInterface = async function(tournamentId) {
                             <input type="text" id="paymentUtr" placeholder="e.g., 123456789012"
                                 style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #444;
                                        color:#fff;border-radius:6px;font-size:14px;
-                                       font-family:monospace;margin-bottom:10px;box-sizing:border-box;">
+                                       font-family:monospace;margin-bottom:10px;box-sizing:border-box;
+                                       transition: border-color 0.2s;"
+                                onfocus="this.style.borderColor='#ffd700'" onblur="this.style.borderColor='#444'">
                             <small style="color:#888;font-size:11px;">
                                 Find in PhonePe / GPay / Paytm transaction history
                             </small>
                         </div>
 
                         <button onclick="confirmPayment('${tournamentId}')"
-                            style="width:100%;padding:16px;background:#00ff88;color:#000;border:none;
+                            style="width:100%;padding:16px;background:linear-gradient(90deg, #00ff88, #00cc6a);color:#000;border:none;
                                    border-radius:8px;font-size:18px;font-weight:bold;cursor:pointer;
-                                   margin-top:20px;">
+                                   margin-top:20px; box-shadow: 0 4px 15px rgba(0,255,136,0.3); transition: transform 0.1s, box-shadow 0.1s;"
+                            onmousedown="this.style.transform='scale(0.98)'" onmouseup="this.style.transform='scale(1)'"
+                            onmouseover="this.style.boxShadow='0 6px 20px rgba(0,255,136,0.5)'" onmouseout="this.style.boxShadow='0 4px 15px rgba(0,255,136,0.3)'">
                             I have paid → Confirm
                         </button>
 
                         <p style="color:#666;font-size:12px;text-align:center;margin-top:15px;">
-                            Payment will be verified within 5 minutes
+                            <span style="display:inline-block; margin-right:5px;">🛡️</span> Payment will be verified within 5 minutes
                         </p>
                     </div>
                 </div>
@@ -905,7 +915,42 @@ window.openPaymentInterface = async function(tournamentId) {
 
     document.body.style.overflow = "hidden";
     startPaymentTimer();
-};
+
+    // ==========================================
+    // --- PROPERLY NESTED: LIVE UI TEAMMATE SYNCING ---
+    // ==========================================
+    
+    // Clear any old listener just in case
+    if (window.paymentSessionListener) {
+        window.paymentSessionListener();
+    }
+    
+    // Start listening to this team's payment session in real-time
+    window.paymentSessionListener = onSnapshot(
+        doc(db, "tournaments", tournamentId, "teamSessions", userProfile.teamId),
+        (snap) => {
+            if (snap.exists()) {
+                const data = snap.data();
+                
+                // If a teammate submits the payment while this screen is open
+                if ((data.paymentStatus === "submitted" || data.paymentStatus === "paid" || data.paymentStatus === "verified") 
+                    && data.paymentSubmittedBy !== currentUser.uid) {
+                    
+                    // 1. Close the payment interface
+                    closePaymentInterface();
+                    
+                    // 2. Show a success popup letting them know their teammate handled it
+                    showPopup(
+                        "success", 
+                        `${data.paymentSubmittedByName || 'Your teammate'} just completed the payment for this tournament!`, 
+                        "Got it", 
+                        () => document.getElementById('customPopup')?.remove()
+                    );
+                }
+            }
+        }
+    );
+}; // <--- THIS BRACKET CLOSES openPaymentInterface CORRECTLY NOW
 
 window.closePaymentInterface = function() {
     const modal = document.getElementById("paymentInterface");
@@ -914,6 +959,12 @@ window.closePaymentInterface = function() {
         document.body.style.overflow = "auto";
     }
     clearInterval(paymentTimerInterval);
+    
+    // Clean up the listener when the modal is closed
+    if (window.paymentSessionListener) {
+        window.paymentSessionListener(); // Stops the Firestore listener
+        window.paymentSessionListener = null;
+    }
 };
 
 let paymentTimerInterval;
