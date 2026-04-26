@@ -1236,42 +1236,58 @@ setInterval(checkLimitedTournamentNotifications, 60000);
 
 async function checkTournamentPromotions() {
     const now = new Date();
-    const today = now.toISOString().split('T')[0]; // YYYY-MM-DD
     
     tournaments.forEach(async (t) => {
         if (!t.eventDate) return;
         
-        const eventDate = new Date(t.eventDate);
-        const diffHours = (eventDate - now) / (1000 * 60 * 60);
+        // 1. COMBINE DATE AND TIME
+        // If the admin set a time (e.g., "14:00"), combine it with the date (e.g., "2024-04-27")
+        // If no time is set, fallback to just the date.
+        let eventDateTime;
+        if (t.eventTime) {
+            eventDateTime = new Date(`${t.eventDate}T${t.eventTime}:00`);
+        } else {
+            eventDateTime = new Date(t.eventDate); 
+        }
         
-        // PROMOTION: If today is tournament date and status is still 'upcoming'
-        if (t.category === 'upcoming' && t.eventDate === today && diffHours <= 0) {
-            console.log(`[AUTO] Promoting tournament ${t.id} to ongoing`);
+        // Calculate the difference in milliseconds
+        const timeDiff = eventDateTime - now;
+        const diffHours = timeDiff / (1000 * 60 * 60);
+        
+        // 2. PROMOTION LOGIC: If 'upcoming' and the exact Date + Time has passed
+        if (t.category === 'upcoming' && timeDiff <= 0) {
+            console.log(`[AUTO] Promoting tournament ${t.id} to ongoing at ${t.eventTime}`);
             
-            // 1. Update local state for immediate UI change
+            // Update local UI state
             t.category = 'ongoing';
             t.status = 'live';
-            t.endTime = eventDate.getTime() + (2 * 60 * 60 * 1000); // 2 hours duration
+            t.endTime = eventDateTime.getTime() + (2 * 60 * 60 * 1000); // Sets 2-hour duration
             
-            // 2. ACTUAL FIX: Save the promotion to the database!
-            updateDoc(doc(db, "tournaments", t.id), {
-                category: 'ongoing',
-                status: 'live',
-                endTime: t.endTime
-            }).catch(err => console.error("Database promotion failed:", err));
+            // Update the Database so it stays permanent!
+            try {
+                await updateDoc(doc(db, "tournaments", t.id), {
+                    category: 'ongoing',
+                    status: 'live',
+                    endTime: t.endTime
+                });
+            } catch (err) {
+                console.warn("Could not promote in DB:", err);
+            }
             
-            // Notify registered teams that tournament is starting NOW (if this function exists)
+            // Notify registered teams that tournament is starting NOW
             if (typeof notifyRegisteredTeams === 'function') {
                 notifyRegisteredTeams(t.id, 'tournament_starting');
             }
             
             renderTournaments();
         }
-        // PAYMENT REMINDER: If 24-48 hours before tournament and not paid
+        
+        // 3. PAYMENT REMINDER: If 24-48 hours before tournament and not paid
         if (t.category === 'upcoming' && diffHours <= 48 && diffHours > 0) {
             remindPendingPayments(t.id, t.eventDate);
         }
     });
+
 }
 
 // Check user's upcoming registrations for payment reminders
