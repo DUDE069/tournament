@@ -3464,7 +3464,7 @@ function startTutorial() {
             id: "menu",
             icon: "🎮",
             title: "Welcome to NPC Esports!",
-            content: `Navigate easily using our <span class="highlight-text">Menu</span> at the top.<br><br>
+            content: `Maps easily using our <span class="highlight-text">Menu</span> at the top.<br><br>
                       Access <strong>Tournaments</strong>, <strong>Leaderboard</strong>, <strong>Profile</strong>, and <strong>Dashboard</strong> from anywhere.`,
             highlight: ".navbar"
         },
@@ -3512,6 +3512,31 @@ function startTutorial() {
     let overlay = null;
     let spotlight = null;
 
+    // ✅ FIX: Define these functions BEFORE we use them in createCard and updateStep!
+    window.completeTutorial = function() {
+        localStorage.setItem(TUTORIAL_KEY, "1");
+        overlay?.remove();
+        spotlight?.remove();
+        scrollToSection("community");
+        showMessage("Tutorial complete! Welcome aboard!");
+    };
+
+    window.skipTutorial = window.completeTutorial;
+
+    window.tutorialNext = function() {
+        if (currentStep < tutorialSteps.length - 1) {
+            currentStep++;
+            updateStep(currentStep);
+        }
+    };
+
+    window.tutorialPrev = function() {
+        if (currentStep > 0) {
+            currentStep--;
+            updateStep(currentStep);
+        }
+    };
+
     function createCard(step) {
         const s = tutorialSteps[step];
         const isLast = step === tutorialSteps.length - 1;
@@ -3552,7 +3577,7 @@ function startTutorial() {
             const skipBtn = card.querySelector(".tutorial-skip");
             card.innerHTML = createCard(step).replace('<div class="tutorial-card">', '').replace('</div>', '');
             if (skipBtn) {
-                skipBtn.onclick = completeTutorial;
+                skipBtn.onclick = window.completeTutorial;
                 card.insertBefore(skipBtn, card.firstChild);
             }
         }
@@ -3591,31 +3616,8 @@ function startTutorial() {
     spotlight.className = "tutorial-spotlight";
     document.body.appendChild(spotlight);
 
+    // ✅ Run this last, now that everything is defined!
     updateStep(0);
-
-    window.tutorialNext = function() {
-        if (currentStep < tutorialSteps.length - 1) {
-            currentStep++;
-            updateStep(currentStep);
-        }
-    };
-
-    window.tutorialPrev = function() {
-        if (currentStep > 0) {
-            currentStep--;
-            updateStep(currentStep);
-        }
-    };
-
-    window.completeTutorial = function() {
-        localStorage.setItem(TUTORIAL_KEY, "1");
-        overlay?.remove();
-        spotlight?.remove();
-        scrollToSection("community");
-        showToast("Tutorial complete! Welcome aboard!");
-    };
-
-    window.skipTutorial = window.completeTutorial;
 
     // Update spotlight on resize
     window.addEventListener("resize", () => {
@@ -3635,7 +3637,6 @@ function startTutorial() {
         }
     });
 }
-
 // ========================================
 // FIXED DASHBOARD SYSTEM
 // ========================================
@@ -4643,13 +4644,12 @@ window.viewTransactionHistory  = viewTransactionHistory;
 window.reportCheater           = reportCheater;
 window.showReferralModal       = showReferralModal;
 window.handleNotifyMe          = window.handleNotifyMe;
+
 // New exports
 window.handleJoinNowTutorial   = handleJoinNowTutorial;
 window.showWithdrawUI          = window.showWithdrawUI;
 window.submitWithdrawRequest   = window.submitWithdrawRequest;
-window.saveProfileUpdate = saveProfileUpdate;
+window.saveProfileUpdate       = saveProfileUpdate;
 window.requestPasswordOTP      = requestPasswordOTP;
-window.forgotPasswordFlow        = forgotPasswordFlow;
-window.verifyRecoveryOTP        = verifyRecoveryOTP;
+window.forgotPasswordFlow      = forgotPasswordFlow;
 window.updateUserPassword      = updateUserPassword;
-
