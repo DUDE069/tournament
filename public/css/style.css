@@ -1602,3 +1602,56 @@ button, .dash-card, .role-card {
     padding-bottom: 25px; /* Extra padding for mobile bottom bars */
   }
 }
+
+/* ==========================================================================
+   TUTORIAL MOBILE LAYOUT FIX (Append to bottom of style.css)
+   ========================================================================== */
+@media (max-width: 768px) {
+    /* 1. Resize the main card so it doesn't bleed off the screen */
+    .tutorial-card {
+        width: 92vw !important;
+        padding: 24px 16px !important;
+        margin: 0 auto !important;
+        box-sizing: border-box !important;
+    }
+
+    /* 2. Stop the "Skip" button from overlapping the text/dots */
+    .tutorial-skip {
+        position: relative !important;
+        top: 0 !important;
+        right: 0 !important;
+        float: right;
+        margin-bottom: 10px;
+        background: rgba(255, 255, 255, 0.1) !important;
+    }
+
+    /* Ensure the progress dots sit properly below the skip button */
+    .tutorial-progress {
+        clear: both;
+        padding-top: 10px !important;
+    }
+
+    /* 3. Keep Prev/Next buttons horizontal, but scale them nicely 50/50 */
+    .tutorial-controls {
+        flex-direction: row !important;
+        gap: 10px !important;
+        width: 100% !important;
+        justify-content: space-between !important;
+        flex-wrap: nowrap !important;
+    }
+
+    .tutorial-btn {
+        width: 100% !important; 
+        flex: 1 !important; /* Forces them to share exactly half the space */
+        padding: 12px 5px !important;
+        font-size: 13px !important;
+        white-space: nowrap !important; /* Stops the text from breaking into two lines */
+    }
+
+    /* 4. Stop the green highlight "spotlight" from causing left/right scrolling */
+    .tutorial-spotlight {
+        max-width: 95vw !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+    }
+}
