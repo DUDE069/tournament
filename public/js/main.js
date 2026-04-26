@@ -4428,13 +4428,13 @@ window.requestPasswordOTP = async function() {
     btn.textContent = "Updating...";
 
     try {
-        // Re-authenticate user first
-        const credential = firebase.auth.EmailAuthProvider.credential(
+      // Re-authenticate user first using Firebase v10 Modular syntax
+        const credential = EmailAuthProvider.credential(
             currentUser.email,
             currentPass
         );
         
-        await currentUser.reauthenticateWithCredential(credential);
+        await reauthenticateWithCredential(currentUser, credential);
         
         // Now update password
         await updatePassword(currentUser, newPass);
