@@ -58,7 +58,7 @@ let currentStream = null;
 // ===============================
 function handleProfileClick() {
     if (currentUser) {
-        openEditProfile(); // ✅ FIXED: Now opens personal details
+        openPersonalProfile(); // ✅ FIXED: Now opens the personal summary first
     } else {
         openLogin();
     }
@@ -4242,6 +4242,66 @@ window.verifyAndCreate = async function() {
 
 
 
+// ==========================================
+// VIEW PERSONAL PROFILE (READ-ONLY OVERVIEW)
+// ==========================================
+window.openPersonalProfile = function() {
+    if (!userProfile) return;
+    
+    const content = document.getElementById("customActionContent");
+    document.getElementById("customActionModal").classList.add("active");
+    
+    const roleText = userProfile.isLeader ? "👑 Team Leader" : (userProfile.role === "member" ? "👥 Team Member" : "👤 Viewer");
+
+    content.innerHTML = `
+        <div class="modal-header">
+            <h2>My Personal Profile</h2>
+            <button class="close-modal" onclick="closeCustomModal()">×</button>
+        </div>
+        
+        <div style="background:#1a1a1a; padding:20px; border-radius:10px; border:1px solid #333; margin-bottom:20px;">
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
+                <div style="width:56px; height:56px; background:var(--npc-glow); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; color:#000; font-weight:bold;">
+                    ${(userProfile.nickname || userProfile.email || 'U').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                    <div style="color:#fff; font-size:18px; font-weight:bold;">${userProfile.nickname || 'No Nickname'}</div>
+                    <div style="color:var(--npc-glow); font-size:12px;">${roleText}</div>
+                </div>
+            </div>
+            
+            <div style="display:grid; gap:10px; color:#ccc; font-size:14px;">
+                <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px;">
+                    <span style="color:#888;">Email</span> <span style="color:#fff;">${userProfile.email || 'N/A'}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px;">
+                    <span style="color:#888;">Age</span> <span style="color:#fff;">${userProfile.age || 'N/A'} years</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:10px;">
+            <button onclick="openEditProfile()" 
+                style="background:#00ff88; color:#000; padding:14px; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">
+                ✏️ Edit Profile
+            </button>
+            <button onclick="openChangePassword()" 
+                style="background:transparent; color:#fff; border:1px solid #333; padding:14px; border-radius:8px; cursor:pointer; font-size:14px; transition:0.2s;"
+                onmouseover="this.style.borderColor='#888'" onmouseout="this.style.borderColor='#333'">
+                🔐 Change Password
+            </button>
+            <button onclick="logout()" 
+                style="background:rgba(255,68,68,0.1); color:#ff4444; border:1px solid #ff4444; padding:14px; border-radius:8px; cursor:pointer; font-size:14px; transition:0.2s;"
+                onmouseover="this.style.background='#ff4444'; this.style.color='#fff'" onmouseout="this.style.background='rgba(255,68,68,0.1)'; this.style.color='#ff4444'">
+                🚪 Logout
+            </button>
+        </div>
+    `;
+};
+
+
+
+
 
 window.openEditProfile = function() {
     const content = document.getElementById("customActionContent");
@@ -4647,3 +4707,4 @@ window.saveProfileUpdate       = saveProfileUpdate;
 window.requestPasswordOTP      = requestPasswordOTP;
 window.forgotPasswordFlow      = forgotPasswordFlow;
 window.updateUserPassword      = updateUserPassword;
+window.openPersonalProfile     = openPersonalProfile;
