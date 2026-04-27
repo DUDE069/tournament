@@ -114,6 +114,13 @@ window.handleUpcomingRegister = async function(tournamentId) {
     document.getElementById("prizeFirst").textContent           = tournament.prize?.first || 0;
     document.getElementById("prizeSecond").textContent          = tournament.prize?.second || 0;
     document.getElementById("prizeThird").textContent           = tournament.prize?.third || 0;
+    // ✅ FIXED DYNAMIC TIMING (UPCOMING)
+    const dateStr = tournament.eventDate ? new Date(tournament.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : "TBA";
+    const timeStr = tournament.eventTime || "TBA";
+    const joinStartTimeEl = document.getElementById("joinStartTime");
+    if (joinStartTimeEl) {
+        joinStartTimeEl.textContent = `${dateStr} at ${timeStr}`;
+    }
     
     // HIDE Payment elements for upcoming
     document.getElementById("walletBalance").parentElement.style.display = "none"; // Hide wallet
@@ -495,10 +502,21 @@ window.handleJoin = async function(tournamentId) {
     updateHeaderTimer();
     window.headerTimerInterval = setInterval(updateHeaderTimer, 60000);
 
-    const matchDate = new Date(tournament.endTime);
-    document.getElementById("joinStartTime").textContent = matchDate.toLocaleString('en-IN', {
-        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-    });
+    // ✅ FIXED DYNAMIC TIMING (ONGOING)
+    const joinStartTimeEl = document.getElementById("joinStartTime");
+    if (joinStartTimeEl) {
+        if (tournament.eventDate && tournament.eventTime) {
+            const dateStr = new Date(tournament.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+            joinStartTimeEl.textContent = `${dateStr} at ${tournament.eventTime}`;
+        } else if (tournament.endTime) {
+            const matchDate = new Date(tournament.endTime);
+            joinStartTimeEl.textContent = matchDate.toLocaleString('en-IN', {
+                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+            });
+        } else {
+            joinStartTimeEl.textContent = "TBA";
+        }
+    }
 
     document.getElementById("joinDisplayEmail").textContent = userProfile.email;
     document.getElementById("joinDisplayAge").textContent   = userProfile.age + " years";
@@ -581,6 +599,13 @@ document.addEventListener("DOMContentLoaded", function() {
     form.addEventListener("submit", async function(e) {
         e.preventDefault();
 
+        // 1. NEW: Check if Guidelines are agreed to
+        const agreed = document.getElementById('agreeGuidelines')?.checked;
+        if (!agreed) {
+            showMessage("You must agree to the guidelines to register!");
+            return;
+        }
+
         const submitBtn  = document.getElementById("joinSubmitBtn");
         const processing = document.getElementById("processingOverlay");
 
@@ -594,19 +619,35 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
 
-        // Collect UIDs
-        const uids = [
-            document.getElementById("uidPlayer1").value.trim(),
-            document.getElementById("uidPlayer2").value.trim(),
-            document.getElementById("uidPlayer3").value.trim(),
-            document.getElementById("uidPlayer4").value.trim(),
-            document.getElementById("uidPlayer5").value.trim()
-        ].filter(uid => uid !== "");
+        // 2. NEW: Collect Detailed Player Data (UID + Nickname + Type)
+        const p1Uid = document.getElementById("uidPlayer1")?.value.trim();
+        const p1Nick = document.getElementById("nickPlayer1")?.value.trim();
+        const p2Uid = document.getElementById("uidPlayer2")?.value.trim();
+        const p2Nick = document.getElementById("nickPlayer2")?.value.trim();
+        const p2Type = document.getElementById("typePlayer2")?.value;
+        const p3Uid = document.getElementById("uidPlayer3")?.value.trim();
+        const p3Nick = document.getElementById("nickPlayer3")?.value.trim();
+        const p3Type = document.getElementById("typePlayer3")?.value;
+        const p4Uid = document.getElementById("uidPlayer4")?.value.trim();
+        const p4Nick = document.getElementById("nickPlayer4")?.value.trim();
+        const p4Type = document.getElementById("typePlayer4")?.value;
 
-        if (uids.length < 4) {
-            showMessage("Please enter at least 4 player UIDs");
+        // Validate that all required detailed fields are filled
+        if (!p1Uid || !p1Nick || !p2Uid || !p2Nick || !p3Uid || !p3Nick || !p4Uid || !p4Nick) {
+            showMessage("Please fill out all 4 Player UIDs and Nicknames.");
             return;
         }
+
+        // Structure the new detailed data
+        const playersData = [
+            { uid: p1Uid, nickname: p1Nick, type: "leader" },
+            { uid: p2Uid, nickname: p2Nick, type: p2Type },
+            { uid: p3Uid, nickname: p3Nick, type: p3Type },
+            { uid: p4Uid, nickname: p4Nick, type: p4Type }
+        ];
+
+        // Keep the old simple array so the Admin Panel doesn't break!
+        const uids = [p1Uid, p2Uid, p3Uid, p4Uid];
 
         // Validate phone
         const phoneRaw = document.getElementById("joinPhone").value.trim();
@@ -633,10 +674,9 @@ document.addEventListener("DOMContentLoaded", function() {
 
             if (isUpcoming) {
                 // ========================================
-                // UPCOMING TOURNAMENT (No Payment Required Now)
+                // UPCOMING TOURNAMENT
                 // ========================================
                 
-                // 1. Save to upcomingRegistrations (separate collection)
                 await setDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
                     userId:       userId,
                     teamId:       userProfile.teamId,
@@ -644,16 +684,16 @@ document.addEventListener("DOMContentLoaded", function() {
                     teamCode:     userProfile.teamCode,
                     leaderEmail:  userProfile.email,
                     leaderUid:    uids[0],
-                    uids:         uids,
+                    uids:         uids,                // Kept for Admin Panel
+                    playersData:  playersData,         // NEW: Detailed team data
                     phone:        formattedPhone,
                     backupEmail:  backupEmail,
-                    status:       "pending", // Admin needs to approve
+                    status:       "pending",
                     registeredAt: serverTimestamp(),
                     eventDate:    tournament.eventDate,
                     category:     "upcoming"
                 });
 
-                // 2. Track in user's profile (optional, for "My Registrations")
                 await setDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId), {
                     tournamentId: tournamentId,
                     title:          tournament.title,
@@ -663,10 +703,8 @@ document.addEventListener("DOMContentLoaded", function() {
                     registeredAt:   serverTimestamp()
                 });
 
-                // 3. Start listener for admin approval (separate listener for upcoming)
                 listenToUpcomingApproval(tournamentId, userId);
 
-                // 4. Show success
                 if (processing) processing.style.display = "none";
                 closeJoinModal();
                 
@@ -679,10 +717,9 @@ document.addEventListener("DOMContentLoaded", function() {
 
             } else {
                 // ========================================
-                // ONGOING TOURNAMENT (Existing Logic - Keep As Is)
+                // ONGOING TOURNAMENT
                 // ========================================
                 
-                // 1. Save verification record for admin
                 await setDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
                     userId:      userId,
                     teamId:      userProfile.teamId,
@@ -690,14 +727,14 @@ document.addEventListener("DOMContentLoaded", function() {
                     teamCode:    userProfile.teamCode,
                     leaderEmail: userProfile.email,
                     leaderUid:   uids[0],
-                    uids:        uids,
+                    uids:        uids,                // Kept for Admin Panel
+                    playersData: playersData,         // NEW: Detailed team data
                     phone:       formattedPhone,
                     backupEmail: backupEmail,
                     status:      "pending",
                     submittedAt: serverTimestamp()
                 });
 
-                // 2. Save pending payment data
                 await setDoc(doc(db, "users", userId, "pendingPayment", tournamentId), {
                     tournamentId: tournamentId,
                     teamName:     userProfile.teamName,
@@ -708,17 +745,14 @@ document.addEventListener("DOMContentLoaded", function() {
                     submittedAt:  serverTimestamp()
                 });
 
-                // 3. Lock registration
                 await setDoc(
                     doc(db, "tournaments", tournamentId, "lockedRegistrations", userId),
                     { lockedAt: serverTimestamp(), editable: false },
                     { merge: true }
                 );
 
-                // 4. Start listening for admin decision
                 listenToVerification(tournamentId, userId);
 
-                // 5. Show success
                 if (processing) processing.style.display = "none";
                 closeJoinModal();
                 
@@ -3189,6 +3223,14 @@ async function showApprovedReviewInterface(tournamentId, userId) {
         document.getElementById("prizeThird").textContent = tournament.prize?.third || 0;
         document.getElementById("joinEntryFeeDisplay").textContent = tournament.entryFee;
         document.getElementById("paymentAmount").textContent = tournament.entryFee;
+
+        // ✅ FIXED DYNAMIC TIMING (UPCOMING)
+    const dateStr = tournament.eventDate ? new Date(tournament.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : "TBA";
+    const timeStr = tournament.eventTime || "TBA";
+    const joinStartTimeEl = document.getElementById("joinStartTime");
+    if (joinStartTimeEl) {
+        joinStartTimeEl.textContent = `${dateStr} at ${timeStr}`;
+    }
         
         // Fill locked user data (NON-EDITABLE)
         document.getElementById("joinDisplayEmail").textContent = userProfile.email;
@@ -3777,6 +3819,7 @@ window.openDashboard = async function(type) {
     }
 };
 
+
 window.renderProfileContent = async function(content) {
     if (!userProfile) return;
 
@@ -3788,21 +3831,15 @@ window.renderProfileContent = async function(content) {
                 <h3 style="color:#00ff88; margin: 0 0 5px 0;">Team: ${userProfile.teamName}</h3>
                 <p style="color:#888; font-size:13px; margin:0;">Team Code: <span style="color:#fff; font-family:monospace; background:#222; padding:3px 6px; border-radius:4px;">${userProfile.teamCode}</span></p>
             </div>
-            
-            <h4 style="color:#888; margin-bottom: 12px; font-size: 13px; text-transform: uppercase;">Team Members</h4>
+            <h4 style="color:#888; margin-bottom: 12px; font-size: 13px; text-transform: uppercase;">Team Roster</h4>
             <div id="dashboardRoster" style="display:grid; gap:12px; margin-bottom:20px;">
-                <div style="text-align:center; padding:20px;"><div class="loading-spinner" style="margin:0 auto;"></div></div>
+                <p style="color:#888; font-size:12px;">Loading teammates...</p>
             </div>
         `;
     } else {
          html += `
             <div style="text-align:center; padding:30px; background:#1a1a1a; border-radius:10px; border:1px solid #333;">
-                <div style="font-size:40px; margin-bottom:15px;">👤</div>
                 <p style="color:#888; margin-bottom:15px;">You are not currently in a team.</p>
-                <button onclick="closeDashboard(); openLogin(); showCreate(); selectRole('leader', document.querySelector('.role-card:nth-child(2)'));"
-                    style="background:#00ff88; color:#000; border:none; padding:10px 20px; border-radius:6px; font-weight:bold; cursor:pointer;">
-                    Create Team
-                </button>
             </div>
          `;
     }
@@ -3810,37 +3847,29 @@ window.renderProfileContent = async function(content) {
     html += `</div>`;
     content.innerHTML = html;
 
-    // Fetch and display full team roster
+    // Fetch and sync team data
     if (userProfile.teamId) {
         try {
             const teamDoc = await getDoc(doc(db, "teams", userProfile.teamId));
             if (teamDoc.exists()) {
                 const members = teamDoc.data().members || [];
                 let rosterHtml = "";
-                
-                // Track member numbering for UI
                 let memberCount = 1;
 
                 for (let i = 0; i < members.length; i++) {
                     const uid = members[i];
                     const mDoc = await getDoc(doc(db, "users", uid));
-                    
                     if (mDoc.exists()) {
                         const mData = mDoc.data();
                         const isLeader = (uid === teamDoc.data().leaderId);
-                        const roleLabel = isLeader ? "👑 Team Leader" : `👥 Team Member ${memberCount}`;
-                        
-                        if (!isLeader) memberCount++; // Increment count only for members
+                        const roleLabel = isLeader ? "👑 Team Leader" : `👥 Member ${memberCount++}`;
 
                         rosterHtml += `
-                            <div style="background:#111; padding:16px; border-radius:10px; border:1px solid ${isLeader ? '#ffd700' : '#2a2a2a'}; display:flex; flex-wrap:wrap; gap:15px; justify-content:space-between; align-items:center;">
+                            <div style="background:#111; padding:12px; border-radius:8px; border:1px solid ${isLeader ? '#ffd700' : '#2a2a2a'}; display:flex; justify-content:space-between; align-items:center;">
                                 <div>
-                                    <div style="color:${isLeader ? '#ffd700' : '#00ff88'}; font-size:12px; font-weight:bold; margin-bottom:6px; text-transform:uppercase;">${roleLabel}</div>
-                                    <div style="color:#fff; font-size:16px; font-weight:600; margin-bottom:4px;">${mData.nickname || 'No Nickname'}</div>
-                                    <div style="color:#888; font-size:13px; margin-bottom:2px;">✉️ ${mData.email}</div>
-                                </div>
-                                <div style="text-align:right;">
-                                    <div style="color:#aaa; font-size:13px; background:#1a1a1a; padding:6px 12px; border-radius:6px; border:1px solid #333;">Age: ${mData.age || 'N/A'}</div>
+                                    <div style="color:${isLeader ? '#ffd700' : '#00ff88'}; font-size:11px; font-weight:bold; margin-bottom:4px; text-transform:uppercase;">${roleLabel}</div>
+                                    <div style="color:#fff; font-size:15px; font-weight:600;">${mData.nickname || 'Unknown'}</div>
+                                    <div style="color:#888; font-size:12px; margin-top:2px;">${mData.email}</div>
                                 </div>
                             </div>
                         `;
@@ -3849,7 +3878,7 @@ window.renderProfileContent = async function(content) {
                 document.getElementById("dashboardRoster").innerHTML = rosterHtml;
             }
         } catch (e) {
-            document.getElementById("dashboardRoster").innerHTML = `<p style="color:#ff4444; font-size:13px;">Failed to load team data.</p>`;
+            document.getElementById("dashboardRoster").innerHTML = `<p style="color:#ff4444; font-size:13px;">Failed to load roster.</p>`;
         }
     }
 };

@@ -645,43 +645,46 @@
       <!-- CREATE ACCOUNT VIEW -->
       <div id="createView" style="display:none;">
         <h2>Create Account</h2>
-        <div id="signupStep1">
+       <div id="signupStep1">
           <input id="regEmail"   placeholder="Gmail ID"          type="email">
-          <input id="regPass"    type="password"                  placeholder="Password">
-          <input id="regConfirm" type="password"                  placeholder="Confirm Password">
-
-          <input id="regNickname" type="text"                     placeholder="IN-Game Nickname (e.g. progamer)">
-
-
+          <input id="regPass"    type="password"                 placeholder="Password">
+          <input id="regConfirm" type="password"                 placeholder="Confirm Password">
+          <input id="regNickname" type="text"                    placeholder="IN-Game Nickname (e.g. progamer)">
           <input type="number"   id="regAge"  placeholder="Your Age (12-60)" min="12" max="60">
-          <button onclick="sendSignupOTP()" id="btnSendOTP">Send Code</button>
+          
+          <button onclick="sendSignupOTP()" id="btnSendOTP" style="background:#00ff88;color:#000;">Verify Details</button>
         </div>
+
         <div id="signupStep2" style="display:none;margin-top:15px;">
-    <div style="background:#1a2a1a;padding:25px;border-radius:10px;border:1px solid #00ff88;text-align:center;margin-bottom:20px;">
-        <div style="font-size:50px;margin-bottom:15px;">📧</div>
-        <h3 style="color:#00ff88;margin:0 0 10px 0;">Verification Email Sent!</h3>
-        <p style="color:#888;font-size:13px;margin:0;">We've sent a verification link to your Gmail.</p>
-    </div>
-    
-    <div style="background:#1a1a1a;padding:20px;border-radius:8px;margin-bottom:20px;">
-        <p style="color:#ffd700;font-size:14px;font-weight:bold;margin:0 0 10px 0;">📋 What to do next:</p>
-        <ol style="color:#aaa;font-size:13px;margin:0;padding-left:20px;line-height:1.8;">
-            <li>Open your Gmail inbox</li>
-            <li>Find email from <b style="color:#fff;">noreply@npcesports.firebaseapp.com</b></li>
-            <li>Click the <b style="color:#00ff88;">"Verify Email"</b> button in the email</li>
-            <li>Come back here and click <b style="color:#00ff88;">"Verified ✅"</b> below</li>
-        </ol>
-    </div>
-    
-    <input type="hidden" id="regOTP" placeholder="Enter OTP">
-    <button onclick="verifyAndCreate()" style="background:#00ff88;color:#000;width:100%;padding:14px;font-size:16px;font-weight:bold;">
-        ✅ I've Verified My Email
-    </button>
-    
-    <p class="switch-text" style="margin-top:15px;" onclick="resendSignupOTP()">
-        Didn't get it? <span id="resendTimer" style="color:#3b82f6;">Resend Email</span>
-    </p>
-</div>
+          <div style="background:#1a2a1a;padding:25px;border-radius:10px;border:1px solid #00ff88;text-align:center;margin-bottom:20px;">
+              <div style="font-size:50px;margin-bottom:15px;">📧</div>
+              <h3 style="color:#00ff88;margin:0 0 10px 0;">Verification Email Sent!</h3>
+              <p style="color:#888;font-size:13px;margin:0;">We've sent a verification link to your Gmail.</p>
+          </div>
+          
+          <div style="background:#1a1a1a;padding:20px;border-radius:8px;margin-bottom:20px;">
+              <p style="color:#ffd700;font-size:14px;font-weight:bold;margin:0 0 10px 0;">📋 What to do next:</p>
+              <ol style="color:#aaa;font-size:13px;margin:0;padding-left:20px;line-height:1.8;">
+                  <li>Open your Gmail inbox.</li>
+                  <li style="color:#ffed4a;">If you don't see it, <b>please check your SPAM / Junk folder!</b></li>
+                  <li>Find email from <b style="color:#fff;">noreply@npcesports...</b></li>
+                  <li>Click the <b style="color:#00ff88;">"Verify Email"</b> button inside it.</li>
+                  <li>Come back here and click <b style="color:#00ff88;">"Verified ✅"</b> below.</li>
+              </ol>
+          </div>
+          
+          <button onclick="verifyAndCreate()" style="background:#00ff88;color:#000;width:100%;padding:14px;font-size:16px;font-weight:bold;">
+              ✅ I've Verified My Email
+          </button>
+          
+          <p class="switch-text" style="margin-top:15px;" onclick="resendSignupOTP()">
+              Didn't get it? <span id="resendTimer" style="color:#3b82f6;">Resend Email</span>
+          </p>
+        </div>
+        
+        <button onclick="createAccount()" id="finalCompleteBtn" style="margin-top:20px;display:none;">Complete Profile</button>
+
+
 
         <div id="roleSelectionArea" style="display:none;">
           <h3 style="margin-top:20px;">Select Role</h3>
@@ -869,36 +872,45 @@
           <!-- REGISTRATION FORM -->
           <form id="tournamentJoinForm" style="display:flex;flex-direction:column;gap:15px;">
 
-            <!-- UID FIELDS -->
             <div style="background:#0f0f0f;padding:15px;border-radius:8px;border:1px solid #444;">
-              <label style="color:#fff;font-size:14px;display:block;margin-bottom:10px;"><b>Free Fire UIDs (Squad Members)</b></label>
-              <div style="margin-bottom:10px;">
-                <label style="color:#888;font-size:12px;">Player 1 (You - Leader) *</label>
-                <input type="number" id="uidPlayer1" placeholder="Your UID" required
-                  style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #00ff88;color:#fff;border-radius:4px;margin-top:5px;">
+              <label style="color:#fff;font-size:14px;display:block;margin-bottom:10px;"><b>Squad Members Details</b></label>
+              
+              <div style="margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #00ff88;">
+                <label style="color:#00ff88;font-size:12px;font-weight:bold;">Player 1 (You - Leader) *</label>
+                <input type="number" id="uidPlayer1" placeholder="Your UID" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-top:5px;margin-bottom:5px;">
+                <input type="text" id="nickPlayer1" placeholder="Your Nickname" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;">
               </div>
-              <div style="margin-bottom:10px;">
+
+              <div style="margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #444;">
                 <label style="color:#888;font-size:12px;">Player 2 *</label>
-                <input type="number" id="uidPlayer2" placeholder="Teammate 2 UID" required
-                  style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #444;color:#fff;border-radius:4px;margin-top:5px;">
+                <input type="number" id="uidPlayer2" placeholder="Teammate 2 UID" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-top:5px;margin-bottom:5px;">
+                <input type="text" id="nickPlayer2" placeholder="Teammate 2 Nickname" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
+                <select id="typePlayer2" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:4px;">
+                  <option value="friend">Just a Friend</option>
+                  <option value="npc_verified">Verified NPC Tournament User</option>
+                </select>
               </div>
-              <div style="margin-bottom:10px;">
+
+              <div style="margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #444;">
                 <label style="color:#888;font-size:12px;">Player 3 *</label>
-                <input type="number" id="uidPlayer3" placeholder="Teammate 3 UID" required
-                  style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #444;color:#fff;border-radius:4px;margin-top:5px;">
+                <input type="number" id="uidPlayer3" placeholder="Teammate 3 UID" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-top:5px;margin-bottom:5px;">
+                <input type="text" id="nickPlayer3" placeholder="Teammate 3 Nickname" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
+                <select id="typePlayer3" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:4px;">
+                  <option value="friend">Just a Friend</option>
+                  <option value="npc_verified">Verified NPC Tournament User</option>
+                </select>
               </div>
-              <div style="margin-bottom:10px;">
+
+              <div style="margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #444;">
                 <label style="color:#888;font-size:12px;">Player 4 *</label>
-                <input type="number" id="uidPlayer4" placeholder="Teammate 4 UID" required
-                  style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #444;color:#fff;border-radius:4px;margin-top:5px;">
-              </div>
-              <div>
-                <label style="color:#888;font-size:12px;">Player 5 (Optional/Substitute)</label>
-                <input type="number" id="uidPlayer5" placeholder="Substitute UID (if any)"
-                  style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #333;color:#666;border-radius:4px;margin-top:5px;">
+                <input type="number" id="uidPlayer4" placeholder="Teammate 4 UID" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-top:5px;margin-bottom:5px;">
+                <input type="text" id="nickPlayer4" placeholder="Teammate 4 Nickname" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
+                <select id="typePlayer4" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:4px;">
+                  <option value="friend">Just a Friend</option>
+                  <option value="npc_verified">Verified NPC Tournament User</option>
+                </select>
               </div>
             </div>
-
             <!-- PHONE -->
             <div style="display:flex;gap:0;">
               <span style="background:#333;color:#fff;padding:12px;border-radius:6px 0 0 6px;border:1px solid #444;border-right:none;font-size:14px;">+91</span>
@@ -916,9 +928,10 @@
             </div>
 
             <!-- GUIDELINES CHECKBOX -->
-            <div style="padding:12px;background:#2a2a1a;border-radius:6px;border-left:3px solid #ffd700;">
+           <div style="padding:12px;background:#2a2a1a;border-radius:6px;border-left:3px solid #ffd700;display:flex;align-items:flex-start;gap:10px;">
+              <input type="checkbox" id="agreeGuidelines" required style="margin-top:4px; width:18px; height:18px; accent-color:#ffd700; cursor:pointer;">
               <p style="color:#ccc;margin:0;font-size:13px;line-height:1.5;">
-                By registering, you agree to our
+                I have read and agree to the 
                 <a href="#" onclick="showGuidelines()" style="color:#ffd700;text-decoration:underline;">Tournament Guidelines</a>.
               </p>
             </div>
@@ -953,6 +966,10 @@
         </div>
         <div style="color:#ccc;line-height:1.8;">
           <h3 style="color:#fff;">1. Registration</h3>
+          <h3 style="color:#fff;margin-top:20px;">4. Disclaimers</h3>
+          <p>• NPC Tournaments is NOT responsible for high ping, internet disconnections, or game crashes during a match.</p>
+          <p>• Entry fees are strictly non-refundable once the tournament bracket is generated.</p>
+          <p>• Any abusive behavior towards admins will result in a permanent ban.</p>
           <p>• Only complete teams (4+1) can register</p>
           <p>• UIDs cannot be changed after registration</p>
           <p>• Entry fee must be paid before match starts</p>
