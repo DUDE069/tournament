@@ -58,7 +58,7 @@ let currentStream = null;
 // ===============================
 function handleProfileClick() {
     if (currentUser) {
-        openDashboard("profile");
+        openEditProfile(); // ✅ FIXED: Now opens personal details
     } else {
         openLogin();
     }
@@ -4056,7 +4056,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.querySelectorAll(".dash-card[data-popup]").forEach(card => {
         card.addEventListener("click", function() {
             const type = this.getAttribute("data-popup");
-            openDashboard(type);
+            window.openDashboard(type); // ✅ FIXED: Forces the NEW synced dashboard!
         });
     });
     
@@ -4064,7 +4064,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const popup = document.getElementById("dashboardPopup");
     if (popup) {
         popup.addEventListener("click", function(e) {
-            if (e.target === this) closeDashboard();
+            if (e.target === this) window.closeDashboard();
         });
     }
 });
