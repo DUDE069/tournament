@@ -3635,7 +3635,7 @@ function startTutorial() {
 // FIXED DASHBOARD SYSTEM
 // ========================================
 const popupTitles = {
-    profile: "👤 My Profile",
+    profile: "🛡️ Team Roster", // ✅ Changed from "My Profile"
     tournaments: "📋 Tournament History",
     matches: "📅 Upcoming Matches",
     performance: "🏆 Performance",
@@ -3777,59 +3777,40 @@ window.openDashboard = async function(type) {
     }
 };
 
-async function renderProfileContent(content) {
+window.renderProfileContent = async function(content) {
     if (!userProfile) return;
-    
-    let roleText = userProfile.isLeader ? "👑 Team Leader" : (userProfile.role === "member" ? "👥 Team Member" : "👤 Viewer");
-    let roleColor = userProfile.isLeader ? "#ffd700" : "#888";
 
-    // 1. Build the base HTML for Personal Quick-Look
-    let html = `
-        <div class="popup-section active">
-            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px; padding: 20px; background: rgba(0,255,136,0.05); border-radius: 12px;">
-                <div style="width: 56px; height: 56px; background: var(--npc-glow); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; color: #000; font-weight: bold;">
-                    ${(userProfile.nickname || userProfile.email || "U").charAt(0).toUpperCase()}
-                </div>
-                <div>
-                    <div style="color: #fff; font-weight: 600; font-size: 18px;">${userProfile.nickname || userProfile.email?.split("@")[0]}</div>
-                    <div style="color: ${roleColor}; font-size: 13px;">${roleText}</div>
-                </div>
-            </div>
-            
-            <div style="display: grid; gap: 12px; margin-bottom: 20px;">
-                <div style="padding: 14px; background: #1a1a1a; border-radius: 8px; display: flex; justify-content: space-between;">
-                    <span style="color: #666;">Email</span>
-                    <span style="color: #fff;">${userProfile.email || "—"}</span>
-                </div>
-                <div style="padding: 14px; background: #1a1a1a; border-radius: 8px; display: flex; justify-content: space-between;">
-                    <span style="color: #666;">Age</span>
-                    <span style="color: #fff;">${userProfile.age || "—"} years</span>
-                </div>
-            </div>
+    let html = `<div class="popup-section active">`;
 
-            <div style="display: flex; gap: 10px; margin-bottom: 24px;">
-                <button onclick="openEditProfile()" style="flex: 1; padding: 12px; background: #00ff88; color: #000; border: none; border-radius: 8px; cursor: pointer; font-weight:bold;">Edit Profile</button>
-                <button onclick="openChangePassword()" style="flex: 1; padding: 12px; background: transparent; color: #fff; border: 1px solid #333; border-radius: 8px; cursor: pointer;">Security</button>
-            </div>
-    `;
-
-    // 2. Set up a placeholder for the Team Roster
     if (userProfile.teamId) {
         html += `
-            <div style="border-top: 1px solid #333; padding-top: 20px; margin-top: 10px;">
-                <h4 style="color:#00ff88; margin-bottom: 10px;">🛡️ Team: ${userProfile.teamName}</h4>
-                <p style="color:#888; font-size:12px; margin-bottom:16px;">Team Code: <span style="color:#fff; font-family:monospace; background:#222; padding:3px 6px; border-radius:4px;">${userProfile.teamCode}</span></p>
-                <div id="dashboardRoster" style="display:grid; gap:8px; margin-bottom:20px;">
-                    <p style="color:#888; font-size:12px;">Loading teammates...</p>
-                </div>
+            <div style="margin-bottom: 20px; background: rgba(0,255,136,0.05); padding: 15px; border-radius: 10px; border: 1px solid #00ff88;">
+                <h3 style="color:#00ff88; margin: 0 0 5px 0;">Team: ${userProfile.teamName}</h3>
+                <p style="color:#888; font-size:13px; margin:0;">Team Code: <span style="color:#fff; font-family:monospace; background:#222; padding:3px 6px; border-radius:4px;">${userProfile.teamCode}</span></p>
+            </div>
+            
+            <h4 style="color:#888; margin-bottom: 12px; font-size: 13px; text-transform: uppercase;">Team Members</h4>
+            <div id="dashboardRoster" style="display:grid; gap:12px; margin-bottom:20px;">
+                <div style="text-align:center; padding:20px;"><div class="loading-spinner" style="margin:0 auto;"></div></div>
             </div>
         `;
+    } else {
+         html += `
+            <div style="text-align:center; padding:30px; background:#1a1a1a; border-radius:10px; border:1px solid #333;">
+                <div style="font-size:40px; margin-bottom:15px;">👤</div>
+                <p style="color:#888; margin-bottom:15px;">You are not currently in a team.</p>
+                <button onclick="closeDashboard(); openLogin(); showCreate(); selectRole('leader', document.querySelector('.role-card:nth-child(2)'));"
+                    style="background:#00ff88; color:#000; border:none; padding:10px 20px; border-radius:6px; font-weight:bold; cursor:pointer;">
+                    Create Team
+                </button>
+            </div>
+         `;
     }
 
-    html += `<button onclick="logout()" style="width: 100%; padding: 12px; background: rgba(255,68,68,0.1); color: #ff4444; border: 1px solid #ff4444; border-radius: 8px; cursor: pointer;">Logout</button></div>`;
+    html += `</div>`;
     content.innerHTML = html;
 
-    // 3. Fetch Team Members from Firebase and Inject them
+    // Fetch and display full team roster
     if (userProfile.teamId) {
         try {
             const teamDoc = await getDoc(doc(db, "teams", userProfile.teamId));
@@ -3837,16 +3818,30 @@ async function renderProfileContent(content) {
                 const members = teamDoc.data().members || [];
                 let rosterHtml = "";
                 
-                for (let uid of members) {
+                // Track member numbering for UI
+                let memberCount = 1;
+
+                for (let i = 0; i < members.length; i++) {
+                    const uid = members[i];
                     const mDoc = await getDoc(doc(db, "users", uid));
+                    
                     if (mDoc.exists()) {
                         const mData = mDoc.data();
+                        const isLeader = (uid === teamDoc.data().leaderId);
+                        const roleLabel = isLeader ? "👑 Team Leader" : `👥 Team Member ${memberCount}`;
+                        
+                        if (!isLeader) memberCount++; // Increment count only for members
+
                         rosterHtml += `
-                            <div style="background:#111; padding:12px 14px; border-radius:8px; border:1px solid #2a2a2a; display:flex; justify-content:space-between; align-items:center;">
-                                <span style="color:#fff; font-size:14px; font-weight: 500;">
-                                    ${mData.isLeader ? "👑" : "👤"} ${mData.nickname || mData.email.split('@')[0]}
-                                </span>
-                                <span style="color:#888; font-size:12px;">${mData.email}</span>
+                            <div style="background:#111; padding:16px; border-radius:10px; border:1px solid ${isLeader ? '#ffd700' : '#2a2a2a'}; display:flex; flex-wrap:wrap; gap:15px; justify-content:space-between; align-items:center;">
+                                <div>
+                                    <div style="color:${isLeader ? '#ffd700' : '#00ff88'}; font-size:12px; font-weight:bold; margin-bottom:6px; text-transform:uppercase;">${roleLabel}</div>
+                                    <div style="color:#fff; font-size:16px; font-weight:600; margin-bottom:4px;">${mData.nickname || 'No Nickname'}</div>
+                                    <div style="color:#888; font-size:13px; margin-bottom:2px;">✉️ ${mData.email}</div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="color:#aaa; font-size:13px; background:#1a1a1a; padding:6px 12px; border-radius:6px; border:1px solid #333;">Age: ${mData.age || 'N/A'}</div>
+                                </div>
                             </div>
                         `;
                     }
@@ -3854,10 +3849,10 @@ async function renderProfileContent(content) {
                 document.getElementById("dashboardRoster").innerHTML = rosterHtml;
             }
         } catch (e) {
-            document.getElementById("dashboardRoster").innerHTML = `<p style="color:#ff4444; font-size:12px;">Failed to load roster data.</p>`;
+            document.getElementById("dashboardRoster").innerHTML = `<p style="color:#ff4444; font-size:13px;">Failed to load team data.</p>`;
         }
     }
-}
+};
 
 async function renderTournamentHistoryContent(content) {
     content.innerHTML = dashboardTemplates.tournaments;
@@ -4242,6 +4237,7 @@ window.verifyAndCreate = async function() {
 
 
 
+
 // ==========================================
 // VIEW PERSONAL PROFILE (READ-ONLY OVERVIEW)
 // ==========================================
@@ -4251,38 +4247,51 @@ window.openPersonalProfile = function() {
     const content = document.getElementById("customActionContent");
     document.getElementById("customActionModal").classList.add("active");
     
-    const roleText = userProfile.isLeader ? "👑 Team Leader" : (userProfile.role === "member" ? "👥 Team Member" : "👤 Viewer");
+    // Safely format data
+    const roleText = userProfile.isLeader ? "Team Leader" : (userProfile.role === "member" ? "Team Member" : "Viewer");
+    const joinDate = userProfile.createdAt ? new Date(userProfile.createdAt.toDate?.() || userProfile.createdAt).toLocaleDateString() : 'Unknown';
+    const teamName = userProfile.teamName ? `Member of "${userProfile.teamName}"` : 'Not in a team';
 
     content.innerHTML = `
         <div class="modal-header">
-            <h2>My Personal Profile</h2>
+            <h2>Personal Settings</h2>
             <button class="close-modal" onclick="closeCustomModal()">×</button>
         </div>
         
         <div style="background:#1a1a1a; padding:20px; border-radius:10px; border:1px solid #333; margin-bottom:20px;">
-            <div style="display:flex; align-items:center; gap:15px; margin-bottom:15px;">
+            <div style="display:flex; align-items:center; gap:15px; margin-bottom:20px;">
                 <div style="width:56px; height:56px; background:var(--npc-glow); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; color:#000; font-weight:bold;">
                     ${(userProfile.nickname || userProfile.email || 'U').charAt(0).toUpperCase()}
                 </div>
                 <div>
                     <div style="color:#fff; font-size:18px; font-weight:bold;">${userProfile.nickname || 'No Nickname'}</div>
-                    <div style="color:var(--npc-glow); font-size:12px;">${roleText}</div>
+                    <div style="color:var(--npc-glow); font-size:12px;">👑 ${roleText}</div>
                 </div>
             </div>
             
-            <div style="display:grid; gap:10px; color:#ccc; font-size:14px;">
-                <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px;">
-                    <span style="color:#888;">Email</span> <span style="color:#fff;">${userProfile.email || 'N/A'}</span>
+            <div style="display:grid; gap:10px; color:#ccc; font-size:13px;">
+                <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px; border-left: 2px solid #333;">
+                    <span style="color:#888;">Email</span> <span style="color:#fff; font-weight:500;">${userProfile.email || 'N/A'}</span>
                 </div>
-                <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px;">
-                    <span style="color:#888;">Age</span> <span style="color:#fff;">${userProfile.age || 'N/A'} years</span>
+                <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px; border-left: 2px solid #333;">
+                    <span style="color:#888;">Age</span> <span style="color:#fff; font-weight:500;">${userProfile.age || 'N/A'} years</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px; border-left: 2px solid #333;">
+                    <span style="color:#888;">Joined Date</span> <span style="color:#fff; font-weight:500;">${joinDate}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px; border-left: 2px solid #333;">
+                    <span style="color:#888;">Account Type</span> <span style="color:#fff; font-weight:500;">${roleText}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px; border-left: 2px solid #00ff88;">
+                    <span style="color:#888;">Team</span> <span style="color:#00ff88; font-weight:500;">${teamName}</span>
                 </div>
             </div>
         </div>
 
         <div style="display:flex; flex-direction:column; gap:10px;">
             <button onclick="openEditProfile()" 
-                style="background:#00ff88; color:#000; padding:14px; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px;">
+                style="background:#00ff88; color:#000; padding:14px; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;"
+                onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
                 ✏️ Edit Profile
             </button>
             <button onclick="openChangePassword()" 
