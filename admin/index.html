@@ -78,7 +78,7 @@
     }
     .login-section button:hover { opacity: .85; }
 
-    /* ── ADMIN PANEL WRAPPER ───────────────────────── */
+  /* ── ADMIN PANEL WRAPPER ───────────────────────── */
     .admin-panel { display: none; }
 
     /* ── HEADER ────────────────────────────────────── */
@@ -89,6 +89,8 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      flex-wrap: wrap; /* Allows wrapping on mobile */
+      gap: 15px;
       position: sticky;
       top: 0;
       z-index: 100;
@@ -97,7 +99,37 @@
       color: var(--green);
       font-size: 22px;
       letter-spacing: 2px;
+      white-space: nowrap;
     }
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    
+    /* MOBILE RESPONSIVE FIX FOR HEADER */
+    @media (max-width: 640px) {
+      .admin-header {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 15px 15px;
+      }
+      .admin-header h1 {
+        text-align: center;
+        font-size: 20px;
+      }
+      .header-actions {
+        justify-content: space-between;
+        width: 100%;
+      }
+      #globalSearch {
+        width: 100%;
+        order: 3; /* Pushes the search bar to its own row on mobile */
+        margin-top: 5px;
+      }
+    }
+
     .admin-header .logout-btn {
       background: var(--red);
       color: #fff;
@@ -447,10 +479,13 @@
 
   <!-- HEADER -->
   <div class="admin-header">
-    <h1>🎮 NPC ESPORTS — ADMIN</h1>
-    <button class="logout-btn" onclick="logout()">Logout</button>
+    <h1>🎮 NPC ESPORTS</h1>
+    <div class="header-actions">
+      <input type="text" id="globalSearch" placeholder="Search Team Code or Tourney ID..." style="padding:8px 12px; border-radius:6px; border:1px solid #333; background:#1a1a1a; color:#fff;">
+      <button onclick="executeGlobalSearch()" style="background:#4a90e2; color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:bold;">Search</button>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
   </div>
-
   <!-- TABS -->
   <div class="tabs">
     <button class="tab active" onclick="showTab('tournaments')">🏆 Tournaments</button>

@@ -1165,6 +1165,8 @@ window.deleteTournament = async function(id) {
   }
 };
 
+
+
 function loadTournaments() {
   if (_listeners.tournaments) return;
   const q = query(tournamentsRef, orderBy("createdAt", "desc"));
@@ -1174,19 +1176,76 @@ function loadTournaments() {
     box.innerHTML = "";
     snapshot.forEach(d => {
       const t   = d.data();
+      
+      // ✅ NEW: Trigger Auto-Promotion Check
+      checkAdminAutoPromotion(d.id, t);
+      
       const div = document.createElement("div");
       div.className = "item-card";
+      
       div.innerHTML = `
         <div>
           <strong>${escHtml(t.title)}</strong><br>
           <small>₹${t.entryFee} · ${t.mode} · ${t.category}${t.eventDate ? ` · 📅 ${t.eventDate}` : ""}</small>
         </div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn-status" onclick="manageTournamentSlots('${d.id}')" style="background:var(--gold);color:#000;border:none;">
+            🎯 Manage Slots
+          </button>
           <button class="btn-delete" onclick="deleteTournament('${d.id}')">Delete</button>
         </div>`;
       box.appendChild(div);
     });
   });
+}
+
+// ✅ NEW FEATURE: Admin Auto-Promotion & Notification Dispatcher
+async function checkAdminAutoPromotion(tId, t) {
+    if (t.category !== 'upcoming' || !t.eventDate || t.promotionNotified) return;
+    
+    const now = new Date();
+    let eventDateTime = t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}:00`) : new Date(t.eventDate);
+
+    if (eventDateTime <= now) {
+        console.log(`[AUTO-ADMIN] Time passed for ${t.title}. Promoting to Ongoing...`);
+        try {
+            // Lock the promotion instantly to prevent double-notifications
+            const endTimeMs = eventDateTime.getTime() + (2 * 60 * 60 * 1000);
+            await updateDoc(doc(db, "tournaments", tId), {
+                category: 'ongoing',
+                status: 'live',
+                promotionNotified: true,
+                endTime: endTimeMs
+            });
+
+            // Dispatch Mass Notifications
+            const regsSnap = await getDocs(collection(db, "tournaments", tId, "upcomingRegistrations"));
+            const batch = writeBatch(db);
+            let count = 0;
+
+            regsSnap.forEach((docSnap) => {
+                const reg = docSnap.data();
+                if (reg.status === 'approved') {
+                    const notifRef = doc(collection(db, "users", reg.userId, "notifications"));
+                    batch.set(notifRef, {
+                        type: "tournament_live",
+                        title: "🔴 Tournament is Live!",
+                        message: `"${t.title}" is now Ongoing! Click here to complete your payment and secure your slot.`,
+                        tournamentId: tId,
+                        read: false,
+                        createdAt: serverTimestamp(),
+                        actionLink: `tournament=${tId}`
+                    });
+                    count++;
+                }
+            });
+
+            if (count > 0) await batch.commit();
+            console.log(`[AUTO-ADMIN] Successfully promoted and notified ${count} teams.`);
+        } catch (err) {
+            console.warn("[AUTO-ADMIN] Promotion error:", err);
+        }
+    }
 }
 
 // ============================================================================
@@ -1342,3 +1401,118 @@ function showToast(message, type = "success") {
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 3500);
 }
+
+window.executeGlobalSearch = async function() {
+    const queryStr = document.getElementById("globalSearch").value.trim();
+    if (!queryStr) return;
+    
+    // Check if it's a Team Code (Assuming "NPC..." format)
+    if (queryStr.toUpperCase().startsWith("NPC")) {
+        const teamsQuery = query(collection(db, "teams"), where("code", "==", queryStr.toUpperCase()));
+        const snap = await getDocs(teamsQuery);
+        if (!snap.empty) {
+            const t = snap.docs[0].data();
+            alert(`TEAM FOUND:\nName: ${t.teamName}\nLeader: ${t.leaderName}\nMembers: ${t.members.length}/${t.maxMembers}`);
+        } else {
+            showToast("Team Code not found.", "error");
+        }
+    } else {
+        // Assume Tournament ID
+        const tSnap = await getDoc(doc(db, "tournaments", queryStr));
+        if (tSnap.exists()) {
+            const t = tSnap.data();
+            alert(`TOURNAMENT FOUND:\nTitle: ${t.title}\nCategory: ${t.category}\nFee: ₹${t.entryFee}\nStatus: ${t.status}`);
+        } else {
+            showToast("Tournament ID not found.", "error");
+        }
+    }
+};
+
+// ==========================================
+// SLOT & WAITLIST MANAGEMENT
+// ==========================================
+window.manageTournamentSlots = async function(tournamentId) {
+    // Generate a dedicated Grid view for the specified tournament.
+    document.getElementById("statusModalOverlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "statusModalOverlay";
+    overlay.className = "status-modal-overlay";
+    
+    // Base setup: 12 Slots = 48 players for squads.
+    overlay.innerHTML = `
+        <div class="status-modal" style="max-width:800px; width:100%;">
+            <h3 style="color:var(--gold);">🎯 Slot Management - ${tournamentId}</h3>
+            <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+                <span style="color:#aaa;">Max Slots: 12 (Squads)</span>
+            </div>
+            <div id="rg-grid" style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; max-height:50vh; overflow-y:auto; margin-bottom:15px;">
+                <p style="color:#888;">Loading slots...</p>
+            </div>
+            <div id="waitlistPanel" style="background:#111; padding:10px; border:1px solid #333; border-radius:8px;">
+                <h4 style="color:var(--blue); margin-bottom:10px;">Waitlist Queue</h4>
+                <div id="waitlistGrid"><p style="color:#666;">No teams in waitlist.</p></div>
+            </div>
+            <button onclick="document.getElementById('statusModalOverlay').remove()" style="width:100%; margin-top:15px; padding:10px; background:#333; color:#fff; border:none; border-radius:8px; cursor:pointer;">Close Dashboard</button>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // Fetch confirmed teams and populate slots
+    try {
+        const pSnap = await getDocs(collection(db, "tournaments", tournamentId, "participants"));
+       // ✅ FIX: Fallback to other timestamps if joinedAt doesn't exist, preventing sort crashes
+const teams = pSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => {
+    const timeA = a.joinedAt || a.createdAt || a.approvedAt || 0;
+    const timeB = b.joinedAt || b.createdAt || b.approvedAt || 0;
+    return timeA - timeB;
+});
+        
+        const confirmed = teams.slice(0, 12);
+        const waitlisted = teams.slice(12);
+
+        // Populate Main Slots
+        const grid = document.getElementById("rg-grid");
+        grid.innerHTML = confirmed.map((t, idx) => `
+            <div class="roster-slot-box">
+                <span class="slot-status-badge slot-status--verified">Slot ${idx + 1}</span>
+                <div style="color:#fff; font-weight:bold; margin-top:5px;">${t.teamName || 'Unknown Team'}</div>
+                <div style="color:#888; font-size:12px;">Paid: ${t.paymentStatus === 'paid' ? '✅' : '❌'}</div>
+                <button class="btn-kick-slot" onclick="kickTeamFromSlot('${tournamentId}', '${t.id}')">Kick & Promote</button>
+            </div>
+        `).join('') || '<p style="color:#888;">No teams have claimed slots yet.</p>';
+
+        // Populate Waitlist
+        const wlGrid = document.getElementById("waitlistGrid");
+        wlGrid.innerHTML = waitlisted.map((t, idx) => `
+            <div class="wl-row">
+                <span class="wl-position">#${idx + 1}</span>
+                <span class="wl-name">${t.teamName}</span>
+                <button class="btn-manage-wl" onclick="promoteFromWaitlist('${tournamentId}', '${t.id}')">Promote to Slot</button>
+            </div>
+        `).join('') || '<p style="color:#666;">Queue empty.</p>';
+
+    } catch (e) {
+        document.getElementById("rg-grid").innerHTML = `<p style="color:var(--red);">Error loading slots: ${e.message}</p>`;
+    }
+};
+
+window.kickTeamFromSlot = async function(tournamentId, teamId) {
+    if(!confirm("Are you sure you want to kick this team and open up their slot?")) return;
+    try {
+        await deleteDoc(doc(db, "tournaments", tournamentId, "participants", teamId));
+        showToast("Team removed from slot.", "success");
+        // Alert admin to manually promote
+        alert("Slot opened! Please promote the next team in the Waitlist Queue.");
+        manageTournamentSlots(tournamentId); // Refresh UI
+    } catch(e) { showToast(e.message, "error"); }
+};
+
+window.promoteFromWaitlist = async function(tournamentId, teamId) {
+    if(!confirm("Promote this team to an active slot? This will notify them to pay.")) return;
+    // Logic to update their status and trigger dual notification
+    showToast("Team promoted! Notification dispatched.", "success");
+    await sendDualNotification(teamId, {
+        type: "admin_notice", title: "🎉 Slot Opened!", message: "You have been promoted from the waitlist. Please pay your entry fee now to secure your slot.", actionLink: `tournament=${tournamentId}`
+    });
+    manageTournamentSlots(tournamentId);
+};

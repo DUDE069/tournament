@@ -265,3 +265,12 @@
     grid-template-columns: 1fr !important;
   }
 }
+/* Fix Modal overflow on mobile */
+#verifModal > div, .status-modal {
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 20px !important;
+}
+.app-card-actions {
+    flex-wrap: wrap; /* Allows buttons to drop down on small screens */
+}

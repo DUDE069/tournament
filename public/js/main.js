@@ -100,6 +100,9 @@ window.handleUpcomingRegister = async function(tournamentId) {
     }
 
     window.currentJoiningTournament = tournamentId;
+    document.getElementById('player5Container').style.display = 'block';
+    if(document.getElementById('enablePlayer5')) document.getElementById('enablePlayer5').checked = false;
+    document.getElementById('player5Fields').style.display = 'none';
     window.currentTournamentType = 'upcoming'; // Flag for upcoming
 
     // Setup modal for upcoming (no payment fields)
@@ -372,6 +375,9 @@ function renderTournaments() {
 window.handleJoin = async function(tournamentId) {
     if (!currentUser) { openLogin(); return; }
 
+
+document.getElementById('player5Container').style.display = 'none';
+
     const tournament = tournaments.find(t => t.id === tournamentId);
     if (!tournament) { showMessage("Tournament not found"); return; }
 
@@ -639,6 +645,7 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         // Structure the new detailed data
+        // Structure the new detailed data
         const playersData = [
             { uid: p1Uid, nickname: p1Nick, type: "leader" },
             { uid: p2Uid, nickname: p2Nick, type: p2Type },
@@ -649,6 +656,20 @@ document.addEventListener("DOMContentLoaded", function() {
         // Keep the old simple array so the Admin Panel doesn't break!
         const uids = [p1Uid, p2Uid, p3Uid, p4Uid];
 
+        // NEW: Capture Optional 5th Player if enabled
+        const p5Enabled = document.getElementById("enablePlayer5")?.checked;
+        if (p5Enabled) {
+            const p5Uid = document.getElementById("uidPlayer5")?.value.trim();
+            const p5Nick = document.getElementById("nickPlayer5")?.value.trim();
+            const p5Type = document.getElementById("typePlayer5")?.value;
+
+            if (!p5Uid || !p5Nick) {
+                showMessage("Please fill out the 5th Substitute Player's UID and Nickname.");
+                return;
+            }
+            playersData.push({ uid: p5Uid, nickname: p5Nick, type: p5Type });
+            uids.push(p5Uid);
+        }
         // Validate phone
         const phoneRaw = document.getElementById("joinPhone").value.trim();
         if (!phoneRaw || !/^\d{10}$/.test(phoneRaw)) {
@@ -1127,14 +1148,34 @@ function startFirebaseListeners() {
 
     const q = query(tournamentsRef, orderBy("createdAt", "desc"));
     activeListeners.tournaments = onSnapshot(q, (snapshot) => {
-        tournaments = snapshot.docs.map(d => ({
-            id: d.id,
-            ...d.data(),
-            endTime: d.data().endTime ||
-                (d.data().createdAt?.toMillis?.() + (d.data().duration || 60) * 60000)
-        }));
+        const now = Date.now();
+        
+        tournaments = snapshot.docs.map(d => {
+            let t = d.data();
+            let eventDateTime = t.eventDate ? (t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}:00`) : new Date(t.eventDate)) : null;
+            
+            // CHECK IF TIME HAS PASSED
+            let isTimePassed = eventDateTime && eventDateTime.getTime() <= now;
+
+            return {
+                id: d.id,
+                ...t,
+                rawCategory: t.category, // Store the actual DB state
+                // DYNAMIC OVERRIDE: If time passed, force it to 'ongoing' locally for all users
+                category: (t.category === 'upcoming' && isTimePassed) ? 'ongoing' : t.category,
+                status: (t.category === 'upcoming' && isTimePassed) ? 'live' : t.status,
+                endTime: t.endTime || (isTimePassed ? eventDateTime.getTime() + (2 * 60 * 60 * 1000) : (t.createdAt?.toMillis?.() + (t.duration || 60) * 60000))
+            };
+        });
+        
         renderTournaments();
         startTimers();
+
+        // Securely trigger the Database Update & Notifications ONLY if the user is an Admin
+        if (userProfile?.isAdmin && typeof window.checkTournamentPromotions === 'function') {
+            window.checkTournamentPromotions();
+        }
+        
     }, (err) => {
         if (err.code !== 'permission-denied') console.error("Tournament listener error:", err);
     });
@@ -1240,18 +1281,11 @@ onAuthStateChanged(auth, async (user) => {
 // PHASE 2: AUTO-PROMOTION & PAYMENT REMINDER SYSTEM
 // ===============================
 
-// Check every 5 minutes for tournaments that need to be promoted
-setInterval(checkTournamentPromotions, 300000); // 5 minutes
-checkTournamentPromotions(); // Run immediately on load
-
-// ===============================
-// LIMITED TOURNAMENT: NOTIFY ME
-// ===============================
+// ─── 1. LIMITED TOURNAMENT: NOTIFY ME (Your existing code kept safe) ───
 window.handleNotifyMe = async function(tournamentId, tournamentName) {
     if (!currentUser) { openLogin(); return; }
 
     try {
-        // Save user's intent to be notified
         const ref = doc(db, "tournaments", tournamentId, "limitedNotifyList", currentUser.uid);
         const existing = await getDoc(ref);
 
@@ -1280,7 +1314,6 @@ window.handleNotifyMe = async function(tournamentId, tournamentName) {
     }
 };
 
-// Check if any limited tournament has started and notify subscribed users
 async function checkLimitedTournamentNotifications() {
     if (!currentUser) return;
     const now = Date.now();
@@ -1288,18 +1321,15 @@ async function checkLimitedTournamentNotifications() {
     tournaments.forEach(async (t) => {
         if (t.category !== 'limited' || !t.endTime) return;
 
-        // If tournament's endTime (which is its start in the limited flow) has been reached
-        const startTime = t.endTime; // for limited, endTime marks when the event goes live
+        const startTime = t.endTime; 
         if (now < startTime) return;
 
-        // Check if user subscribed and hasn't been notified
         try {
             const notifyRef = doc(db, "tournaments", t.id, "limitedNotifyList", currentUser.uid);
             const notifySnap = await getDoc(notifyRef);
 
             if (notifySnap.exists() && !notifySnap.data().notified) {
                 const timeStr = new Date(startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-                // Send in-app notification
                 await addDoc(collection(db, "users", currentUser.uid, "notifications"), {
                     type: "limited_start",
                     title: `🚨 Tournament Starting Now!`,
@@ -1308,7 +1338,6 @@ async function checkLimitedTournamentNotifications() {
                     read: false,
                     createdAt: serverTimestamp()
                 });
-                // Mark as notified
                 await updateDoc(notifyRef, { notified: true, notifiedAt: serverTimestamp() });
             }
         } catch (e) {
@@ -1316,65 +1345,103 @@ async function checkLimitedTournamentNotifications() {
         }
     });
 }
-
-// Run limited-tournament notification check every minute
 setInterval(checkLimitedTournamentNotifications, 60000);
 
-async function checkTournamentPromotions() {
-    const now = new Date();
+
+// ─── 2. NEW SECURED AUTO-PROMOTION LOGIC (Admin Only Writes) ───
+window.checkTournamentPromotions = async function() {
+    // SECURITY: ONLY run this if the user is an Admin!
+    if (!userProfile?.isAdmin || !tournaments) return;
     
+    const now = new Date();
+
     tournaments.forEach(async (t) => {
         if (!t.eventDate) return;
-        
-        // 1. COMBINE DATE AND TIME
-        // If the admin set a time (e.g., "14:00"), combine it with the date (e.g., "2024-04-27")
-        // If no time is set, fallback to just the date.
-        let eventDateTime;
-        if (t.eventTime) {
-            eventDateTime = new Date(`${t.eventDate}T${t.eventTime}:00`);
-        } else {
-            eventDateTime = new Date(t.eventDate); 
-        }
-        
-        // Calculate the difference in milliseconds
+
+        let eventDateTime = t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}:00`) : new Date(t.eventDate);
         const timeDiff = eventDateTime - now;
         const diffHours = timeDiff / (1000 * 60 * 60);
-        
-        // 2. PROMOTION LOGIC: If 'upcoming' and the exact Date + Time has passed
-        if (t.category === 'upcoming' && timeDiff <= 0) {
-            console.log(`[AUTO] Promoting tournament ${t.id} to ongoing at ${t.eventTime}`);
+
+        // DATABASE & NOTIFICATION LOGIC
+        if (t.rawCategory === 'upcoming' && timeDiff <= 0 && !t.promotionNotified) {
             
-            // Update local UI state
-            t.category = 'ongoing';
-            t.status = 'live';
-            t.endTime = eventDateTime.getTime() + (2 * 60 * 60 * 1000); // Sets 2-hour duration
-            
-            // Update the Database so it stays permanent!
+            if (t.isPromoting) return; // Prevent double-trigger
+            t.isPromoting = true;
+
+            console.log(`[AUTO] Admin promoting tournament ${t.id} to ongoing...`);
+
             try {
+                const endTimeMs = eventDateTime.getTime() + (2 * 60 * 60 * 1000);
                 await updateDoc(doc(db, "tournaments", t.id), {
                     category: 'ongoing',
                     status: 'live',
-                    endTime: t.endTime
+                    endTime: endTimeMs,
+                    promotionNotified: true
                 });
+
+                const regsSnap = await getDocs(collection(db, "tournaments", t.id, "upcomingRegistrations"));
+                const batch = writeBatch(db);
+                let count = 0;
+
+                regsSnap.forEach((docSnap) => {
+                    const reg = docSnap.data();
+                    if (reg.status === 'approved') {
+                        const notifRef = doc(collection(db, "users", reg.userId, "notifications"));
+                        batch.set(notifRef, {
+                            type: "tournament_live",
+                            title: "🔴 Tournament is Live!",
+                            message: `"${t.title}" is now Ongoing! Click here to complete your payment and secure your slot.`,
+                            tournamentId: t.id,
+                            read: false,
+                            popupShown: false,
+                            createdAt: serverTimestamp(),
+                            actionLink: `tournament=${t.id}`
+                        });
+                        count++;
+                    }
+                });
+
+                if (count > 0) await batch.commit();
             } catch (err) {
-                console.warn("Could not promote in DB:", err);
+                console.error("Auto-promotion error:", err);
+            } finally {
+                t.isPromoting = false;
             }
-            
-            // Notify registered teams that tournament is starting NOW
-            if (typeof notifyRegisteredTeams === 'function') {
-                notifyRegisteredTeams(t.id, 'tournament_starting');
-            }
-            
-            renderTournaments();
         }
-        
-        // 3. PAYMENT REMINDER: If 24-48 hours before tournament and not paid
-        if (t.category === 'upcoming' && diffHours <= 48 && diffHours > 0) {
-            remindPendingPayments(t.id, t.eventDate);
+
+        // PAYMENT REMINDER LOGIC (Runs for everyone)
+        if (t.rawCategory === 'upcoming' && diffHours <= 48 && diffHours > 0) {
+            if (typeof remindPendingPayments === 'function') {
+                remindPendingPayments(t.id, t.eventDate);
+            }
+        }
+    });
+};
+
+// ─── 3. VISUAL OVERRIDE INTERVAL (Runs for everyone) ───
+setInterval(() => {
+    if (!tournaments || tournaments.length === 0) return;
+    const now = Date.now();
+    let needsRender = false;
+
+    tournaments.forEach(t => {
+        if (t.rawCategory === 'upcoming' && t.eventDate) {
+            let eventDateTime = t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}:00`) : new Date(t.eventDate);
+            if (eventDateTime.getTime() <= now && t.category !== 'ongoing') {
+                t.category = 'ongoing';
+                t.status = 'live';
+                needsRender = true;
+            }
         }
     });
 
-}
+    if (needsRender && typeof renderTournaments === 'function') renderTournaments(); 
+    
+    if (userProfile?.isAdmin) {
+        window.checkTournamentPromotions(); // Trigger DB write if Admin is online
+    }
+}, 60000);
+
 
 // Check user's upcoming registrations for payment reminders
 async function remindPendingPayments(tournamentId, eventDate) {
@@ -3280,17 +3347,57 @@ async function showApprovedReviewInterface(tournamentId, userId) {
             emailInput.style.color = "#888";
         }
         
-        // Replace form submit button with "Continue to Payment"
-        const submitBtn = document.getElementById("joinSubmitBtn");
-        if (submitBtn) {
-            submitBtn.textContent = "Continue to Payment →";
-            submitBtn.style.background = "#ffd700"; // Gold color for payment step
-            submitBtn.onclick = function(e) {
-                e.preventDefault();
-                // Now go to payment interface
-                openPaymentInterface(tournamentId);
-            };
+       document.getElementById('player5Container').style.display = 'none';
+const isUpcoming = tournament.category === 'upcoming';
+const guidelinesLabel = document.querySelector('label[for="agreeGuidelines"] p');
+const agreeCheckbox = document.getElementById('agreeGuidelines');
+
+// Automatically uncheck and update text
+if (agreeCheckbox) agreeCheckbox.checked = false;
+if (guidelinesLabel) {
+    guidelinesLabel.innerHTML = isUpcoming 
+        ? `I have read and agree to the <a href="#" onclick="showGuidelines()" style="color:#ffd700;text-decoration:underline;">Payment Guidelines (Refunds Possible up to 24h prior)</a>.`
+        : `I have read and agree to the <a href="#" onclick="showGuidelines()" style="color:#ffd700;text-decoration:underline;">Payment Guidelines (Strictly Non-Refundable)</a>.`;
+}
+
+// Modify the submit button based on Upcoming vs Ongoing
+const submitBtn = document.getElementById("joinSubmitBtn");
+if (submitBtn) {
+    submitBtn.textContent = "Continue to Payment →";
+    submitBtn.onclick = function(e) {
+        e.preventDefault();
+        if (!agreeCheckbox || !agreeCheckbox.checked) {
+            showMessage("You must agree to the Payment Guidelines to proceed.");
+            return;
         }
+        if (isUpcoming) {
+            // Trigger Pay Now or Pay Later Flow
+            document.getElementById('joinTournamentModal').style.display = 'none';
+            showPopup("warning", 
+                "You can pay now to secure your slot immediately, or Pay Later. WARNING: If you do not pay before the tournament goes 'Ongoing', you will be kicked.", 
+                "Pay Now", 
+                () => { document.getElementById('customPopup').remove(); openPaymentInterface(tournamentId); }
+            );
+            // Append Pay Later button dynamically to the popup
+            const popupBody = document.querySelector('#customPopup > div');
+            if(popupBody) {
+                const laterBtn = document.createElement('button');
+                laterBtn.textContent = "Pay Later";
+                laterBtn.style.cssText = "margin-top:10px; width:100%; padding:12px; background:#333; color:#fff; border-radius:8px; cursor:pointer;";
+                laterBtn.onclick = async () => {
+                    document.getElementById('customPopup').remove();
+                    await addDoc(collection(db, "users", userId, "notifications"), {
+                        type: "payment_reminder", title: "Payment Deadline Warning", message: "Pay your entry fee before the tournament starts to avoid getting kicked.", tournamentId: tournamentId, read: false, createdAt: serverTimestamp()
+                    });
+                    showMessage("Payment deferred. Check your notifications.");
+                };
+                popupBody.appendChild(laterBtn);
+            }
+        } else {
+            openPaymentInterface(tournamentId);
+        }
+    };
+}
         
         // Add notice banner
         const form = document.getElementById("tournamentJoinForm");
@@ -4270,23 +4377,19 @@ window.verifyAndCreate = async function() {
 // ==========================================
 // VIEW PERSONAL PROFILE (READ-ONLY OVERVIEW)
 // ==========================================
+// Inside main.js
 window.openPersonalProfile = function() {
     if (!userProfile) return;
-    
     const content = document.getElementById("customActionContent");
     document.getElementById("customActionModal").classList.add("active");
-    
-    // Safely format data
-    const roleText = userProfile.isLeader ? "Team Leader" : (userProfile.role === "member" ? "Team Member" : "Viewer");
+    const roleText = userProfile.isAdmin ? "Admin" : "Standard User";
     const joinDate = userProfile.createdAt ? new Date(userProfile.createdAt.toDate?.() || userProfile.createdAt).toLocaleDateString() : 'Unknown';
-    const teamName = userProfile.teamName ? `Member of "${userProfile.teamName}"` : 'Not in a team';
 
     content.innerHTML = `
         <div class="modal-header">
             <h2>Personal Settings</h2>
             <button class="close-modal" onclick="closeCustomModal()">×</button>
         </div>
-        
         <div style="background:#1a1a1a; padding:20px; border-radius:10px; border:1px solid #333; margin-bottom:20px;">
             <div style="display:flex; align-items:center; gap:15px; margin-bottom:20px;">
                 <div style="width:56px; height:56px; background:var(--npc-glow); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:24px; color:#000; font-weight:bold;">
@@ -4294,10 +4397,9 @@ window.openPersonalProfile = function() {
                 </div>
                 <div>
                     <div style="color:#fff; font-size:18px; font-weight:bold;">${userProfile.nickname || 'No Nickname'}</div>
-                    <div style="color:var(--npc-glow); font-size:12px;">👑 ${roleText}</div>
+                    <div style="color:var(--npc-glow); font-size:12px;">👤 ${roleText}</div>
                 </div>
             </div>
-            
             <div style="display:grid; gap:10px; color:#ccc; font-size:13px;">
                 <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px; border-left: 2px solid #333;">
                     <span style="color:#888;">Email</span> <span style="color:#fff; font-weight:500;">${userProfile.email || 'N/A'}</span>
@@ -4308,35 +4410,15 @@ window.openPersonalProfile = function() {
                 <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px; border-left: 2px solid #333;">
                     <span style="color:#888;">Joined Date</span> <span style="color:#fff; font-weight:500;">${joinDate}</span>
                 </div>
-                <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px; border-left: 2px solid #333;">
-                    <span style="color:#888;">Account Type</span> <span style="color:#fff; font-weight:500;">${roleText}</span>
-                </div>
-                <div style="display:flex; justify-content:space-between; background:#0f0f0f; padding:12px; border-radius:6px; border-left: 2px solid #00ff88;">
-                    <span style="color:#888;">Team</span> <span style="color:#00ff88; font-weight:500;">${teamName}</span>
-                </div>
             </div>
         </div>
-
         <div style="display:flex; flex-direction:column; gap:10px;">
-            <button onclick="openEditProfile()" 
-                style="background:#00ff88; color:#000; padding:14px; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; transition:0.2s;"
-                onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
-                ✏️ Edit Profile
-            </button>
-            <button onclick="openChangePassword()" 
-                style="background:transparent; color:#fff; border:1px solid #333; padding:14px; border-radius:8px; cursor:pointer; font-size:14px; transition:0.2s;"
-                onmouseover="this.style.borderColor='#888'" onmouseout="this.style.borderColor='#333'">
-                🔐 Change Password
-            </button>
-            <button onclick="logout()" 
-                style="background:rgba(255,68,68,0.1); color:#ff4444; border:1px solid #ff4444; padding:14px; border-radius:8px; cursor:pointer; font-size:14px; transition:0.2s;"
-                onmouseover="this.style.background='#ff4444'; this.style.color='#fff'" onmouseout="this.style.background='rgba(255,68,68,0.1)'; this.style.color='#ff4444'">
-                🚪 Logout
-            </button>
+            <button onclick="openEditProfile()" style="background:#00ff88; color:#000; padding:14px; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">✏️ Edit Profile</button>
+            <button onclick="openChangePassword()" style="background:transparent; color:#fff; border:1px solid #333; padding:14px; border-radius:8px; cursor:pointer;">🔐 Change Password</button>
+            <button onclick="logout()" style="background:rgba(255,68,68,0.1); color:#ff4444; border:1px solid #ff4444; padding:14px; border-radius:8px; cursor:pointer;">🚪 Logout</button>
         </div>
     `;
 };
-
 
 
 

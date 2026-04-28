@@ -911,11 +911,27 @@
                 </select>
               </div>
             </div>
-            <!-- PHONE -->
+        
+
+              <div id="player5Container" style="display:none; margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #3b82f6;">
+                <label style="color:#3b82f6;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:8px;">
+                  <input type="checkbox" id="enablePlayer5" onchange="document.getElementById('player5Fields').style.display = this.checked ? 'block' : 'none';" style="accent-color:#3b82f6;">
+                  Add a 5th Substitute Player (Optional)
+                </label>
+                <div id="player5Fields" style="display:none; margin-top:10px;">
+                  <input type="number" id="uidPlayer5" placeholder="Teammate 5 UID" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
+                  <input type="text" id="nickPlayer5" placeholder="Teammate 5 Nickname" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
+                  <select id="typePlayer5" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:4px;">
+                    <option value="friend">Just a Friend</option>
+                    <option value="npc_verified">Verified NPC Tournament User</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div style="display:flex;gap:0;">
               <span style="background:#333;color:#fff;padding:12px;border-radius:6px 0 0 6px;border:1px solid #444;border-right:none;font-size:14px;">+91</span>
-              <input type="tel" id="joinPhone" placeholder="9876543210" maxlength="10" required
-                style="width:100%;padding:12px;background:#0f0f0f;border:1px solid #444;border-left:none;color:#fff;border-radius:0 6px 6px 0;font-size:14px;">
+              <input type="tel" id="joinPhone" placeholder="9876543210" pattern="[0-9]{10}" required title="Please enter exactly 10 digits" style="width:100%;padding:12px;background:#0f0f0f;border:1px solid #444;border-left:none;color:#fff;border-radius:0 6px 6px 0;font-size:14px;">
             </div>
             <small style="color:#666;font-size:11px;">Enter 10-digit mobile number</small>
 
@@ -966,21 +982,29 @@
         </div>
         <div style="color:#ccc;line-height:1.8;">
           <h3 style="color:#fff;">1. Registration</h3>
-          <h3 style="color:#fff;margin-top:20px;">4. Disclaimers</h3>
-          <p>• NPC Tournaments is NOT responsible for high ping, internet disconnections, or game crashes during a match.</p>
-          <p>• Entry fees are strictly non-refundable once the tournament bracket is generated.</p>
-          <p>• Any abusive behavior towards admins will result in a permanent ban.</p>
-          <p>• Only complete teams (4+1) can register</p>
-          <p>• UIDs cannot be changed after registration</p>
-          <p>• Entry fee must be paid before match starts</p>
-          <h3 style="color:#fff;margin-top:20px;">2. Match Rules</h3>
-          <p>• Join custom room 15 minutes early</p>
-          <p>• No emulators or third-party software</p>
-          <p>• Only registered players allowed</p>
-          <h3 style="color:#fff;margin-top:20px;">3. Disqualification</h3>
-          <p>• Unauthorized players in team</p>
-          <p>• Hacking or unfair gameplay</p>
-          <p>• Not joining room on time</p>
+          <ul style="padding-left: 20px; margin-bottom: 15px;">
+            <li>Only complete teams (4+1) can register.</li>
+            <li>UIDs cannot be changed after registration (if accepted).</li>
+            <li>Entry fee must be paid before match starts.</li>
+          </ul>
+          <h3 style="color:#fff;">2. Match Rules</h3>
+          <ul style="padding-left: 20px; margin-bottom: 15px;">
+            <li>Join custom room 15 minutes early.</li>
+            <li>No emulators or third-party software allowed.</li>
+            <li>Only registered players are allowed to participate.</li>
+          </ul>
+          <h3 style="color:#fff;">3. Disqualification</h3>
+          <ul style="padding-left: 20px; margin-bottom: 15px;">
+            <li>Unauthorized players identified in the team.</li>
+            <li>Use of hacking, scripts, or unfair gameplay tactics.</li>
+            <li>Failure to join the room on time.</li>
+          </ul>
+          <h3 style="color:#fff;">4. Disclaimers</h3>
+          <ul style="padding-left: 20px; margin-bottom: 15px;">
+            <li>NPC Tournaments is NOT responsible for high ping, internet disconnections, or game crashes during a match.</li>
+            <li>Entry fees are strictly non-refundable once the tournament bracket is generated.</li>
+            <li>Any abusive behavior towards admins will result in a permanent ban.</li>
+          </ul>
         </div>
       </div>
     </div>
