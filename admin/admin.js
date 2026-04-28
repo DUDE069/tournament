@@ -1200,22 +1200,24 @@ function loadTournaments() {
 }
 
 // ✅ NEW FEATURE: Admin Auto-Promotion & Notification Dispatcher
+// ✅ UPDATED: Uses the Hidden 'transitionTime' instead of the Match Start Time
 async function checkAdminAutoPromotion(tId, t) {
-    if (t.category !== 'upcoming' || !t.eventDate || t.promotionNotified) return;
+    // If it lacks a transition time, we can't auto-promote it
+    if (t.category !== 'upcoming' || !t.transitionTime || t.promotionNotified) return;
     
     const now = new Date();
-    let eventDateTime = t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}:00`) : new Date(t.eventDate);
+    // Parse the hidden timer the admin set
+    let transitionDateTime = new Date(t.transitionTime);
 
-    if (eventDateTime <= now) {
-        console.log(`[AUTO-ADMIN] Time passed for ${t.title}. Promoting to Ongoing...`);
+    if (transitionDateTime <= now) {
+        console.log(`[AUTO-ADMIN] Hidden timer triggered for ${t.title}. Moving to Ongoing...`);
         try {
             // Lock the promotion instantly to prevent double-notifications
-            const endTimeMs = eventDateTime.getTime() + (2 * 60 * 60 * 1000);
+            // Note: We keep the original Match Start time intact!
             await updateDoc(doc(db, "tournaments", tId), {
                 category: 'ongoing',
                 status: 'live',
-                promotionNotified: true,
-                endTime: endTimeMs
+                promotionNotified: true
             });
 
             // Dispatch Mass Notifications
@@ -1229,8 +1231,8 @@ async function checkAdminAutoPromotion(tId, t) {
                     const notifRef = doc(collection(db, "users", reg.userId, "notifications"));
                     batch.set(notifRef, {
                         type: "tournament_live",
-                        title: "🔴 Tournament is Live!",
-                        message: `"${t.title}" is now Ongoing! Click here to complete your payment and secure your slot.`,
+                        title: "🔴 Tournament Registration Locked!",
+                        message: `"${t.title}" is now Ongoing! Click here to complete your payment and secure your slot before the match starts.`,
                         tournamentId: tId,
                         read: false,
                         createdAt: serverTimestamp(),

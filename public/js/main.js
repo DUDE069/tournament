@@ -1540,8 +1540,9 @@ window.processUpcomingPayment = async function(tournamentId) {
 };
 
 
+
 // ===============================
-// PHASE 2: RESULTS & ARCHIVE SYSTEM
+// PHASE 3: RESULTS & ARCHIVE SYSTEM
 // ===============================
 
 // Check for completed tournaments (2 hours after end time)
@@ -1550,6 +1551,8 @@ setInterval(checkCompletedTournaments, 600000); // Every 10 minutes
 async function checkCompletedTournaments() {
     const now = Date.now();
     
+    if (!tournaments) return;
+
     tournaments.forEach(async (t) => {
         if (t.category === 'ongoing' && t.endTime) {
             const hoursSinceEnd = (now - t.endTime) / (1000 * 60 * 60);
@@ -1568,6 +1571,99 @@ async function checkCompletedTournaments() {
     });
 }
 
+window.showTournamentResults = async function(tournamentId) {
+    const tournament = tournaments.find(t => t.id === tournamentId);
+    if (!tournament?.winners) {
+        showMessage("Results not available yet. Check back soon!");
+        return;
+    }
+    
+    const w = tournament.winners;
+    
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="resultsModal" style="position:fixed;top:0;left:0;width:100%;height:100%;
+            background:rgba(0,0,0,0.95);z-index:7000;overflow-y:auto;">
+            <div style="max-width:800px;margin:50px auto;padding:30px;">
+                <div style="background:linear-gradient(135deg,#1a1a2a 0%,#0f0f1f 100%);border-radius:16px;padding:40px;border:2px solid #ffd700;text-align:center;">
+                    <h1 style="color:#ffd700;font-size:48px;margin-bottom:30px;">🏆 Tournament Results</h1>
+                    
+                    <h2 style="color:#fff;margin-bottom:40px;">${tournament.title}</h2>
+                    
+                    <div style="display:grid;gap:20px;margin-bottom:40px;">
+                        <div style="background:rgba(255,215,0,0.1);border:2px solid #ffd700;padding:20px;border-radius:12px;">
+                            <div style="font-size:64px;margin-bottom:10px;">🥇</div>
+                            <h3 style="color:#ffd700;margin:0;">Winner</h3>
+                            <p style="color:#fff;font-size:24px;font-weight:bold;">${w.firstPlace?.teamName || 'TBA'}</p>
+                            <p style="color:#00ff88;font-size:20px;">₹${tournament.prize?.first || 0}</p>
+                        </div>
+                        
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+                            <div style="background:rgba(192,192,192,0.1);border:2px solid #c0c0c0;padding:20px;border-radius:12px;">
+                                <div style="font-size:48px;">🥈</div>
+                                <h4 style="color:#c0c0c0;margin:10px 0;">2nd Place</h4>
+                                <p style="color:#fff;font-weight:bold;">${w.secondPlace?.teamName || 'TBA'}</p>
+                                <p style="color:#aaa;">₹${tournament.prize?.second || 0}</p>
+                            </div>
+                            <div style="background:rgba(205,127,50,0.1);border:2px solid #cd7f32;padding:20px;border-radius:12px;">
+                                <div style="font-size:48px;">🥉</div>
+                                <h4 style="color:#cd7f32;margin:10px 0;">3rd Place</h4>
+                                <p style="color:#fff;font-weight:bold;">${w.thirdPlace?.teamName || 'TBA'}</p>
+                                <p style="color:#aaa;">₹${tournament.prize?.third || 0}</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="background:#1a1a1a;padding:20px;border-radius:8px;text-align:left;margin-bottom:30px;">
+                        <h4 style="color:#888;margin-bottom:15px;">Match Statistics</h4>
+                        <p style="color:#aaa;">Total Teams Participated: ${w.totalTeams || 'N/A'}</p>
+                        <p style="color:#aaa;">Date: ${new Date(tournament.eventDate || tournament.endTime).toLocaleDateString()}</p>
+                    </div>
+                    
+                    <button onclick="document.getElementById('resultsModal').remove()" 
+                        style="padding:12px 40px;background:#333;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:16px;">
+                        Close
+                    </button>
+                </div>
+            </div>
+        </div>
+    `);
+};
+
+window.showAdminResultsPrompt = function(tournamentId) {
+    if (typeof showPopup === 'function') {
+        showPopup(
+            "success",
+            "Tournament completed! Please enter the results and winners.", 
+            "Enter Results →",
+            () => {
+                document.getElementById('customPopup')?.remove();
+                if (typeof openResultsEditor === 'function') {
+                    openResultsEditor(tournamentId);
+                }
+            }
+        );
+    }
+};
+
+window.openResultsEditor = function(tournamentId) {
+    const first = prompt("Enter 1st Place Team Name:");
+    if (!first) return;
+    
+    const second = prompt("Enter 2nd Place Team Name:");
+    const third = prompt("Enter 3rd Place Team Name:");
+    
+    updateDoc(doc(db, "tournaments", tournamentId), {
+        'winners.firstPlace': { teamName: first },
+        'winners.secondPlace': { teamName: second || 'N/A' },
+        'winners.thirdPlace': { teamName: third || 'N/A' },
+        'winners.totalTeams': 12, 
+        resultsEntered: true,
+        status: 'completed'
+    }).then(() => {
+        // FIXED: Using showMessage instead of showToast for main.js compatibility
+        showMessage("Results saved successfully!");
+    });
+};
 
 
 window.showTournamentResults = async function(tournamentId) {
@@ -1658,7 +1754,8 @@ window.openResultsEditor = function(tournamentId) {
         resultsEntered: true,
         status: 'completed'
     }).then(() => {
-        showToast("Results saved successfully!", "success");
+        // ✅ FIXED: Using showMessage instead of showToast
+        showMessage("Results saved successfully!");
     });
 };
 
@@ -4778,6 +4875,7 @@ window.requestPasswordOTP = async function() {
 
 
 
+
 // ===============================
 // GLOBAL EXPORTS
 // ===============================
@@ -4828,3 +4926,4 @@ window.requestPasswordOTP      = requestPasswordOTP;
 window.forgotPasswordFlow      = forgotPasswordFlow;
 window.updateUserPassword      = updateUserPassword;
 window.openPersonalProfile     = openPersonalProfile;
+window.openResultsEditor       = window.openResultsEditor;

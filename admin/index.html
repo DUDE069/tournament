@@ -554,6 +554,26 @@
 
         <!-- UPCOMING FIELDS (hidden by default) -->
         <div id="upcomingFields" style="display:none;">
+          
+          <div class="form-group" style="background: rgba(255, 68, 68, 0.05); padding: 14px; border-radius: 8px; border: 1px dashed #ff4444; margin-bottom: 18px;">
+            <label style="color: #ff4444; font-weight:bold;">[HIDDEN] Auto-Move to Ongoing (Date & Time) ✱</label>
+            <input type="datetime-local" id="tournamentTransitionTime" style="border-color: #ff4444;">
+            <small style="color:var(--muted);font-size:11px;margin-top:6px;display:block;line-height:1.4;">
+              Users will <b>NOT</b> see this. At this exact moment, the system automatically moves the card to "Ongoing" and sends the payment notifications.
+            </small>
+          </div>
+
+          ```
+
+---
+
+### STEP 2: Save the Hidden Timer to the Database (`/admin/admin.js`)
+You need to make sure this new time is saved when you create a tournament.
+
+Open `/admin/admin.js` and find your `addTournament()` function. 
+1. Grab the value from the new input:
+   ```javascript
+   const transitionTime = document.getElementById("tournamentTransitionTime").value;
           <div class="form-row">
             <div class="form-group">
               <label>Entry Fee (₹)</label>
