@@ -3104,13 +3104,16 @@ window.handleNotificationClick = async function(notifId, actionLink, type) {
     }
 
     // 3. Handle Rejection Route (NEW FIX)
+    // 3. Handle Rejection Route (NEW FIX)
     if (type === "rejected") {
         try {
-            // Fetch the notification document to get the exact message/reason
             const snap = await getDoc(doc(db, "users", currentUser.uid, "notifications", notifId));
             if (snap.exists()) {
-                showPopup("error", snap.data().message, "Close", () => {
+                const notif = snap.data();
+                showPopup("error", notif.message, "✏️ Edit Application", () => {
                     document.getElementById('customPopup')?.remove();
+                    // Trigger the resubmission flow
+                    window.editRejectedApplication(notif.tournamentId);
                 });
             }
         } catch (err) {
@@ -3118,7 +3121,6 @@ window.handleNotificationClick = async function(notifId, actionLink, type) {
         }
         return;
     }
-
     // Handle other notification types
     if (type === "team_stage_locked") {
         showMessage("Your teammate is already handling this payment stage.");
@@ -3636,22 +3638,23 @@ window.toggleMobileMenu = function() {
   }
 };
 
-// Simple beep sound using Web Audio API
 function playNotificationSound(type = 'default') {
-    // 1. Lazy initialize the audio context ONLY when needed
+    // FIX: Only play sound if the user has actually clicked somewhere on the page first
+    if (!navigator.userActivation || !navigator.userActivation.hasBeenActive) return;
+
     if (!audioContext) {
         const AudioContext = window.AudioContext || window.webkitAudioContext;
-        if (!AudioContext) return; // Browser doesn't support Web Audio
+        if (!AudioContext) return; 
         audioContext = new AudioContext();
     }
 
     if (audioContext.state === 'suspended') {
-        audioContext.resume();
+        audioContext.resume().catch(() => {}); // Suppress warning if still blocked
     }
     
+    // ... (Keep the rest of your oscillator code exactly the same below here) ...
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
-    
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
@@ -3663,15 +3666,6 @@ function playNotificationSound(type = 'default') {
         gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
         oscillator.start(audioContext.currentTime);
         oscillator.stop(audioContext.currentTime + 0.5);
-    } else if (type === 'reminder') {
-        oscillator.frequency.setValueAtTime(880, audioContext.currentTime); 
-        oscillator.type = 'square';
-        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
-        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime + 0.1);
-        gainNode.gain.setValueAtTime(0, audioContext.currentTime + 0.1);
-        gainNode.gain.setValueAtTime(0.2, audioContext.currentTime + 0.2);
-        oscillator.start(audioContext.currentTime);
-        oscillator.stop(audioContext.currentTime + 0.4);
     } else {
         oscillator.frequency.setValueAtTime(800, audioContext.currentTime);
         gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
@@ -4869,6 +4863,95 @@ window.requestPasswordOTP = async function() {
         btn.textContent = originalText;
     }
 };
+
+
+// ==========================================
+// RESUBMISSION & ALREADY-APPLIED SYSTEM
+// ==========================================
+
+// Helper to check if user already applied to an Upcoming Tournament
+window.checkUpcomingAlreadyApplied = async function(tournamentId, tournament) {
+    try {
+        const snap = await getDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid));
+        if (snap.exists()) {
+            showAlreadyAppliedModal(snap.data(), tournamentId, tournament, 'upcoming');
+            return true;
+        }
+        return false;
+    } catch(e) { return false; }
+};
+
+function showAlreadyAppliedModal(data, tournamentId, tournament, category) {
+    const statusColor = data.status === "approved" ? "#00ff88" : data.status === "rejected" ? "#ff4444" : "#ffd700";
+    const statusLabel = data.status === "approved" ? "✅ Approved — Awaiting Payment" : data.status === "rejected" ? `❌ Rejected — Reason: ${data.rejectionNote || "Check details"}` : "⏳ Under Review";
+    const uids = Array.isArray(data.uids) ? data.uids.join(", ") : "—";
+
+    document.getElementById("alreadyAppliedModal")?.remove();
+    document.body.insertAdjacentHTML("beforeend", `
+        <div id="alreadyAppliedModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;">
+            <div style="background:#1a1a1a;width:100%;max-width:480px;padding:28px;border-radius:14px;border:1px solid #333; max-height:80vh; overflow-y:auto;">
+                <h2 style="color:#00ff88;margin-bottom:6px;">Application Status</h2>
+                <p style="color:#888;font-size:13px;margin-bottom:20px;">Tournament: <b style="color:#fff;">${tournament.title}</b></p>
+                <div style="background:rgba(${data.status === "approved" ? "0,255,136" : data.status === "rejected" ? "255,68,68" : "255,215,0"},.1); border:1px solid ${statusColor};border-radius:10px; padding:14px 16px;margin-bottom:20px; color:${statusColor};font-size:14px;font-weight:600;">
+                    ${statusLabel}
+                </div>
+                <div style="display:grid;gap:8px;margin-bottom:20px;">
+                    ${infoRowUser("Team Name", data.teamName ?? "—")}
+                    ${infoRowUser("Phone", data.phone ?? "—")}
+                    ${infoRowUser("Player UIDs", uids)}
+                </div>
+                ${data.status === "rejected" ? `
+                    <button onclick="document.getElementById('alreadyAppliedModal').remove(); window.editRejectedApplication('${tournamentId}');"
+                        style="width:100%;padding:12px;background:#ff4444;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;margin-bottom:10px;">
+                        ✏️ Edit & Resubmit Application
+                    </button>` : ""}
+                <button onclick="document.getElementById('alreadyAppliedModal').remove()" style="width:100%;padding:10px;background:transparent;color:#666;border:1px solid #333;border-radius:8px;cursor:pointer;">Close</button>
+            </div>
+        </div>`);
+}
+
+window.editRejectedApplication = async function(tournamentId) {
+    // Find out if it's upcoming or ongoing
+    let isUpcoming = false;
+    let docSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", currentUser.uid));
+    if (!docSnap.exists()) {
+        docSnap = await getDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid));
+        isUpcoming = true;
+    }
+    if (!docSnap.exists()) return;
+    
+    const data = docSnap.data();
+    window.originalApplicationData = data; // Store to track edited fields
+    window.currentJoiningTournament = tournamentId;
+    window.currentTournamentCategory = isUpcoming ? 'upcoming' : 'ongoing';
+
+    // Open Modal
+    document.getElementById("viewerBlocker").style.display = "none";
+    document.getElementById("registrationContainer").style.display = "block";
+    document.getElementById("joinTournamentModal").style.display = "block";
+    document.body.style.overflow = "hidden";
+    
+    // Pre-fill data
+    if (data.playersData) {
+        for(let i=1; i<=4; i++) {
+            if(document.getElementById(`uidPlayer${i}`)) document.getElementById(`uidPlayer${i}`).value = data.playersData[i-1]?.uid || "";
+            if(document.getElementById(`nickPlayer${i}`)) document.getElementById(`nickPlayer${i}`).value = data.playersData[i-1]?.nickname || "";
+        }
+        if (data.playersData[4]) {
+            document.getElementById("enablePlayer5").checked = true;
+            document.getElementById('player5Fields').style.display = 'block';
+            document.getElementById("uidPlayer5").value = data.playersData[4].uid || "";
+            document.getElementById("nickPlayer5").value = data.playersData[4].nickname || "";
+        }
+    }
+    document.getElementById("joinPhone").value = data.phone ? data.phone.replace("+91", "") : "";
+    document.getElementById("joinBackupEmail").value = data.backupEmail || "";
+    
+    const btn = document.getElementById("joinSubmitBtn");
+    if(btn) btn.textContent = "Resubmit Application →";
+    showMessage("Please correct your details and resubmit.");
+};
+
 
 
 

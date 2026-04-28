@@ -274,8 +274,29 @@ function applicationCard(d, type) {
 
   let actions = "";
   if (type === "new") {
-    actions = `<button class="btn-view" onclick="viewApplicationDetails('${d.tournamentId}','${d.id}')">View & Decide</button>`;
+    // 👇 NEW CODE - Replace the entire block
+    const appData = {
+      teamName: d.teamName || "—",
+      leaderEmail: d.leaderEmail || "—",
+      phone: d.phone || "—",
+      uids: d.uids || [],
+      playersData: d.playersData || d.uids?.map((uid, i) => ({
+        uid: uid,
+        type: "solo",
+        nickname: d[`player${i+1}Nickname`] || ""
+      })) || []
+    };
+    
+    actions = `
+      <div style="display:flex; flex-direction:column; gap:8px; width:100%; margin-top:10px;">
+        <button class="btn-view" style="width:100%; padding:10px; font-size:14px;" 
+          onclick="openAdminReviewModal('${d.tournamentId}', '${d.id}', '${JSON.stringify(appData).replace(/'/g, "\\'")}')">
+          🔍 Review Application
+        </button>
+      </div>
+    `;
   } else if (type === "accepted") {
+
     actions = `
       <button class="btn-status" onclick="viewStatusModal('${d.tournamentId}','${d.id}')">📊 Status</button>
       <button class="btn-remove" data-tid="${d.tournamentId}" data-uid="${d.id}" onclick="removeApplication('${d.tournamentId}','${d.id}')">Remove</button>`;
@@ -1560,4 +1581,61 @@ window.promoteFromWaitlist = async function(tournamentId, teamId) {
         type: "admin_notice", title: "🎉 Slot Opened!", message: "You have been promoted from the waitlist. Please pay your entry fee now to secure your slot.", actionLink: `tournament=${tournamentId}`
     });
     manageTournamentSlots(tournamentId);
+};
+
+window.openAdminReviewModal = function(tournamentId, userId, dataString) {
+    const app = JSON.parse(dataString);
+    document.getElementById("reviewAppModal")?.remove();
+
+    // Look for edited fields (You will need to pass an array of edited strings from main.js on resubmit)
+    // If not present, default to empty array
+    const edited = app.editedFields || []; 
+    const dot = (field) => edited.includes(field) ? `<span style="color:#ff9800; margin-left:5px;" title="User edited this after rejection">🟠</span>` : '';
+
+    document.body.insertAdjacentHTML("beforeend", `
+        <div id="reviewAppModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;z-index:9999;padding:15px;">
+            <div style="background:#111;width:100%;max-width:500px;border-radius:12px;border:1px solid #333;display:flex;flex-direction:column;max-height:90vh;">
+                
+                <div style="padding:20px;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center;">
+                    <h3 style="color:#00ff88;margin:0;">🔍 Review Team: ${app.teamName}</h3>
+                    <button onclick="document.getElementById('reviewAppModal').remove()" style="background:transparent;border:none;color:#888;font-size:20px;cursor:pointer;">✖</button>
+                </div>
+
+                <div style="padding:20px;overflow-y:auto;flex:1;">
+                    <div style="margin-bottom:20px;">
+                        <label style="color:#666;font-size:12px;">Leader Email</label>
+                        <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.leaderEmail}</div>
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <label style="color:#666;font-size:12px;">Phone ${dot('phone')}</label>
+                        <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.phone}</div>
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <label style="color:#666;font-size:12px;">Player UIDs ${dot('uids')}</label>
+                        <div style="background:#1a1a1a;padding:10px;border-radius:6px;display:grid;gap:8px;">
+                            ${app.playersData ? app.playersData.map((p, i) => `
+                                <div style="display:flex;justify-content:space-between;border-bottom:1px solid #222;padding-bottom:5px;">
+                                    <span style="color:#888;">Player ${i+1} (${p.type})</span>
+                                    <span style="color:#fff;font-weight:bold;">${p.uid} <span style="color:#4a90e2;font-weight:normal;font-size:12px;">${p.nickname}</span></span>
+                                </div>
+                            `).join('') : `<div style="color:#fff;">${app.uids?.join(', ')}</div>`}
+                        </div>
+                    </div>
+                </div>
+
+                <div style="padding:20px;border-top:1px solid #222;background:#0a0a0a;border-radius:0 0 12px 12px;">
+                    <div style="display:flex;gap:10px;flex-direction:column;">
+                        <button onclick="document.getElementById('reviewAppModal').remove(); approveVerification('${tournamentId}', '${userId}');" 
+                            style="width:100%;padding:14px;background:#00ff88;color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;">
+                            ✅ Approve Application
+                        </button>
+                        <button onclick="document.getElementById('reviewAppModal').remove(); rejectVerification('${tournamentId}', '${userId}');" 
+                            style="width:100%;padding:14px;background:transparent;color:#ff4444;border:1px solid #ff4444;border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;">
+                            ❌ Reject Application
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `);
 };
