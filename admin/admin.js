@@ -1055,18 +1055,28 @@ window.logout = async function() {
 // ============================================================================
 let currentTournamentCategory = "ongoing";
 
-window.handleCategoryChange = function(select) {
-  currentTournamentCategory = select.value;
-  const ongoingFields  = document.getElementById("ongoingFields");
-  const upcomingFields = document.getElementById("upcomingFields");
-  if (select.value === "upcoming") {
-    if (ongoingFields)  ongoingFields.style.display  = "none";
-    if (upcomingFields) upcomingFields.style.display = "block";
-  } else {
-    if (ongoingFields)  ongoingFields.style.display  = "block";
-    if (upcomingFields) upcomingFields.style.display = "none";
-  }
-  updateCalendarNote();
+window.handleCategoryChange = function(selectElement) {
+    const category = selectElement.value;
+    const sharedFields = document.getElementById('sharedFields');
+    const upcomingFields = document.getElementById('upcomingFields');
+    const limitedFields = document.getElementById('limitedFields');
+
+    // Hide everything specific first
+    if (upcomingFields) upcomingFields.style.display = 'none';
+    if (limitedFields) limitedFields.style.display = 'none';
+    
+    if (category === 'limited') {
+        // HIDE standard stats (Fee, Duration, Prizes), SHOW custom paragraph
+        if (sharedFields) sharedFields.style.display = 'none';
+        if (limitedFields) limitedFields.style.display = 'block';
+    } else if (category === 'upcoming') {
+        // SHOW standard stats AND upcoming timings
+        if (sharedFields) sharedFields.style.display = 'block';
+        if (upcomingFields) upcomingFields.style.display = 'block';
+    } else {
+        // ONGOING: SHOW ONLY standard stats
+        if (sharedFields) sharedFields.style.display = 'block';
+    }
 };
 
 function updateCalendarNote() {
@@ -1084,77 +1094,110 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 window.addTournament = async function() {
-  const category = document.getElementById("tournamentCategory").value;
-  let title, fee, mode, first, second, third, duration, eventDate, eventTime;
+    if (!userProfile?.isAdmin) { showToast("Not allowed", "error"); return; }
 
-  if (category === "upcoming") {
-    title     = document.getElementById("tournamentTitle").value.trim();
-    fee       = Number(document.getElementById("upcomingFee").value);
-    mode      = document.getElementById("upcomingMode").value;
-    first     = Number(document.getElementById("upcomingPrizeFirst").value)  || 0;
-    second    = Number(document.getElementById("upcomingPrizeSecond").value) || 0;
-    third     = Number(document.getElementById("upcomingPrizeThird").value)  || 0;
-    eventDate = document.getElementById("tournamentEventDate")?.value;
-    eventTime = document.getElementById("tournamentEventTime")?.value || null;
-    duration  = null;
-    if (!title || !fee)  { showToast("Title and entry fee are required.", "warning"); return; }
-    if (!eventDate)      { showToast("Please select a tournament date.",  "warning"); return; }
-  } else {
-    title    = document.getElementById("tournamentTitle").value.trim();
-    fee      = Number(document.getElementById("tournamentFee").value);
-    mode     = document.getElementById("tournamentMode").value;
-    first    = Number(document.getElementById("prizeFirst").value)  || 0;
-    second   = Number(document.getElementById("prizeSecond").value) || 0;
-    third    = Number(document.getElementById("prizeThird").value)  || 0;
-    duration = Number(document.getElementById("tournamentDuration").value) || 60;
-    eventDate = null;
-    if (!title || !fee) { showToast("Title and entry fee are required.", "warning"); return; }
-  }
+    const title = document.getElementById("tournamentTitle")?.value.trim();
+    const category = document.getElementById("tournamentCategory")?.value;
 
-  try {
-    const tournamentData = {
-      title, entryFee: fee, mode, category,
-      duration: eventDate ? null : duration,
-      eventDate: eventDate ?? null,
-      eventTime: category === "upcoming" ? (eventTime ?? null) : null,
-      prize: { first, second, third },
-      createdAt: serverTimestamp(),
-      endTime: eventDate ? new Date(eventDate).getTime() + 86400000 : Date.now() + (duration * 60000),
-      status: category === "ongoing" ? "live" : category === "limited" ? "limited" : "upcoming",
-      isPaymentDeferred: category === "upcoming",
-    };
-
-    const tourneyRef = await addDoc(tournamentsRef, tournamentData);
-
-    if (category === "upcoming" && eventDate) {
-      const calType = fee > 200 ? "special" : "upcoming";
-      await addDoc(calendarRef, {
-        date: eventDate, title, type: calType, prize: first,
-        description: `${mode} Tournament — Entry ₹${fee}`,
-        tournamentId: tourneyRef.id, createdAt: serverTimestamp(), source: "auto",
-      });
-      showToast(`Tournament added! Calendar marked as ${calType === "special" ? "⭐ Special" : "📅 Upcoming"}.`, "success");
-    } else if (category === "limited") {
-      const today = new Date().toISOString().split("T")[0];
-      await addDoc(calendarRef, {
-        date: today, title: `[LIMITED] ${title}`, type: "special", prize: first,
-        description: `Limited Tournament — ${mode} · Entry ₹${fee}`,
-        tournamentId: tourneyRef.id, createdAt: serverTimestamp(), source: "auto",
-      });
-      showToast("Limited tournament added! Auto-marked as ⭐ Special.", "success");
-    } else {
-      showToast("Tournament added!", "success");
+    if (!title || !category) {
+        showToast("Title and Category are required", "error");
+        return;
     }
 
-    ["tournamentTitle","tournamentFee","prizeFirst","prizeSecond","prizeThird",
-     "upcomingFee","upcomingPrizeFirst","upcomingPrizeSecond","upcomingPrizeThird",
-     "tournamentEventDate","tournamentEventTime"]
-      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
-  } catch (e) {
-    showToast("Error: " + e.message, "error");
-  }
-};
+    const btn = document.querySelector(".btn-submit");
+    const originalText = btn.textContent;
+    btn.textContent = "Adding...";
+    btn.disabled = true;
 
+    try {
+        // Base Tournament Data
+        let tournamentData = {
+            title: title,
+            category: category,
+            status: 'open',
+            createdAt: serverTimestamp()
+        };
+
+        // ─── LIMITED TOURNAMENT LOGIC ───
+        if (category === 'limited') {
+            const paragraph = document.getElementById("limitedInfoParagraph")?.value.trim();
+            const eventDate = document.getElementById("limitedEventDate")?.value;
+            
+            if (!paragraph || !eventDate) {
+                showToast("Date and Info Paragraph are required for Limited tournaments.", "error");
+                btn.textContent = originalText; btn.disabled = false; return;
+            }
+
+            tournamentData.infoParagraph = paragraph;
+            tournamentData.eventDate = eventDate;
+            tournamentData.mode = "Any"; // No specific mode needed
+
+            // 🌟 Auto-create Calendar Event (Yellow/Special)
+            await addDoc(collection(db, "calendarEvents"), {
+                date: eventDate,
+                title: `⚡ [Limited] ${title}`,
+                type: 'special', // This assigns the Yellow color in your calendar
+                prize: 'Special',
+                description: "Exclusive Limited Tournament Event",
+                createdAt: serverTimestamp()
+            });
+
+        } 
+        // ─── ONGOING & UPCOMING LOGIC ───
+        else {
+            tournamentData.entryFee = Number(document.getElementById("tournamentFee")?.value) || 0;
+            tournamentData.mode = document.getElementById("tournamentMode")?.value || "Solo";
+            tournamentData.duration = Number(document.getElementById("tournamentDuration")?.value) || 60;
+            tournamentData.prize = {
+                first: Number(document.getElementById("prizeFirst")?.value) || 0,
+                second: Number(document.getElementById("prizeSecond")?.value) || 0,
+                third: Number(document.getElementById("prizeThird")?.value) || 0
+            };
+
+            if (category === 'upcoming') {
+                const eventDate = document.getElementById("tournamentEventDate")?.value;
+                const eventTime = document.getElementById("tournamentEventTime")?.value;
+                const transitionTime = document.getElementById("tournamentTransitionTime")?.value; // Hidden timer
+
+                if (!eventDate || !eventTime) {
+                    showToast("Event Date and Time are required for Upcoming tournaments.", "error");
+                    btn.textContent = originalText; btn.disabled = false; return;
+                }
+
+                tournamentData.eventDate = eventDate;
+                tournamentData.eventTime = eventTime;
+                tournamentData.transitionTime = transitionTime || null;
+
+                // 🌟 Auto-create Calendar Event (Blue/Upcoming)
+                await addDoc(collection(db, "calendarEvents"), {
+                    date: eventDate,
+                    title: `🏆 ${title}`,
+                    type: 'upcoming', // Blue color in your calendar
+                    prize: tournamentData.prize.first,
+                    description: `Upcoming ${tournamentData.mode} Tournament`,
+                    createdAt: serverTimestamp()
+                });
+            }
+        }
+
+        // Save Tournament to Firestore
+        await addDoc(collection(db, "tournaments"), tournamentData);
+        
+        showToast(`${category.toUpperCase()} Tournament added successfully!`, "success");
+        
+        // Reset Form Inputs
+        document.getElementById("tournamentTitle").value = "";
+        if (document.getElementById("limitedInfoParagraph")) document.getElementById("limitedInfoParagraph").value = "";
+        if (document.getElementById("tournamentFee")) document.getElementById("tournamentFee").value = "";
+        
+    } catch (err) {
+        console.error("Add Tournament Error:", err);
+        showToast("Error adding tournament", "error");
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+    }
+};
 window.deleteTournament = async function(id) {
   if (!confirm("Delete this tournament? This cannot be undone.")) return;
   try {

@@ -81,7 +81,8 @@
   /* ── ADMIN PANEL WRAPPER ───────────────────────── */
     .admin-panel { display: none; }
 
-    /* ── HEADER ────────────────────────────────────── */
+    
+   /* ── HEADER ────────────────────────────────────── */
     .admin-header {
       background: var(--bg2);
       border-bottom: 1px solid var(--border);
@@ -89,11 +90,11 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      flex-wrap: wrap; /* Allows wrapping on mobile */
-      gap: 15px;
       position: sticky;
       top: 0;
       z-index: 100;
+      flex-wrap: wrap;
+      gap: 15px;
     }
     .admin-header h1 {
       color: var(--green);
@@ -101,33 +102,12 @@
       letter-spacing: 2px;
       white-space: nowrap;
     }
+
     .header-actions {
       display: flex;
       gap: 10px;
       align-items: center;
       flex-wrap: wrap;
-    }
-    
-    /* MOBILE RESPONSIVE FIX FOR HEADER */
-    @media (max-width: 640px) {
-      .admin-header {
-        flex-direction: column;
-        align-items: stretch;
-        padding: 15px 15px;
-      }
-      .admin-header h1 {
-        text-align: center;
-        font-size: 20px;
-      }
-      .header-actions {
-        justify-content: space-between;
-        width: 100%;
-      }
-      #globalSearch {
-        width: 100%;
-        order: 3; /* Pushes the search bar to its own row on mobile */
-        margin-top: 5px;
-      }
     }
 
     .admin-header .logout-btn {
@@ -142,6 +122,25 @@
       transition: opacity .15s;
     }
     .admin-header .logout-btn:hover { opacity: .8; }
+
+    /* RESPONSIVE MEDIA QUERIES FOR HEADER */
+    @media (max-width: 640px) {
+      .admin-header {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 15px;
+      }
+      .header-actions {
+        width: 100%;
+        justify-content: space-between;
+      }
+      #globalSearch {
+        width: 100%;
+        order: 2;
+        margin-top: 5px;
+      }
+    }
+ 
 
     /* ── TABS ──────────────────────────────────────── */
     .tabs {
@@ -478,7 +477,7 @@
 <div class="admin-panel" id="adminPanel">
 
   <!-- HEADER -->
-  <div class="admin-header">
+ <div class="admin-header">
     <h1>🎮 NPC ESPORTS</h1>
     <div class="header-actions">
       <input type="text" id="globalSearch" placeholder="Search Team Code or Tourney ID..." style="padding:8px 12px; border-radius:6px; border:1px solid #333; background:#1a1a1a; color:#fff;">
@@ -503,8 +502,7 @@
   <!-- CONTENT -->
   <div class="content">
 
-    <!-- ══ TOURNAMENTS ══════════════════════════════ -->
-    <div class="section active" id="tournamentsSection">
+   <div class="section active" id="tournamentsSection">
       <h2>Add New Tournament</h2>
       <div class="form-box">
 
@@ -522,10 +520,9 @@
           </select>
         </div>
 
-        <!-- ONGOING / LIMITED FIELDS -->
-        <div id="ongoingFields">
+        <div id="sharedFields">
           <div class="form-row">
-            <div class="form-group">
+            <div class="form-group" id="feeGroup">
               <label>Entry Fee (₹)</label>
               <input type="number" id="tournamentFee" placeholder="e.g., 50">
             </div>
@@ -538,23 +535,21 @@
               </select>
             </div>
           </div>
-          <div class="form-group">
+          <div class="form-group" id="durationGroup">
             <label>Duration (minutes)</label>
             <input type="number" id="tournamentDuration" value="60">
           </div>
-          <div class="form-group">
+          <div class="form-group" id="prizeGroup">
             <label>Prize Pool (1st / 2nd / 3rd)</label>
             <div class="form-row">
-              <div class="form-group"><input type="number" id="prizeFirst"  placeholder="1st"></div>
+              <div class="form-group"><input type="number" id="prizeFirst" placeholder="1st"></div>
               <div class="form-group"><input type="number" id="prizeSecond" placeholder="2nd"></div>
-              <div class="form-group"><input type="number" id="prizeThird"  placeholder="3rd"></div>
+              <div class="form-group"><input type="number" id="prizeThird" placeholder="3rd"></div>
             </div>
           </div>
         </div>
 
-        <!-- UPCOMING FIELDS (hidden by default) -->
         <div id="upcomingFields" style="display:none;">
-          
           <div class="form-group" style="background: rgba(255, 68, 68, 0.05); padding: 14px; border-radius: 8px; border: 1px dashed #ff4444; margin-bottom: 18px;">
             <label style="color: #ff4444; font-weight:bold;">[HIDDEN] Auto-Move to Ongoing (Date & Time) ✱</label>
             <input type="datetime-local" id="tournamentTransitionTime" style="border-color: #ff4444;">
@@ -562,57 +557,24 @@
               Users will <b>NOT</b> see this. At this exact moment, the system automatically moves the card to "Ongoing" and sends the payment notifications.
             </small>
           </div>
-
-          ```
-
----
-
-### STEP 2: Save the Hidden Timer to the Database (`/admin/admin.js`)
-You need to make sure this new time is saved when you create a tournament.
-
-Open `/admin/admin.js` and find your `addTournament()` function. 
-1. Grab the value from the new input:
-   ```javascript
-   const transitionTime = document.getElementById("tournamentTransitionTime").value;
-          <div class="form-row">
-            <div class="form-group">
-              <label>Entry Fee (₹)</label>
-              <input type="number" id="upcomingFee" placeholder="e.g., 100">
-            </div>
-            <div class="form-group">
-              <label>Mode</label>
-              <select id="upcomingMode">
-                <option value="Solo">Solo</option>
-                <option value="Duo">Duo</option>
-                <option value="Squad">Squad</option>
-              </select>
-            </div>
-          </div>
           <div class="form-group">
             <label>Tournament Date ✱</label>
             <input type="date" id="tournamentEventDate">
-            <small style="color:var(--muted);font-size:11px;margin-top:4px;display:block;">
-              Match will be held on this date · Event auto-added to calendar
-            </small>
           </div>
           <div class="form-group">
             <label>Event Time ✱</label>
-            <input type="time" id="tournamentEventTime" placeholder="e.g., 22:00">
-            <small style="color:var(--muted);font-size:11px;margin-top:4px;display:block;">
-              Start time displayed on cards and registration modal
-            </small>
+            <input type="time" id="tournamentEventTime">
+          </div>
+        </div>
+
+        <div id="limitedFields" style="display:none;">
+          <div class="form-group">
+            <label>Event Date (For Calendar) ✱</label>
+            <input type="date" id="limitedEventDate">
           </div>
           <div class="form-group">
-            <label>Prize Pool (1st / 2nd / 3rd)</label>
-            <div class="form-row">
-              <div class="form-group"><input type="number" id="upcomingPrizeFirst"  placeholder="1st"></div>
-              <div class="form-group"><input type="number" id="upcomingPrizeSecond" placeholder="2nd"></div>
-              <div class="form-group"><input type="number" id="upcomingPrizeThird"  placeholder="3rd"></div>
-            </div>
-          </div>
-          <div style="background:rgba(74,144,226,.1);border:1px solid var(--blue);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:var(--blue);">
-            📅 A calendar event will be auto-created for this tournament date.<br>
-            <span id="calendarMarkNote" style="color:var(--muted);font-size:12px;"></span>
+            <label>Custom Info Paragraph (All details, rules, and prizes)</label>
+            <textarea id="limitedInfoParagraph" rows="6" placeholder="Enter all tournament details, prizes, rules, etc. here. No limit."></textarea>
           </div>
         </div>
 
@@ -622,7 +584,6 @@ Open `/admin/admin.js` and find your `addTournament()` function.
       <h2>Existing Tournaments</h2>
       <div id="tournamentList"></div>
     </div>
-
     <!-- ══ CALENDAR ══════════════════════════════════ -->
     <div class="section" id="calendarSection">
       <h2>Add Calendar Event</h2>
