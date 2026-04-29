@@ -271,6 +271,21 @@
     overflow-y: auto;
     padding: 20px !important;
 }
-.app-card-actions {
-    flex-wrap: wrap; /* Allows buttons to drop down on small screens */
+
+/* Fix Application Card button overflowing on mobile */
+@media (max-width: 600px) {
+    .app-card {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 12px;
+    }
+    .app-card-actions {
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .app-card-actions > div {
+        margin-top: 0 !important;
+    }
 }

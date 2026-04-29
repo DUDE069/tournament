@@ -289,8 +289,8 @@ function applicationCard(d, type) {
     
     actions = `
       <div style="display:flex; flex-direction:column; gap:8px; width:100%; margin-top:10px;">
-        <button class="btn-view" style="width:100%; padding:10px; font-size:14px;" 
-          onclick="openAdminReviewModal('${d.tournamentId}', '${d.id}', '${JSON.stringify(appData).replace(/'/g, "\\'")}')">
+        <button class="btn-view" style="width:100%; padding:10px; font-size:14px; box-sizing:border-box;" 
+          onclick="openAdminReviewModal('${d.tournamentId}', '${d.id}', '${encodeURIComponent(JSON.stringify(appData))}')">
           🔍 Review Application
         </button>
       </div>
@@ -1584,7 +1584,7 @@ window.promoteFromWaitlist = async function(tournamentId, teamId) {
 };
 
 window.openAdminReviewModal = function(tournamentId, userId, dataString) {
-    const app = JSON.parse(dataString);
+    const app = JSON.parse(decodeURIComponent(dataString));
     document.getElementById("reviewAppModal")?.remove();
 
     // Look for edited fields (You will need to pass an array of edited strings from main.js on resubmit)
