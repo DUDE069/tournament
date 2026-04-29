@@ -929,32 +929,31 @@
               </div>
             </div>
 
-            <div style="display:flex;gap:0;">
-              <span style="background:#333;color:#fff;padding:12px;border-radius:6px 0 0 6px;border:1px solid #444;border-right:none;font-size:14px;">+91</span>
-              <input type="tel" id="joinPhone" placeholder="9876543210" pattern="[0-9]{10}" required title="Please enter exactly 10 digits" style="width:100%;padding:12px;background:#0f0f0f;border:1px solid #444;border-left:none;color:#fff;border-radius:0 6px 6px 0;font-size:14px;">
-            </div>
-            <small style="color:#666;font-size:11px;">Enter 10-digit mobile number</small>
+       <div style="background:#0f0f0f;padding:15px;border-radius:8px;border:1px solid #444;margin-top:10px;">
+              
+              <div style="margin-bottom:15px;">
+                <label style="color:#fff;font-size:13px;display:block;margin-bottom:5px;">Phone Number *</label>
+                <div style="display:flex;gap:0;">
+                  <span style="background:#333;color:#fff;padding:12px;border-radius:4px 0 0 4px;border:1px solid #555;border-right:none;font-size:14px;">+91</span>
+                  <input type="tel" id="joinPhone" placeholder="9876543210" pattern="[0-9]{10}" required title="10 digits" style="width:100%;padding:12px;background:#111;border:1px solid #555;border-left:none;color:#fff;border-radius:0 4px 4px 0;font-size:14px;">
+                </div>
+              </div>
 
-            <!-- BACKUP EMAIL -->
-            <div>
-              <label style="color:#fff;font-size:13px;display:block;margin-bottom:5px;">Backup Email *</label>
-              <input type="email" id="joinBackupEmail" placeholder="Enter email for updates" required
-                style="width:100%;padding:12px;background:#0f0f0f;border:1px solid #444;color:#fff;border-radius:6px;font-size:14px;">
-              <small style="color:#666;font-size:11px;">For match notifications &amp; updates</small>
-            </div>
+              <div style="margin-bottom:15px;">
+                <label style="color:#fff;font-size:13px;display:block;margin-bottom:5px;">Backup Email *</label>
+                <input type="email" id="joinBackupEmail" placeholder="Enter email for updates" required style="width:100%;padding:12px;background:#111;border:1px solid #555;color:#fff;border-radius:4px;font-size:14px;">
+              </div>
 
-            <!-- GUIDELINES CHECKBOX -->
-           <div style="padding:12px;background:#2a2a1a;border-radius:6px;border-left:3px solid #ffd700;display:flex;align-items:flex-start;gap:10px;">
-              <input type="checkbox" id="agreeGuidelines" required style="margin-top:4px; width:18px; height:18px; accent-color:#ffd700; cursor:pointer;">
-              <p style="color:#ccc;margin:0;font-size:13px;line-height:1.5;">
-                I have read and agree to the 
-                <a href="#" onclick="showGuidelines()" style="color:#ffd700;text-decoration:underline;">Tournament Guidelines</a>.
-              </p>
-            </div>
+              <div style="padding:12px;background:#1a1a1a;border-radius:6px;border-left:3px solid #ffd700;display:flex;align-items:flex-start;gap:10px;">
+                <input type="checkbox" id="agreeGuidelines" required style="margin-top:4px; width:18px; height:18px; accent-color:#ffd700; cursor:pointer; flex-shrink:0;">
+                <p style="color:#ccc;margin:0;font-size:13px;line-height:1.5;">
+                  I have read and agree to the 
+                  <a href="#" onclick="showGuidelines()" style="color:#ffd700;text-decoration:underline;">Tournament Guidelines</a>.
+                </p>
+              </div>
 
-            <!-- SUBMIT -->
-            <button type="submit" id="joinSubmitBtn"
-              style="width:100%;padding:16px;background:#00ff88;color:#000;border:none;border-radius:8px;font-size:18px;font-weight:bold;cursor:pointer;margin-top:10px;">
+            </div>
+            <button type="submit" id="joinSubmitBtn" style="width:100%;padding:16px;background:#00ff88;color:#000;border:none;border-radius:8px;font-size:18px;font-weight:bold;cursor:pointer;margin-top:10px;">
               Submit for Verification →
             </button>
           </form>
