@@ -1125,8 +1125,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("upcomingFee")?.addEventListener("input", updateCalendarNote);
 });
 
+// ✅ Fix - use auth.currentUser instead, since the auth guard already verified admin
 window.addTournament = async function() {
-    if (!userProfile?.isAdmin) { showToast("Not allowed", "error"); return; }
+    if (!auth.currentUser) { showToast("Not allowed", "error"); return; }
 
     const title = document.getElementById("tournamentTitle")?.value.trim();
     const category = document.getElementById("tournamentCategory")?.value;
