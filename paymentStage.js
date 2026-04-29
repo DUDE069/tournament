@@ -44,12 +44,13 @@ export function enterPaymentStage(userId, tournamentId, tournamentName) {
 }
 
 // ── Main render ───────────────────────────────────────────────────────────────
+// Add this at the top of paymentStage.js
+const RAZORPAY_KEY_ID = "YOUR_RAZORPAY_KEY_ID"; // Get this from Razorpay Dashboard -> Settings
+
 function renderPaymentUI(data, tournamentName, tournamentId) {
   document.getElementById('paymentOverlay')?.remove();
-
   const { paymentStatus, roomId, roomPassword } = data;
 
-  // Stage 4 = payment verified → show room details + confirm button
   if (paymentStatus === 'verified') {
     renderPaymentSuccess(tournamentName, tournamentId, roomId, roomPassword);
     return;
@@ -60,52 +61,71 @@ function renderPaymentUI(data, tournamentName, tournamentId) {
   overlay.className = 'payment-overlay';
   overlay.innerHTML = `
     <div class="payment-card">
-      <div class="payment-status-badge ${paymentStatus === 'failed' ? 'failed' : 'pending'}">
-        ${paymentStatus === 'failed' ? '⚠ Payment Failed' : '🔒 Payment Required'}
-      </div>
-
-      <h2>Complete Your Registration</h2>
+      <div class="payment-status-badge pending">🔒 Payment Required</div>
+      <h2>Complete Registration</h2>
       <p class="payment-tournament-name">${escapeHtml(tournamentName)}</p>
 
-      ${paymentStatus === 'failed' ? `
-        <div class="payment-error-box">
-          Your previous payment attempt failed. Please try again or contact support.
-        </div>` : ''}
-
-      <div class="payment-steps">
-        <div class="payment-step done"><span class="step-dot">✓</span><span>Team submitted</span></div>
-        <div class="payment-step done"><span class="step-dot">✓</span><span>Verification approved</span></div>
-        <div class="payment-step active"><span class="step-dot">3</span><span>Payment</span></div>
-        <div class="payment-step"><span class="step-dot">4</span><span>Confirmed</span></div>
-      </div>
-
       <div class="payment-amount-card">
-        <span class="payment-amount-label">Entry fee</span>
-        <span class="payment-amount-value" id="paymentAmount">Loading…</span>
+        <span class="payment-amount-label">Entry Fee</span>
+        <span class="payment-amount-value" id="paymentAmount">Loading...</span>
       </div>
 
-      <div class="payment-instructions">
-        <p>Send payment to the following UPI ID or scan the QR code:</p>
-        <div class="payment-upi-id" id="paymentUpiId">Loading…</div>
-        <p class="payment-note">
-          After payment, send your transaction screenshot to our WhatsApp/Discord.
-          Admin will confirm within 24 hours.
-        </p>
-      </div>
-
-      <div class="payment-actions">
-        <button class="btn-payment-done" onclick="userConfirmsPaymentSent()">
-          I've Sent the Payment
-        </button>
-      </div>
-
-      <p class="payment-footer">
-        Having trouble? <a href="#" onclick="openSupportChat()">Contact support</a>
-      </p>
+      <button class="btn-payment-done" id="payBtn" onclick="startRazorpayPayment('${tournamentId}')">
+        Pay Securely with Razorpay
+      </button>
+      
+      <p class="payment-footer">Instant verification via Razorpay Gateway</p>
     </div>`;
 
   document.body.appendChild(overlay);
   loadPaymentDetails(tournamentId);
+}
+
+// THE INTEGRATION FUNCTION
+window.startRazorpayPayment = async function(tournamentId) {
+  const amountStr = document.getElementById('paymentAmount').textContent.replace('₹', '').trim();
+  const amount = parseFloat(amountStr);
+  
+  if (isNaN(amount)) return alert("Error loading price. Try again.");
+
+  const options = {
+    "key": RAZORPAY_KEY_ID, 
+    "amount": amount * 100, // Razorpay works in Paisa (100 = 1 Rupee)
+    "currency": "INR",
+    "name": "NPC Esports",
+    "description": "Tournament Entry Fee",
+    "handler": async function (response) {
+      // This runs if payment is successful
+      await handlePaymentSuccess(tournamentId, response.razorpay_payment_id);
+    },
+    "prefill": {
+      "email": _currentUserId // Or user email if available
+    },
+    "theme": { "color": "#00ff88" }
+  };
+
+  const rzp = new Razorpay(options);
+  rzp.open();
+};
+
+async function handlePaymentSuccess(tournamentId, paymentId) {
+  const btn = document.getElementById('payBtn');
+  if(btn) btn.textContent = "Verifying...";
+
+  try {
+    // Update Firestore: Set status to 'verified' immediately 
+    // In a production app, you should verify this paymentId via a Cloud Function
+    await updateDoc(doc(db, 'tournaments', tournamentId, 'participants', _currentUserId), {
+      paymentStatus: 'verified',
+      transactionCode: paymentId,
+      paidAt: serverTimestamp()
+    });
+    
+    showToast("Payment Successful!", "success");
+  } catch (e) {
+    console.error(e);
+    alert("Payment recorded but failed to update status. Please contact support.");
+  }
 }
 
 // ── Load entry fee & UPI from Firestore ───────────────────────────────────────
