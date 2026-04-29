@@ -757,6 +757,7 @@
     <!-- MAIN REGISTRATION -->
     <div id="registrationContainer" style="display:none;max-width:1200px;margin:30px auto;padding:20px;">
 
+      <!-- TOURNAMENT HEADER -->
       <div style="background:linear-gradient(135deg,#1a1a2e 0%,#0f0f0f 100%);padding:25px;border-radius:12px;margin-bottom:25px;border-left:4px solid #00ff88;">
         <h2 id="joinTournamentTitle" style="margin:0 0 10px 0;color:#fff;font-size:28px;">Tournament Name</h2>
         <div style="display:flex;gap:30px;color:#888;flex-wrap:wrap;align-items:center;">
@@ -771,10 +772,12 @@
         </div>
       </div>
 
-      <form id="tournamentJoinForm" class="three-section-layout">
+      <div style="display:grid;grid-template-columns:60% 40%;gap:25px;">
 
-        <div class="section-left" style="display:flex;flex-direction:column;gap:20px;">
-          
+        <!-- LEFT SIDE -->
+        <div style="display:flex;flex-direction:column;gap:20px;">
+
+          <!-- PROFILE CARD -->
           <div style="background:#1a1a1a;padding:20px;border-radius:10px;border:1px solid #333;">
             <h3 style="color:#00ff88;margin:0 0 15px 0;font-size:16px;">Your Profile</h3>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:15px;">
@@ -799,6 +802,7 @@
             </div>
           </div>
 
+          <!-- PRIZE BREAKDOWN -->
           <div style="background:#1a2a1a;padding:20px;border-radius:10px;border:1px solid #00ff88;">
             <h3 style="color:#00ff88;margin:0 0 15px 0;">🏆 Prize Distribution</h3>
             <div style="display:flex;justify-content:space-around;text-align:center;">
@@ -820,6 +824,7 @@
             </div>
           </div>
 
+          <!-- RULES -->
           <div style="background:#2a1a1a;padding:25px;border-radius:10px;border:1px solid #ff4444;">
             <h3 style="color:#ff4444;margin:0 0 15px 0;">⚠️ Important Rules</h3>
             <ul style="color:#ccc;line-height:2;margin:0;padding-left:20px;">
@@ -834,21 +839,25 @@
             </div>
           </div>
 
+          <!-- ENTRY FEE -->
           <div style="background:linear-gradient(135deg,#1a1a1a 0%,#2a1a2a 100%);padding:20px;border-radius:10px;border:2px solid #ffd700;text-align:center;">
             <p style="color:#888;margin:0 0 5px 0;font-size:14px;">Entry Fee (Per Team)</p>
             <p style="color:#ffd700;font-size:32px;font-weight:bold;margin:0;text-shadow:0 0 10px rgba(255,215,0,0.3);">₹<span id="joinEntryFeeDisplay">0</span></p>
             <small style="color:#666;font-size:11px;">Not per person. Whole team pays once.</small>
           </div>
 
+          <!-- SUPPORT -->
           <div style="background:#1a1a1a;padding:15px;border-radius:8px;">
             <p style="color:#666;margin:0;font-size:13px;"><b>Facing issues?</b> Contact Support<br>WhatsApp: +91 XXXXX XXXXX</p>
           </div>
         </div>
 
-        <div class="section-right" style="background:#1a1a1a;padding:25px;border-radius:10px;border:1px solid #333;position:sticky;top:80px;">
+        <!-- RIGHT SIDE — FORM -->
+        <div style="background:#1a1a1a;padding:25px;border-radius:10px;border:1px solid #333;height:fit-content;position:sticky;top:80px; ">
 
           <h3 style="color:#fff;margin:0 0 20px 0;text-align:center;">Team Registration</h3>
 
+          <!-- WALLET AREA -->
           <div style="background:linear-gradient(135deg,#2a2a2a 0%,#1a1a1a 100%);padding:20px;border-radius:8px;text-align:center;margin-bottom:25px;border:1px solid #333;">
             <div style="font-size:40px;margin-bottom:10px;">💰</div>
             <p style="color:#888;margin:0 0 10px 0;font-size:14px;">Your Wallet</p>
@@ -860,95 +869,96 @@
             <p style="color:#ffd700;font-size:11px;margin:5px 0 0 0;">Auto-deduct on registration</p>
           </div>
 
-          <div style="background:#0f0f0f;padding:15px;border-radius:8px;border:1px solid #444; max-height:45vh; overflow-y:auto; padding-right:10px;">
-            <label style="color:#fff;font-size:14px;display:block;margin-bottom:10px;"><b>Squad Members Details</b></label>
-            
-            <div style="margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #00ff88;">
-              <label style="color:#00ff88;font-size:12px;font-weight:bold;">Player 1 (You - Leader) *</label>
-              <input type="number" id="uidPlayer1" placeholder="Your UID" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-top:5px;margin-bottom:5px;">
-              <input type="text" id="nickPlayer1" placeholder="Your Nickname" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;">
-            </div>
+          <!-- REGISTRATION FORM -->
+          <form id="tournamentJoinForm" style="display:flex;flex-direction:column;gap:15px;">
 
-            <div style="margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #444;">
-              <label style="color:#888;font-size:12px;">Player 2 *</label>
-              <input type="number" id="uidPlayer2" placeholder="Teammate 2 UID" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-top:5px;margin-bottom:5px;">
-              <input type="text" id="nickPlayer2" placeholder="Teammate 2 Nickname" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
-              <select id="typePlayer2" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:4px;">
-                <option value="friend">Just a Friend</option>
-                <option value="npc_verified">Verified NPC Tournament User</option>
-              </select>
-            </div>
+   <div style="background:#0f0f0f;padding:15px;border-radius:8px;border:1px solid #444; max-height: 350px; overflow-y: auto; padding-right: 10px;">
+  <label style="color:#fff;font-size:14px;display:block;margin-bottom:10px;"><b>Squad Members Details</b></label>
+              
+              <div style="margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #00ff88;">
+                <label style="color:#00ff88;font-size:12px;font-weight:bold;">Player 1 (You - Leader) *</label>
+                <input type="number" id="uidPlayer1" placeholder="Your UID" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-top:5px;margin-bottom:5px;">
+                <input type="text" id="nickPlayer1" placeholder="Your Nickname" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;">
+              </div>
 
-            <div style="margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #444;">
-              <label style="color:#888;font-size:12px;">Player 3 *</label>
-              <input type="number" id="uidPlayer3" placeholder="Teammate 3 UID" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-top:5px;margin-bottom:5px;">
-              <input type="text" id="nickPlayer3" placeholder="Teammate 3 Nickname" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
-              <select id="typePlayer3" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:4px;">
-                <option value="friend">Just a Friend</option>
-                <option value="npc_verified">Verified NPC Tournament User</option>
-              </select>
-            </div>
+              <div style="margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #444;">
+                <label style="color:#888;font-size:12px;">Player 2 *</label>
+                <input type="number" id="uidPlayer2" placeholder="Teammate 2 UID" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-top:5px;margin-bottom:5px;">
+                <input type="text" id="nickPlayer2" placeholder="Teammate 2 Nickname" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
+                <select id="typePlayer2" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:4px;">
+                  <option value="friend">Just a Friend</option>
+                  <option value="npc_verified">Verified NPC Tournament User</option>
+                </select>
+              </div>
 
-            <div style="margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #444;">
-              <label style="color:#888;font-size:12px;">Player 4 *</label>
-              <input type="number" id="uidPlayer4" placeholder="Teammate 4 UID" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-top:5px;margin-bottom:5px;">
-              <input type="text" id="nickPlayer4" placeholder="Teammate 4 Nickname" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
-              <select id="typePlayer4" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:4px;">
-                <option value="friend">Just a Friend</option>
-                <option value="npc_verified">Verified NPC Tournament User</option>
-              </select>
-            </div>
+              <div style="margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #444;">
+                <label style="color:#888;font-size:12px;">Player 3 *</label>
+                <input type="number" id="uidPlayer3" placeholder="Teammate 3 UID" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-top:5px;margin-bottom:5px;">
+                <input type="text" id="nickPlayer3" placeholder="Teammate 3 Nickname" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
+                <select id="typePlayer3" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:4px;">
+                  <option value="friend">Just a Friend</option>
+                  <option value="npc_verified">Verified NPC Tournament User</option>
+                </select>
+              </div>
 
-            <div id="player5Container" style="display:none; margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #3b82f6;">
-              <label style="color:#3b82f6;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:8px;">
-                <input type="checkbox" id="enablePlayer5" onchange="document.getElementById('player5Fields').style.display = this.checked ? 'block' : 'none';" style="accent-color:#3b82f6;">
-                Add a 5th Substitute Player (Optional)
-              </label>
-              <div id="player5Fields" style="display:none; margin-top:10px;">
-                <input type="number" id="uidPlayer5" placeholder="Teammate 5 UID" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
-                <input type="text" id="nickPlayer5" placeholder="Teammate 5 Nickname" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
-                <select id="typePlayer5" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:4px;">
+              <div style="margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #444;">
+                <label style="color:#888;font-size:12px;">Player 4 *</label>
+                <input type="number" id="uidPlayer4" placeholder="Teammate 4 UID" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-top:5px;margin-bottom:5px;">
+                <input type="text" id="nickPlayer4" placeholder="Teammate 4 Nickname" required style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
+                <select id="typePlayer4" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:4px;">
                   <option value="friend">Just a Friend</option>
                   <option value="npc_verified">Verified NPC Tournament User</option>
                 </select>
               </div>
             </div>
-          </div>
-        </div>
+        
 
-        <div class="section-bottom" style="background:#1a1a1a;padding:25px;border-radius:10px;border:1px solid #333; margin-top:10px;">
-          <h3 style="color:#fff;margin:0 0 20px 0;">Contact & Confirmation</h3>
-          
-          <div class="bottom-inputs" style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:20px;">
-            <div>
-              <label style="color:#fff;font-size:13px;display:block;margin-bottom:5px;">Phone Number *</label>
-              <div style="display:flex;gap:0;">
-                <span style="background:#333;color:#fff;padding:12px;border-radius:6px 0 0 6px;border:1px solid #444;border-right:none;font-size:14px;">+91</span>
-                <input type="tel" id="joinPhone" placeholder="9876543210" pattern="[0-9]{10}" required title="Please enter exactly 10 digits" style="width:100%;padding:12px;background:#0f0f0f;border:1px solid #444;border-left:none;color:#fff;border-radius:0 6px 6px 0;font-size:14px;">
+              <div id="player5Container" style="display:none; margin-bottom:15px; padding:10px; background:#1a1a1a; border-radius:6px; border-left:3px solid #3b82f6;">
+                <label style="color:#3b82f6;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:8px;">
+                  <input type="checkbox" id="enablePlayer5" onchange="document.getElementById('player5Fields').style.display = this.checked ? 'block' : 'none';" style="accent-color:#3b82f6;">
+                  Add a 5th Substitute Player (Optional)
+                </label>
+                <div id="player5Fields" style="display:none; margin-top:10px;">
+                  <input type="number" id="uidPlayer5" placeholder="Teammate 5 UID" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
+                  <input type="text" id="nickPlayer5" placeholder="Teammate 5 Nickname" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#fff;border-radius:4px;margin-bottom:5px;">
+                  <select id="typePlayer5" style="width:100%;padding:10px;background:#111;border:1px solid #333;color:#888;border-radius:4px;">
+                    <option value="friend">Just a Friend</option>
+                    <option value="npc_verified">Verified NPC Tournament User</option>
+                  </select>
+                </div>
               </div>
-              <small style="color:#666;font-size:11px;">Enter 10-digit mobile number</small>
             </div>
+
+            <div style="display:flex;gap:0;">
+              <span style="background:#333;color:#fff;padding:12px;border-radius:6px 0 0 6px;border:1px solid #444;border-right:none;font-size:14px;">+91</span>
+              <input type="tel" id="joinPhone" placeholder="9876543210" pattern="[0-9]{10}" required title="Please enter exactly 10 digits" style="width:100%;padding:12px;background:#0f0f0f;border:1px solid #444;border-left:none;color:#fff;border-radius:0 6px 6px 0;font-size:14px;">
+            </div>
+            <small style="color:#666;font-size:11px;">Enter 10-digit mobile number</small>
+
+            <!-- BACKUP EMAIL -->
             <div>
               <label style="color:#fff;font-size:13px;display:block;margin-bottom:5px;">Backup Email *</label>
-              <input type="email" id="joinBackupEmail" placeholder="Enter email for updates" required style="width:100%;padding:12px;background:#0f0f0f;border:1px solid #444;color:#fff;border-radius:6px;font-size:14px;">
+              <input type="email" id="joinBackupEmail" placeholder="Enter email for updates" required
+                style="width:100%;padding:12px;background:#0f0f0f;border:1px solid #444;color:#fff;border-radius:6px;font-size:14px;">
               <small style="color:#666;font-size:11px;">For match notifications &amp; updates</small>
             </div>
-          </div>
 
-          <div style="padding:15px;background:#2a2a1a;border-radius:6px;border-left:3px solid #ffd700;display:flex;align-items:flex-start;gap:12px;">
-            <input type="checkbox" id="agreeGuidelines" required style="margin-top:3px; width:18px; height:18px; accent-color:#ffd700; cursor:pointer; flex-shrink:0;">
-            <p style="color:#ccc;margin:0;font-size:13px;line-height:1.5;">
-              I have read and agree to the <a href="#" onclick="showGuidelines()" style="color:#ffd700;text-decoration:underline;">Tournament Guidelines</a>.
-            </p>
-          </div>
+            <!-- GUIDELINES CHECKBOX -->
+           <div style="padding:12px;background:#2a2a1a;border-radius:6px;border-left:3px solid #ffd700;display:flex;align-items:flex-start;gap:10px;">
+              <input type="checkbox" id="agreeGuidelines" required style="margin-top:4px; width:18px; height:18px; accent-color:#ffd700; cursor:pointer;">
+              <p style="color:#ccc;margin:0;font-size:13px;line-height:1.5;">
+                I have read and agree to the 
+                <a href="#" onclick="showGuidelines()" style="color:#ffd700;text-decoration:underline;">Tournament Guidelines</a>.
+              </p>
+            </div>
 
-          <button type="submit" id="joinSubmitBtn" style="width:100%;padding:16px;background:#00ff88;color:#000;border:none;border-radius:8px;font-size:18px;font-weight:bold;cursor:pointer;margin-top:20px;">
-            Submit for Verification →
-          </button>
+            <!-- SUBMIT -->
+            <button type="submit" id="joinSubmitBtn"
+              style="width:100%;padding:16px;background:#00ff88;color:#000;border:none;border-radius:8px;font-size:18px;font-weight:bold;cursor:pointer;margin-top:10px;">
+              Submit for Verification →
+            </button>
+          </form>
         </div>
-
-      </form>
-    </div>
       </div>
     </div>
 

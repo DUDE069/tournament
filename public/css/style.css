@@ -952,31 +952,30 @@ section {
 
 
 /* ================================================== */
-/* 3-SECTION REGISTRATION LAYOUT (LEFT, RIGHT, BOTTOM)*/
+/* DESKTOP FIX: STOPS CHECKBOX FROM OVERLAPPING       */
 /* ================================================== */
-.three-section-layout {
-    display: grid;
-    grid-template-columns: 60% 40%;
-    gap: 25px;
-    align-items: start;
+
+/* 1. Stops the two columns from stretching into each other */
+#registrationContainer > div {
+    align-items: start !important; 
 }
 
-.section-left   { grid-column: 1 / 2; }
-.section-right  { grid-column: 2 / 3; }
-.section-bottom { grid-column: 1 / -1; } /* Spans full width at the bottom */
+/* 2. Adds breathing room at the bottom of the form */
+#tournamentJoinForm {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding-bottom: 30px !important; 
+}
 
-/* Responsive Stacking for Mobile */
-@media (max-width: 768px) {
-    .three-section-layout {
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-    }
-    .bottom-inputs {
-        grid-template-columns: 1fr !important; /* Stacks Phone and Email on mobile */
-    }
+/* 3. Prevents the checkbox from shrinking into a tiny dot */
+#agreeGuidelines {
+    min-width: 18px !important;
+    min-height: 18px !important;
+    margin-top: 3px !important;
 }
 /* ================================================== */
+
 
 /* MOBILE DASHBOARD FIX - Add at bottom of style.css */
 @media (max-width: 768px) {
