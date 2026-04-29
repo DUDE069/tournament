@@ -18,26 +18,22 @@ const RAZORPAY_KEY_ID = "rzp_test_SjOd3aCMehTIGa"; // Make sure this is correct!
 // ============================================
 // MAIN ENTRY POINT - Called from main.js
 // ============================================
-export function enterPaymentStage(userId, tournamentId, tournamentName) {
-  console.log("[PAYMENT] Entering payment stage for:", tournamentId);
-  
+// 1. In enterPaymentStage - add entryFee parameter
+export function enterPaymentStage(userId, tournamentId, tournamentName, entryFee) {
   _currentUserId = userId;
   _currentTournamentId = tournamentId;
 
   if (unsubPayment) unsubPayment();
 
-  // Listen for real-time payment status
   const participantRef = doc(db, 'tournaments', tournamentId, 'participants', userId);
   
   unsubPayment = onSnapshot(participantRef, (snap) => {
     const data = snap.data();
-    console.log("[PAYMENT] Status update:", data?.paymentStatus);
     if (!data) return;
-    renderPaymentUI(data, tournamentName, tournamentId);
+    renderPaymentUI(data, tournamentName, tournamentId, entryFee); // ← add entryFee
   });
 
-  // Initial render
-  renderPaymentUI({ paymentStatus: 'pending' }, tournamentName, tournamentId);
+  renderPaymentUI({ paymentStatus: 'pending' }, tournamentName, tournamentId, entryFee); // ← add entryFee
 }
 
 // ============================================
@@ -99,7 +95,7 @@ function openRazorpayCheckout(tournamentId, amount, tournamentName) {
     currency: "INR",
     name: "NPC Esports",
     description: `Entry Fee: ${tournamentName}`,
-    order_id: orderId,
+    
     prefill: {
       email: auth.currentUser?.email || "",
     },
@@ -179,19 +175,16 @@ async function handlePaymentSuccess(tournamentId, response) {
 // ============================================
 // RENDER PAYMENT UI
 // ============================================
-function renderPaymentUI(data, tournamentName, tournamentId) {
-  // Remove existing overlay
+function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
   document.getElementById('paymentOverlay')?.remove();
 
   const { paymentStatus, roomId, roomPassword, razorpayPaymentId } = data;
 
-  // If verified, show success screen
   if (paymentStatus === 'verified') {
     renderSuccessScreen(tournamentName, roomId, roomPassword, razorpayPaymentId);
     return;
   }
 
-  // Create overlay
   const overlay = document.createElement('div');
   overlay.id = 'paymentOverlay';
   overlay.style.cssText = `
@@ -245,7 +238,9 @@ function renderPaymentUI(data, tournamentName, tournamentId) {
         margin-bottom: 18px;
       ">
         <span style="color: #888; font-size: 13px;">Entry Fee</span>
-        <span id="paymentAmount" style="color: #00ff88; font-size: 22px; font-weight: 900;">Loading...</span>
+        <span id="paymentAmount" style="color: #00ff88; font-size: 22px; font-weight: 900;">
+          ${entryFee ? `₹ ${entryFee}` : 'Loading...'}
+        </span>
       </div>
 
       <button id="payBtn" onclick="startRazorpayPayment('${tournamentId}')" style="
@@ -271,7 +266,11 @@ function renderPaymentUI(data, tournamentName, tournamentId) {
   `;
 
   document.body.appendChild(overlay);
-  loadPaymentDetails(tournamentId);
+
+  // Only fetch from Firestore if fee wasn't passed in
+  if (!entryFee) {
+    loadPaymentDetails(tournamentId);
+  }
 }
 
 // ============================================

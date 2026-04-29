@@ -798,23 +798,23 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     });
 });
-
 // ===============================
 // PAYMENT INTERFACE
 // ===============================
 window.showPaymentInterface = async function(tournamentId) {
     if (!tournamentId) { showMessage("Tournament ID missing"); return; }
     
-    // ✅ Corrected path - up ONE level from js/ to public/
+    const tournament = tournaments.find(t => t.id === tournamentId);
+    
     import('../paymentStage.js').then(module => {
         module.enterPaymentStage(
             currentUser.uid, 
             tournamentId, 
-            tournaments.find(t => t.id === tournamentId)?.title || "Tournament"
+            tournament?.title || "Tournament",
+            tournament?.entryFee || 0    // ← only change
         );
     });
 };
-
 
 window.openPaymentInterface = async function(tournamentId) {
     const pendingRef  = doc(db, "users", currentUser.uid, "pendingPayment", tournamentId);
