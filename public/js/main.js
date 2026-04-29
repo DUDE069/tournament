@@ -805,9 +805,11 @@ document.addEventListener("DOMContentLoaded", function() {
 window.showPaymentInterface = async function(tournamentId) {
     if (!tournamentId) { showMessage("Tournament ID missing"); return; }
     
-    // ✅ Use the Razorpay payment stage instead!
-    import('../../paymentStage.js').then(module => {
-        module.enterPaymentStage(currentUser.uid, tournamentId, 
+    // ✅ Corrected path - up ONE level from js/ to public/
+    import('../paymentStage.js').then(module => {
+        module.enterPaymentStage(
+            currentUser.uid, 
+            tournamentId, 
             tournaments.find(t => t.id === tournamentId)?.title || "Tournament"
         );
     });
