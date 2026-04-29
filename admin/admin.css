@@ -282,10 +282,16 @@
     .app-card-actions {
         width: 100%;
         display: flex;
-        flex-wrap: wrap;
+        flex-direction: column !important; /* Forces buttons to stack vertically */
         gap: 8px;
     }
     .app-card-actions > div {
+        width: 100% !important;
         margin-top: 0 !important;
+    }
+    .app-card-actions button {
+        width: 100% !important;
+        box-sizing: border-box;
+        text-align: center;
     }
 }

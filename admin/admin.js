@@ -268,13 +268,14 @@ function noItems() {
   return `<div style="color:var(--muted);font-size:13px;padding:8px 0 16px;">— None —</div>`;
 }
 
+
+
 function applicationCard(d, type) {
   const pillClass = type === "new" ? "pill-new" : type === "accepted" ? "pill-accepted" : "pill-rejected";
   const pillLabel = type === "new" ? "PENDING"  : type === "accepted" ? "APPROVED"     : "REJECTED";
 
   let actions = "";
   if (type === "new") {
-    // 👇 NEW CODE - Replace the entire block
     const appData = {
       teamName: d.teamName || "—",
       leaderEmail: d.leaderEmail || "—",
@@ -282,21 +283,20 @@ function applicationCard(d, type) {
       uids: d.uids || [],
       playersData: d.playersData || d.uids?.map((uid, i) => ({
         uid: uid,
-        type: "solo",
-        nickname: d[`player${i+1}Nickname`] || ""
+        type: d[`typePlayer${i+1}`] || "friend", // Captures NPC User status
+        nickname: d[`nickPlayer${i+1}`] || d[`player${i+1}Nickname`] || ""
       })) || []
     };
     
     actions = `
       <div style="display:flex; flex-direction:column; gap:8px; width:100%; margin-top:10px;">
         <button class="btn-view" style="width:100%; padding:10px; font-size:14px; box-sizing:border-box;" 
-          onclick="openAdminReviewModal('${d.tournamentId}', '${d.id}', '${encodeURIComponent(JSON.stringify(appData))}')">
+          onclick="openAdminReviewModal('${d.tournamentId}', '${d.id}', '${encodeURIComponent(JSON.stringify(appData))}', 'ongoing')">
           🔍 Review Application
         </button>
       </div>
     `;
   } else if (type === "accepted") {
-
     actions = `
       <button class="btn-status" onclick="viewStatusModal('${d.tournamentId}','${d.id}')">📊 Status</button>
       <button class="btn-remove" data-tid="${d.tournamentId}" data-uid="${d.id}" onclick="removeApplication('${d.tournamentId}','${d.id}')">Remove</button>`;
@@ -922,15 +922,26 @@ function upcomingCard(d, type) {
 
   let actions = "";
   if (type === "new") {
+    const appData = {
+      teamName: d.teamName || "—",
+      leaderEmail: d.leaderEmail || "—",
+      phone: d.phone || "—",
+      uids: d.uids || [],
+      playersData: d.playersData || d.uids?.map((uid, i) => ({
+        uid: uid,
+        type: d[`typePlayer${i+1}`] || "friend", // Captures NPC User status
+        nickname: d[`nickPlayer${i+1}`] || d[`player${i+1}Nickname`] || ""
+      })) || []
+    };
+
     actions = `
-      <button onclick="approveUpcoming('${d.tournamentId}','${d.id}')"
-        style="background:var(--green);color:#000;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;">
-        Approve
-      </button>
-      <button onclick="openRejectUpcomingModal('${d.tournamentId}','${d.id}')"
-        style="background:var(--red);color:#fff;border:none;padding:7px 16px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px;font-weight:700;">
-        Reject
-      </button>`;
+      <div style="display:flex; flex-direction:column; gap:8px; width:100%; margin-top:10px;">
+        <button class="btn-view" style="width:100%; padding:10px; font-size:14px; box-sizing:border-box;" 
+          onclick="openAdminReviewModal('${d.tournamentId}', '${d.id}', '${encodeURIComponent(JSON.stringify(appData))}', 'upcoming')">
+          🔍 Review Registration
+        </button>
+      </div>
+    `;
   } else {
     actions = `<button class="btn-remove" onclick="removeUpcoming('${d.tournamentId}','${d.id}','${d.id}')" id="regcard-${d.id}">Remove</button>`;
   }
@@ -1583,21 +1594,34 @@ window.promoteFromWaitlist = async function(tournamentId, teamId) {
     manageTournamentSlots(tournamentId);
 };
 
-window.openAdminReviewModal = function(tournamentId, userId, dataString) {
+// ============================================================================
+// ULTIMATE REVIEW MODAL (Handles both Ongoing and Upcoming safely)
+// ============================================================================
+
+window.openAdminReviewModal = function(tournamentId, userId, dataString, stage = 'ongoing') {
     const app = JSON.parse(decodeURIComponent(dataString));
     document.getElementById("reviewAppModal")?.remove();
 
-    // Look for edited fields (You will need to pass an array of edited strings from main.js on resubmit)
-    // If not present, default to empty array
-    const edited = app.editedFields || []; 
-    const dot = (field) => edited.includes(field) ? `<span style="color:#ff9800; margin-left:5px;" title="User edited this after rejection">🟠</span>` : '';
+    // Generate Player UIDs with NPC Verified Badges
+    const playersHtml = app.playersData && app.playersData.length > 0 ? app.playersData.map((p, i) => {
+        let badge = p.type === 'npc_verified' || p.type === 'NPC User'
+            ? `<span style="background:var(--green);color:#000;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">NPC User</span>`
+            : `<span style="background:#444;color:#aaa;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;">Friend</span>`;
+            
+        return `
+            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #222;padding-bottom:8px;">
+                <span style="color:#888;">Player ${i+1} ${badge}</span>
+                <span style="color:#fff;font-weight:bold;">${p.uid} <span style="color:var(--blue);font-weight:normal;font-size:12px;margin-left:6px;">${p.nickname}</span></span>
+            </div>
+        `;
+    }).join('') : `<div style="color:#fff;">${app.uids?.join(', ')}</div>`;
 
     document.body.insertAdjacentHTML("beforeend", `
         <div id="reviewAppModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;z-index:9999;padding:15px;">
-            <div style="background:#111;width:100%;max-width:500px;border-radius:12px;border:1px solid #333;display:flex;flex-direction:column;max-height:90vh;">
+            <div style="background:#111;width:100%;max-width:520px;border-radius:12px;border:1px solid #333;display:flex;flex-direction:column;max-height:90vh;">
                 
                 <div style="padding:20px;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center;">
-                    <h3 style="color:#00ff88;margin:0;">🔍 Review Team: ${app.teamName}</h3>
+                    <h3 style="color:var(--green);margin:0;">🔍 Review Team: ${app.teamName}</h3>
                     <button onclick="document.getElementById('reviewAppModal').remove()" style="background:transparent;border:none;color:#888;font-size:20px;cursor:pointer;">✖</button>
                 </div>
 
@@ -1607,35 +1631,102 @@ window.openAdminReviewModal = function(tournamentId, userId, dataString) {
                         <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.leaderEmail}</div>
                     </div>
                     <div style="margin-bottom:20px;">
-                        <label style="color:#666;font-size:12px;">Phone ${dot('phone')}</label>
+                        <label style="color:#666;font-size:12px;">Phone Number</label>
                         <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.phone}</div>
                     </div>
-                    <div style="margin-bottom:20px;">
-                        <label style="color:#666;font-size:12px;">Player UIDs ${dot('uids')}</label>
-                        <div style="background:#1a1a1a;padding:10px;border-radius:6px;display:grid;gap:8px;">
-                            ${app.playersData ? app.playersData.map((p, i) => `
-                                <div style="display:flex;justify-content:space-between;border-bottom:1px solid #222;padding-bottom:5px;">
-                                    <span style="color:#888;">Player ${i+1} (${p.type})</span>
-                                    <span style="color:#fff;font-weight:bold;">${p.uid} <span style="color:#4a90e2;font-weight:normal;font-size:12px;">${p.nickname}</span></span>
-                                </div>
-                            `).join('') : `<div style="color:#fff;">${app.uids?.join(', ')}</div>`}
+                    <div style="margin-bottom:10px;">
+                        <label style="color:#666;font-size:12px;">Squad Members</label>
+                        <div style="background:#1a1a1a;padding:15px 10px 5px 10px;border-radius:6px;display:grid;gap:12px;">
+                            ${playersHtml}
                         </div>
+                    </div>
+
+                    <div style="margin-top:30px; padding-top:20px; border-top:1px dashed #444;">
+                        <label style="color:var(--red);font-size:12px;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:8px;">
+                            Rejection Reason (Required if Rejecting)
+                        </label>
+                        <select id="reasonSelect" style="width:100%;padding:12px;background:#000;color:#fff;border:1px solid #444;border-radius:8px;margin-bottom:10px;font-family:inherit;font-size:14px;">
+                            <option value="">-- Select Reason --</option>
+                            <option value="Member 1 Information Wrong">❌ Member 1 Information Wrong</option>
+                            <option value="Member 2 Information Wrong">❌ Member 2 Information Wrong</option>
+                            <option value="Member 3 Information Wrong">❌ Member 3 Information Wrong</option>
+                            <option value="Member 4 Information Wrong">❌ Member 4 Information Wrong</option>
+                            <option value="Invalid Player UID / Not Verified">❌ Invalid Player UID / Not Verified</option>
+                            <option value="Incorrect Phone">❌ Phone Number Wrong</option>
+                            <option value="Blacklisted Team">🚫 Team is Blacklisted</option>
+                            <option value="custom">✍️ Other (write below)</option>
+                        </select>
+                        <textarea id="adminNote" placeholder="Optional notes for the team..."
+                            style="width:100%;height:60px;background:#000;color:#fff;border:1px solid #444;padding:10px;border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
                     </div>
                 </div>
 
                 <div style="padding:20px;border-top:1px solid #222;background:#0a0a0a;border-radius:0 0 12px 12px;">
-                    <div style="display:flex;gap:10px;flex-direction:column;">
-                        <button onclick="document.getElementById('reviewAppModal').remove(); approveVerification('${tournamentId}', '${userId}');" 
-                            style="width:100%;padding:14px;background:#00ff88;color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;">
-                            ✅ Approve Application
+                    <div style="display:flex;gap:15px;flex-direction:row;">
+                        <button onclick="handleReviewDecision('${tournamentId}', '${userId}', 'approved', '${stage}')" 
+                            style="flex:1;padding:14px;background:var(--green);color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;">
+                            ✅ Approve
                         </button>
-                        <button onclick="document.getElementById('reviewAppModal').remove(); rejectVerification('${tournamentId}', '${userId}');" 
-                            style="width:100%;padding:14px;background:transparent;color:#ff4444;border:1px solid #ff4444;border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;">
-                            ❌ Reject Application
+                        <button onclick="handleReviewDecision('${tournamentId}', '${userId}', 'rejected', '${stage}')" 
+                            style="flex:1;padding:14px;background:#111;color:var(--red);border:1px solid var(--red);border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;">
+                            ❌ Reject
                         </button>
                     </div>
                 </div>
             </div>
         </div>
     `);
+};
+
+// ============================================================================
+// THE DECISION HANDLER (Fixes the "Not Defined" errors & verifies reasons)
+// ============================================================================
+window.handleReviewDecision = async function(tournamentId, userId, status, stage) {
+    // 1. Force the admin to select a reason if rejecting
+    if (status === 'rejected') {
+        const reason = document.getElementById("reasonSelect")?.value;
+        if (!reason) {
+            showToast("⚠️ Please select a Rejection Reason first.", "warning");
+            return;
+        }
+    }
+
+    try {
+        if (stage === 'upcoming') {
+            // Handle Upcoming Approvals/Rejections
+            if (status === 'approved') {
+                await approveUpcoming(tournamentId, userId);
+            } else {
+                const select = document.getElementById("reasonSelect").value;
+                const custom = document.getElementById("adminNote")?.value.trim() ?? "";
+                const finalReason = select === "custom" ? custom : select;
+                
+                // Use imported updateDoc to mark rejected in Firestore
+                await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
+                    status: "rejected", 
+                    rejectionReason: finalReason, 
+                    processedAt: serverTimestamp(),
+                });
+                
+                // Send notification
+                await sendDualNotification(userId, {
+                    type: "rejected",
+                    title: "Registration Rejected",
+                    message: `Your registration was rejected. Reason: ${finalReason}`,
+                    extra: { tournamentId },
+                    actionLink: `tournament=${tournamentId}`,
+                });
+                showToast("❌ Upcoming registration rejected.", "error");
+            }
+        } else {
+            // Handle Ongoing Approvals/Rejections using your existing processDecision function
+            await processDecision(tournamentId, userId, status);
+        }
+        
+        // Remove the modal upon success
+        document.getElementById('reviewAppModal')?.remove();
+
+    } catch (e) {
+        showToast("Error processing decision: " + e.message, "error");
+    }
 };
