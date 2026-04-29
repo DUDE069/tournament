@@ -804,8 +804,15 @@ document.addEventListener("DOMContentLoaded", function() {
 // ===============================
 window.showPaymentInterface = async function(tournamentId) {
     if (!tournamentId) { showMessage("Tournament ID missing"); return; }
-    await openPaymentInterface(tournamentId);
+    
+    // ✅ Use the Razorpay payment stage instead!
+    import('./paymentStage.js').then(module => {
+        module.enterPaymentStage(currentUser.uid, tournamentId, 
+            tournaments.find(t => t.id === tournamentId)?.title || "Tournament"
+        );
+    });
 };
+
 
 window.openPaymentInterface = async function(tournamentId) {
     const pendingRef  = doc(db, "users", currentUser.uid, "pendingPayment", tournamentId);

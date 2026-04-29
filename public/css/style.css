@@ -1996,6 +1996,9 @@ button, .dash-card, .role-card {
   margin: 10px 0;
 }
 
+
+
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to { opacity: 1; }

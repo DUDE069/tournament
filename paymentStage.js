@@ -1,5 +1,5 @@
 // =====================================================
-// paymentStage.js (v3 - Razorpay Integration)
+// paymentStage.js (v4 - Fixed for NPC Esports)
 // =====================================================
 
 import { db, auth } from './firebase.js';
@@ -7,27 +7,31 @@ import {
   doc, onSnapshot, updateDoc, serverTimestamp, getDoc
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
+// Variables
 let unsubPayment = null;
 let _currentTournamentId = null;
 let _currentUserId = null;
 
-// ⚠️ REPLACE THIS with your actual Razorpay Key ID from dashboard
-const RAZORPAY_KEY_ID = "rzp_test_SjOd3aCMehTIGa";
+// ⚠️ YOUR RAZORPAY KEY ID
+const RAZORPAY_KEY_ID = "rzp_test_SjOd3aCMehTIGa"; // Make sure this is correct!
 
 // ============================================
-// ENTER PAYMENT STAGE
+// MAIN ENTRY POINT - Called from main.js
 // ============================================
 export function enterPaymentStage(userId, tournamentId, tournamentName) {
+  console.log("[PAYMENT] Entering payment stage for:", tournamentId);
+  
   _currentUserId = userId;
   _currentTournamentId = tournamentId;
 
   if (unsubPayment) unsubPayment();
 
-  // Listen for real-time payment status updates
+  // Listen for real-time payment status
   const participantRef = doc(db, 'tournaments', tournamentId, 'participants', userId);
   
   unsubPayment = onSnapshot(participantRef, (snap) => {
     const data = snap.data();
+    console.log("[PAYMENT] Status update:", data?.paymentStatus);
     if (!data) return;
     renderPaymentUI(data, tournamentName, tournamentId);
   });
@@ -37,55 +41,61 @@ export function enterPaymentStage(userId, tournamentId, tournamentName) {
 }
 
 // ============================================
-// START RAZORPAY PAYMENT
+// PAY BUTTON CLICKED
 // ============================================
-window.startRazorpayPayment = async function(tournamentId) {
+async function startRazorpayPayment(tournamentId) {
+  console.log("[PAYMENT] Pay button clicked for:", tournamentId);
+  
   const btn = document.getElementById('payBtn');
   if (btn) {
     btn.disabled = true;
-    btn.textContent = "Loading...";
+    btn.textContent = "Please wait...";
   }
 
   try {
     // Get tournament entry fee
     const tSnap = await getDoc(doc(db, 'tournaments', tournamentId));
     if (!tSnap.exists()) {
-      showToast("Tournament not found", "error");
+      alert("Tournament not found!");
       return;
     }
 
     const tournament = tSnap.data();
     const entryFee = tournament.entryFee || 0;
 
+    console.log("[PAYMENT] Entry fee:", entryFee);
+
     if (entryFee <= 0) {
-      showToast("Invalid entry fee", "error");
+      alert("Invalid entry fee!");
       return;
     }
 
-    // Open Razorpay checkout
+    // Open Razorpay
     openRazorpayCheckout(tournamentId, entryFee, tournament.title);
 
   } catch (error) {
-    console.error("Payment init error:", error);
-    showToast("Error preparing payment", "error");
+    console.error("[PAYMENT] Error:", error);
+    alert("Error preparing payment: " + error.message);
   } finally {
     if (btn) {
       btn.disabled = false;
       btn.textContent = "Pay Securely with Razorpay";
     }
   }
-};
+}
 
 // ============================================
 // OPEN RAZORPAY POPUP
 // ============================================
 function openRazorpayCheckout(tournamentId, amount, tournamentName) {
-  // Create a unique order ID (in production, this comes from backend)
+  console.log("[PAYMENT] Opening Razorpay checkout:", amount);
+
+  // Create unique order ID
   const orderId = "order_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
 
   const options = {
     key: RAZORPAY_KEY_ID,
-    amount: amount * 100, // Razorpay works in paise
+    amount: amount * 100, // Razorpay works in PAISE (100 = ₹1)
     currency: "INR",
     name: "NPC Esports",
     description: `Entry Fee: ${tournamentName}`,
@@ -97,27 +107,33 @@ function openRazorpayCheckout(tournamentId, amount, tournamentName) {
       color: "#00ff88"
     },
     modal: {
+      confirmClose: true,
       ondismiss: function() {
+        console.log("[PAYMENT] Payment popup closed");
         showToast("Payment cancelled", "warning");
       }
     },
     handler: async function(response) {
-      // Payment successful!
+      console.log("[PAYMENT] Payment success:", response);
       await handlePaymentSuccess(tournamentId, response);
     }
   };
 
   try {
+    console.log("[PAYMENT] Creating Razorpay instance...");
     const rzp = new Razorpay(options);
     
     rzp.on("payment.failed", function(response) {
+      console.error("[PAYMENT] Payment failed:", response.error);
       showToast(`Payment failed: ${response.error.description}`, "error");
     });
 
+    console.log("[PAYMENT] Opening popup...");
     rzp.open();
+    
   } catch (error) {
-    console.error("Razorpay error:", error);
-    showToast("Error opening payment", "error");
+    console.error("[PAYMENT] Razorpay error:", error);
+    showToast("Error opening payment: " + error.message, "error");
   }
 }
 
@@ -125,6 +141,8 @@ function openRazorpayCheckout(tournamentId, amount, tournamentName) {
 // HANDLE PAYMENT SUCCESS
 // ============================================
 async function handlePaymentSuccess(tournamentId, response) {
+  console.log("[PAYMENT] Handling success:", response);
+
   const btn = document.getElementById('payBtn');
   if (btn) {
     btn.textContent = "Verifying...";
@@ -132,12 +150,9 @@ async function handlePaymentSuccess(tournamentId, response) {
   }
 
   try {
-    const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = response;
+    const { razorpay_payment_id, razorpay_order_id } = response;
 
-    // ⚠️ In production, verify signature on backend FIRST!
-    // For now, we trust Razorpay's response
-    
-    // Update Firestore with verified payment
+    // Update Firestore
     await updateDoc(
       doc(db, 'tournaments', tournamentId, 'participants', _currentUserId),
       {
@@ -148,24 +163,15 @@ async function handlePaymentSuccess(tournamentId, response) {
       }
     );
 
-    // Also update in user's payments subcollection
-    await updateDoc(
-      doc(db, 'users', _currentUserId),
-      {
-        lastPaymentVerified: serverTimestamp()
-      }
-    );
-
     showToast("✅ Payment Verified!", "success");
 
-    // Close and show success after delay
+    // Let the listener update the UI
     setTimeout(() => {
       closePaymentOverlay();
-      // The listener will auto-update the UI to show success
-    }, 1500);
+    }, 2000);
 
   } catch (error) {
-    console.error("Verification error:", error);
+    console.error("[PAYMENT] Verification error:", error);
     showToast("Payment recorded but verification pending", "warning");
   }
 }
@@ -174,36 +180,91 @@ async function handlePaymentSuccess(tournamentId, response) {
 // RENDER PAYMENT UI
 // ============================================
 function renderPaymentUI(data, tournamentName, tournamentId) {
+  // Remove existing overlay
   document.getElementById('paymentOverlay')?.remove();
 
   const { paymentStatus, roomId, roomPassword, razorpayPaymentId } = data;
 
-  // Already verified? Show success screen
+  // If verified, show success screen
   if (paymentStatus === 'verified') {
     renderSuccessScreen(tournamentName, roomId, roomPassword, razorpayPaymentId);
     return;
   }
 
+  // Create overlay
   const overlay = document.createElement('div');
   overlay.id = 'paymentOverlay';
-  overlay.className = 'payment-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.97);
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  `;
   
   overlay.innerHTML = `
-    <div class="payment-card">
-      <div class="payment-status-badge">🔒 Payment Required</div>
-      <h2>Complete Registration</h2>
-      <p class="payment-tournament-name">${escapeHtml(tournamentName)}</p>
+    <div style="
+      background: #111;
+      border: 2px solid #00ff88;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      font-family: 'Rajdhani', sans-serif;
+    ">
+      <div style="
+        display: inline-block;
+        padding: 6px 18px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 700;
+        background: rgba(59,130,246,.15);
+        color: #3b82f6;
+        border: 1px solid #3b82f6;
+        margin-bottom: 16px;
+      ">🔒 Payment Required</div>
+      
+      <h2 style="color: #fff; margin: 0 0 8px; font-size: 24px;">Complete Registration</h2>
+      <p style="color: #888; margin-bottom: 24px;">${escapeHtml(tournamentName)}</p>
 
-      <div class="payment-amount-card">
-        <span class="payment-amount-label">Entry Fee</span>
-        <span class="payment-amount-value" id="paymentAmount">Loading...</span>
+      <div style="
+        background: #0f0f0f;
+        border: 1px solid #2a2a2a;
+        border-radius: 10px;
+        padding: 14px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 18px;
+      ">
+        <span style="color: #888; font-size: 13px;">Entry Fee</span>
+        <span id="paymentAmount" style="color: #00ff88; font-size: 22px; font-weight: 900;">Loading...</span>
       </div>
 
-      <button class="btn-payment-done" id="payBtn" onclick="startRazorpayPayment('${tournamentId}')">
+      <button id="payBtn" onclick="startRazorpayPayment('${tournamentId}')" style="
+        width: 100%;
+        padding: 16px;
+        background: linear-gradient(135deg, #00ff88, #00cc6a);
+        color: #000;
+        border: none;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+        font-family: 'Rajdhani', sans-serif;
+        transition: transform 0.1s, box-shadow 0.2s;
+      " onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
         Pay Securely with Razorpay
       </button>
       
-      <p class="payment-footer">
+      <p style="color: #555; font-size: 12px; margin-top: 14px;">
         🔒 Secured by Razorpay · Instant verification
       </p>
     </div>
@@ -226,7 +287,7 @@ async function loadPaymentDetails(tournamentId) {
       if (amountEl) amountEl.textContent = `₹ ${t.entryFee || '—'}`;
     }
   } catch (error) {
-    console.error("Error loading details:", error);
+    console.error("[PAYMENT] Error loading details:", error);
   }
 }
 
@@ -241,47 +302,97 @@ function renderSuccessScreen(tournamentName, roomId, roomPassword, paymentId) {
 
   const overlay = document.createElement('div');
   overlay.id = 'paymentOverlay';
-  overlay.className = 'payment-overlay';
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.97);
+    z-index: 9000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  `;
 
   const roomSection = (roomId && roomPassword) ? `
-    <div class="room-details-box">
-      <p class="room-label">🔑 Room Details</p>
-      <div class="room-credentials">
+    <div style="
+      background: rgba(0, 255, 136, 0.1);
+      border: 2px solid #00ff88;
+      border-radius: 12px;
+      padding: 20px;
+      margin: 20px 0;
+      text-align: center;
+    ">
+      <p style="color: #00ff88; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">🔑 Room Details</p>
+      <div style="display: flex; justify-content: center; gap: 30px; flex-wrap: wrap;">
         <div>
-          <p class="cred-label">ROOM ID</p>
-          <p class="cred-value">${escapeHtml(roomId)}</p>
+          <p style="color: #888; font-size: 11px; text-transform: uppercase; margin-bottom: 6px;">ROOM ID</p>
+          <p style="color: #fff; font-size: 24px; font-weight: 900; letter-spacing: 2px; font-family: monospace;">${escapeHtml(roomId)}</p>
         </div>
         <div>
-          <p class="cred-label">PASSWORD</p>
-          <p class="cred-value">${escapeHtml(roomPassword)}</p>
+          <p style="color: #888; font-size: 11px; text-transform: uppercase; margin-bottom: 6px;">PASSWORD</p>
+          <p style="color: #fff; font-size: 24px; font-weight: 900; letter-spacing: 2px; font-family: monospace;">${escapeHtml(roomPassword)}</p>
         </div>
       </div>
-      <p class="room-warning">Screenshot these details!</p>
+      <p style="color: #ff4444; font-size: 11px; margin-top: 16px;">Screenshot these details!</p>
     </div>
   ` : `
-    <div class="room-pending">
-      <p>⏳ Room details will be shared by admin before match</p>
+    <div style="background: #0f0f0f; border-radius: 10px; padding: 16px; margin: 20px 0; color: #888;">
+      ⏳ Room details will be shared by admin before match
     </div>
   `;
 
   overlay.innerHTML = `
-    <div class="payment-card payment-success">
-      <div class="success-icon">✓</div>
-      <h2>Payment Verified!</h2>
-      <p>Your spot in <strong>${escapeHtml(tournamentName)}</strong> is confirmed.</p>
+    <div style="
+      background: #111;
+      border: 2px solid #00ff88;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 420px;
+      width: 100%;
+      text-align: center;
+      font-family: 'Rajdhani', sans-serif;
+    ">
+      <div style="
+        width: 64px;
+        height: 64px;
+        background: #00ff88;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+        color: #000;
+        margin: 0 auto 16px;
+      ">✓</div>
+      
+      <h2 style="color: #00ff88; margin: 0 0 8px; font-size: 24px;">Payment Verified!</h2>
+      <p style="color: #fff; margin-bottom: 10px;">Your spot in <strong>${escapeHtml(tournamentName)}</strong> is confirmed.</p>
       
       ${paymentId ? `
-      <div class="payment-id-display">
-        <span style="color:#888;font-size:11px;">Transaction ID:</span>
-        <span style="color:#ffd700;font-family:monospace;font-size:12px;margin-left:8px;">${escapeHtml(paymentId)}</span>
+      <div style="background: #0f0f0f; padding: 10px; border-radius: 8px; margin: 10px 0;">
+        <span style="color: #888; font-size: 11px;">Transaction ID:</span>
+        <span style="color: #ffd700; font-family: monospace; font-size: 12px; margin-left: 8px;">${escapeHtml(paymentId)}</span>
       </div>
       ` : ''}
 
       ${roomSection}
 
-      <button class="btn-payment-done" onclick="handleUserConfirmation()">
-        ✅ Confirm & Continue
-      </button>
+      <button onclick="handleUserConfirmation()" style="
+        width: 100%;
+        padding: 16px;
+        background: #00ff88;
+        color: #000;
+        border: none;
+        border-radius: 10px;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+        font-family: 'Rajdhani', sans-serif;
+        margin-top: 10px;
+      ">✅ Confirm & Continue</button>
     </div>
   `;
 
@@ -303,9 +414,8 @@ window.handleUserConfirmation = async function() {
       );
     }
   } catch (error) {
-    console.warn('Confirmation error:', error);
+    console.warn('[PAYMENT] Confirmation error:', error);
   }
-
   closePaymentOverlay();
 };
 
@@ -337,13 +447,31 @@ function showToast(message, type = "success") {
   
   const toast = document.createElement('div');
   toast.style.cssText = `
-    position:fixed;bottom:24px;right:24px;
-    background:#1a1a1a;border:1px solid ${color};
-    color:${color};padding:14px 20px;border-radius:10px;
-    font-size:14px;z-index:99999;max-width:340px;
-    animation:fadeInUp 0.2s ease;font-weight:600;
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    background: #1a1a1a;
+    border: 1px solid ${color};
+    color: ${color};
+    padding: 14px 20px;
+    border-radius: 10px;
+    font-size: 14px;
+    z-index: 99999;
+    max-width: 340px;
+    animation: fadeInUp 0.3s ease;
+    font-weight: 600;
+    font-family: 'Rajdhani', sans-serif;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
   `;
   toast.textContent = message;
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 4000);
 }
+
+// ============================================
+// MAKE startRazorpayPayment GLOBAL
+// ============================================
+// Attach to window so HTML onclick can find it
+window.startRazorpayPayment = startRazorpayPayment;
+
+console.log("[PAYMENT] paymentStage.js loaded!");
