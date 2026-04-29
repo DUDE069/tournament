@@ -806,7 +806,7 @@ window.showPaymentInterface = async function(tournamentId) {
     if (!tournamentId) { showMessage("Tournament ID missing"); return; }
     
     // ✅ Use the Razorpay payment stage instead!
-    import('../../payment-Stage.js').then(module => {
+    import('../../paymentStage.js').then(module => {
         module.enterPaymentStage(currentUser.uid, tournamentId, 
             tournaments.find(t => t.id === tournamentId)?.title || "Tournament"
         );
