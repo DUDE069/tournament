@@ -2,7 +2,7 @@
 // paymentStage.js (v4 - Fixed for NPC Esports)
 // =====================================================
 
-import { db, auth } from './firebase.js';
+import { db, auth } from './js/firebase.js';
 import {
   doc, onSnapshot, updateDoc, serverTimestamp, getDoc
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
