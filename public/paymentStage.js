@@ -79,29 +79,45 @@ async function startRazorpayPayment(tournamentId) {
     }
   }
 }
-
 // ============================================
 // OPEN RAZORPAY POPUP
 // ============================================
 function openRazorpayCheckout(tournamentId, amount, tournamentName) {
   console.log("[PAYMENT] Opening Razorpay checkout:", amount);
 
-  // Create unique order ID
-  const orderId = "order_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
-
   const options = {
     key: RAZORPAY_KEY_ID,
-    amount: amount * 100, // Razorpay works in PAISE (100 = ₹1)
+    amount: amount * 100,
     currency: "INR",
     name: "NPC Esports",
     description: `Entry Fee: ${tournamentName}`,
-    
     prefill: {
       email: auth.currentUser?.email || "",
+      contact: "",
     },
-    theme: {
-      color: "#00ff88"
+    config: {
+      display: {
+        blocks: {
+          upi: {
+            name: "Pay via UPI",
+            instruments: [
+              { method: "upi", flows: ["qr", "collect", "intent"] }
+            ]
+          },
+          other: {
+            name: "Other Methods",
+            instruments: [
+              { method: "card" },
+              { method: "netbanking" },
+              { method: "wallet" }
+            ]
+          }
+        },
+        sequence: ["block.upi", "block.other"],
+        preferences: { show_default_blocks: false }
+      }
     },
+    theme: { color: "#00ff88" },
     modal: {
       confirmClose: true,
       ondismiss: function() {

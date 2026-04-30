@@ -3484,7 +3484,7 @@ if (submitBtn) {
             showPopup("warning", 
                 "You can pay now to secure your slot immediately, or Pay Later. WARNING: If you do not pay before the tournament goes 'Ongoing', you will be kicked.", 
                 "Pay Now", 
-                () => { document.getElementById('customPopup').remove(); openPaymentInterface(tournamentId); }
+                () => { document.getElementById('customPopup').remove(); showPaymentInterface(tournamentId); }
             );
             // Append Pay Later button dynamically to the popup
             const popupBody = document.querySelector('#customPopup > div');
@@ -3502,7 +3502,7 @@ if (submitBtn) {
                 popupBody.appendChild(laterBtn);
             }
         } else {
-            openPaymentInterface(tournamentId);
+           showPaymentInterface(tournamentId);
         }
     };
 }
