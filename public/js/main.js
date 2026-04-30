@@ -3719,7 +3719,7 @@ function startTutorial() {
             title: "Welcome to NPC Esports!",
             content: `Maps easily using our <span class="highlight-text">Menu</span> at the top.<br><br>
                       Access <strong>Tournaments</strong>, <strong>Leaderboard</strong>, <strong>Profile</strong>, and <strong>Dashboard</strong> from anywhere.`,
-            image: "https://placehold.co/600x400/1a1a2e/22c55e?text=Menu+Preview+Image",
+            image: "./images/tut-menu.jpg",
             highlight: ".navbar"
         },
         {
@@ -3728,7 +3728,7 @@ function startTutorial() {
             title: "Find Your Tournament",
             content: `Browse <span class="highlight-text">Ongoing</span>, <span class="highlight-text">Upcoming</span>, and <span class="highlight-text">Limited</span> tournaments.<br><br>
                       Register your team, get verified, then pay the entry fee.`,
-            image: "https://placehold.co/600x400/1a1a2e/22c55e?text=Tournament+Preview+Image",
+            image: "./images/tut-tournaments.jpg",
             highlight: "#tournaments"
         },
         {
@@ -3736,7 +3736,7 @@ function startTutorial() {
             icon: "📊",
             title: "Your Dashboard",
             content: `Track your <span class="highlight-text">Profile</span>, <span class="highlight-text">Tournament History</span>, <span class="highlight-text">Performance</span>, and <span class="highlight-text">Wallet</span> all in one place.`,
-            image: "https://placehold.co/600x400/1a1a2e/22c55e?text=Dashboard+Preview+Image",
+            image: "./images/tut-dashboard.jpg",
             highlight: ".dashboard"
         },
         {
