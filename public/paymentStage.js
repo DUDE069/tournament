@@ -95,28 +95,7 @@ function openRazorpayCheckout(tournamentId, amount, tournamentName) {
       email: auth.currentUser?.email || "",
       contact: "",
     },
-    config: {
-      display: {
-        blocks: {
-          upi: {
-            name: "Pay via UPI",
-            instruments: [
-              { method: "upi", flows: ["qr", "collect", "intent"] }
-            ]
-          },
-          other: {
-            name: "Other Methods",
-            instruments: [
-              { method: "card" },
-              { method: "netbanking" },
-              { method: "wallet" }
-            ]
-          }
-        },
-        sequence: ["block.upi", "block.other"],
-        preferences: { show_default_blocks: false }
-      }
-    },
+    // ✅ Remove config block entirely - let Razorpay show all methods
     theme: { color: "#00ff88" },
     modal: {
       confirmClose: true,
@@ -134,15 +113,12 @@ function openRazorpayCheckout(tournamentId, amount, tournamentName) {
   try {
     console.log("[PAYMENT] Creating Razorpay instance...");
     const rzp = new Razorpay(options);
-    
     rzp.on("payment.failed", function(response) {
       console.error("[PAYMENT] Payment failed:", response.error);
       showToast(`Payment failed: ${response.error.description}`, "error");
     });
-
     console.log("[PAYMENT] Opening popup...");
     rzp.open();
-    
   } catch (error) {
     console.error("[PAYMENT] Razorpay error:", error);
     showToast("Error opening payment: " + error.message, "error");
@@ -170,14 +146,13 @@ async function handlePaymentSuccess(tournamentId, response) {
       {
         paymentStatus: 'verified',
         razorpayPaymentId: razorpay_payment_id,
-        razorpayOrderId: razorpay_order_id,
+        ...(razorpay_order_id ? { razorpayOrderId: razorpay_order_id } : {}), // ✅ skip if undefined
         paidAt: serverTimestamp()
       }
     );
 
     showToast("✅ Payment Verified!", "success");
 
-    // Let the listener update the UI
     setTimeout(() => {
       closePaymentOverlay();
     }, 2000);
@@ -187,7 +162,6 @@ async function handlePaymentSuccess(tournamentId, response) {
     showToast("Payment recorded but verification pending", "warning");
   }
 }
-
 // ============================================
 // RENDER PAYMENT UI
 // ============================================
