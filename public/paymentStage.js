@@ -4,7 +4,7 @@
 
 import { db, auth } from './js/firebase.js';
 import {
-  doc, onSnapshot, updateDoc, serverTimestamp, getDoc
+  doc, onSnapshot, updateDoc, setDoc, serverTimestamp, getDoc
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
 
 // Variables
@@ -140,15 +140,18 @@ async function handlePaymentSuccess(tournamentId, response) {
   try {
     const { razorpay_payment_id, razorpay_order_id } = response;
 
-    // Update Firestore
-    await updateDoc(
+    
+    
+    await setDoc(
       doc(db, 'tournaments', tournamentId, 'participants', _currentUserId),
       {
         paymentStatus: 'verified',
         razorpayPaymentId: razorpay_payment_id,
-        ...(razorpay_order_id ? { razorpayOrderId: razorpay_order_id } : {}), // ✅ skip if undefined
-        paidAt: serverTimestamp()
-      }
+        ...(razorpay_order_id ? { razorpayOrderId: razorpay_order_id } : {}),
+        paidAt: serverTimestamp(),
+        userId: _currentUserId
+      },
+      { merge: true }  // ✅ creates if not exists, updates if exists
     );
 
     showToast("✅ Payment Verified!", "success");
