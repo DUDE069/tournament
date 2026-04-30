@@ -346,37 +346,60 @@ window.removeApplication = async function(tournamentId, userId) {
 //  ADDED: "Notify This Team" button + Room ID & Password management
 // ============================================================================
 window.viewStatusModal = async function(tournamentId, userId) {
+  // Store the listener so we can stop it when modal closes
+  if (window._statusModalListener) {
+    window._statusModalListener(); // Cleanup any existing listener
+  }
+
   try {
     const [vSnap, pSnap] = await Promise.all([
       getDoc(doc(db, "tournaments", tournamentId, "verifications", userId)),
-      getDoc(doc(db, "tournaments", tournamentId, "participants",  userId)),
+      getDoc(doc(db, "tournaments", tournamentId, "participants", userId)),
     ]);
 
     const v = vSnap.exists() ? vSnap.data() : {};
     const p = pSnap.exists() ? pSnap.data() : {};
-
     const processedAt = v.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? "—";
 
-    // ── Determine which stages are completed ──────────────────────────────
-    // Stage 1: always done (application submitted)
-    // Stage 2: always done (we only show accepted apps here)
-    // Stage 3: payment submitted/paid by user
-    const stage3 = ["submitted","paid","verified"].includes(p.paymentStatus);
-    // Stage 4: payment verified by admin
-    const stage4 = p.paymentStatus === "verified";
-    // Stage 5: user clicked "Confirm" on their end
-    const stage5 = p.confirmationReceived === true;
-
+    // Remove any existing modal
     document.getElementById("statusModalOverlay")?.remove();
 
+    // Create modal (without innerHTML update function yet)
     const overlay = document.createElement("div");
     overlay.id = "statusModalOverlay";
     overlay.className = "status-modal-overlay";
-    overlay.innerHTML = `
-      <div class="status-modal" style="max-width:520px;width:100%;">
+
+    // Create content container that we'll update
+    const contentDiv = document.createElement("div");
+    contentDiv.className = "status-modal";
+    contentDiv.style.cssText = "max-width:520px;width:100%;";
+
+    overlay.appendChild(contentDiv);
+    document.body.appendChild(overlay);
+
+    // Close on backdrop click
+    overlay.addEventListener("click", e => {
+      if (e.target === overlay) {
+        if (window._statusModalListener) {
+          window._statusModalListener();
+          window._statusModalListener = null;
+        }
+        overlay.remove();
+      }
+    });
+
+    // Function to render/update the modal content
+    function renderStatusContent(pData) {
+      const processedAt = v.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? "—";
+      
+      // Stage calculations from live data
+      const stage3 = ["submitted","paid","verified"].includes(pData.paymentStatus);
+      const stage4 = pData.paymentStatus === "verified";
+      const stage5 = pData.confirmationReceived === true;
+
+      contentDiv.innerHTML = `
         <h3>📊 Team Status — ${escHtml(v.teamName ?? "—")}</h3>
 
-        <!-- ── Core Info ──────────────────────────── -->
         <div class="status-row">
           <span class="s-label">Tournament</span>
           <span class="s-value" style="color:var(--blue);">${escHtml(tournamentId)}</span>
@@ -389,74 +412,66 @@ window.viewStatusModal = async function(tournamentId, userId) {
           <span class="s-label">Approved At</span>
           <span class="s-value">${processedAt}</span>
         </div>
-        ${v.phone ? `
-        <div class="status-row">
-          <span class="s-label">Phone</span>
-          <span class="s-value">${escHtml(v.phone)}</span>
-        </div>` : ""}
-        ${p.transactionCode ? `
-        <div class="status-row">
-          <span class="s-label">Transaction ID</span>
-          <span class="s-value" style="font-family:'Share Tech Mono',monospace;color:var(--gold);">${escHtml(p.transactionCode)}</span>
-        </div>` : ""}
+        ${v.phone ? `<div class="status-row"><span class="s-label">Phone</span><span class="s-value">${escHtml(v.phone)}</span></div>` : ""}
+        ${pData.transactionCode ? `<div class="status-row"><span class="s-label">Transaction ID</span><span class="s-value" style="font-family:monospace;color:var(--gold);">${escHtml(pData.transactionCode)}</span></div>` : ""}
 
-        <!-- ── 5-Stage Progress Tracker ───────────── -->
         <div style="margin:20px 0 6px;">
           <p style="color:var(--muted);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;">Application Progress</p>
           ${progressTracker([
             { label: "Application Submitted",  done: true  },
             { label: "Verification Approved",  done: true  },
-            { label: "Payment Completed",      done: stage3 },
-            { label: "Payment Verified",       done: stage4 },
+            { label: "Payment Completed",       done: stage3 },
+            { label: "Payment Verified",        done: stage4 },
             { label: "Confirmation Received",  done: stage5 },
           ])}
         </div>
 
-        <!-- ── Room ID & Password ─────────────────── -->
+        <!-- Live indicator -->
+        <div id="confirmationLiveIndicator" style="text-align:center;margin:10px 0;">
+          ${stage5 
+            ? `<span style="background:var(--green);color:#000;padding:8px 16px;border-radius:20px;font-weight:bold;font-size:13px;">✅ Confirmation Received!</span>`
+            : `<span style="background:#333;color:#888;padding:8px 16px;border-radius:20px;font-size:13px;">⏳ Waiting for user confirmation...</span>`
+          }
+        </div>
+
+        <!-- Room ID & Password -->
         <div style="margin:18px 0;padding:14px;background:#0f0f0f;border-radius:10px;border:1px solid var(--border);">
           <p style="color:var(--muted);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;">🔑 Room ID & Password</p>
           <div style="display:flex;gap:8px;margin-bottom:8px;">
-            <input id="smRoomId" placeholder="Room ID"
-              value="${escHtml(p.roomId ?? "")}"
-              style="flex:1;padding:8px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;font-size:13px;">
-            <input id="smRoomPass" placeholder="Password"
-              value="${escHtml(p.roomPassword ?? "")}"
-              style="flex:1;padding:8px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;font-size:13px;">
+            <input id="smRoomId" placeholder="Room ID" value="${escHtml(pData.roomId ?? "")}" style="flex:1;padding:8px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;font-size:13px;">
+            <input id="smRoomPass" placeholder="Password" value="${escHtml(pData.roomPassword ?? "")}" style="flex:1;padding:8px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;font-size:13px;">
           </div>
-          <button onclick="saveRoomDetails('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(v.uids) ? v.uids : [userId]).replace(/"/g,"'")})"
-            style="width:100%;padding:9px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-family:inherit;font-weight:700;font-size:13px;">
-            💾 Save & Notify Team
-          </button>
-          <p style="color:var(--muted);font-size:11px;margin-top:6px;text-align:center;">
-            Saving notifies all members instantly (in-app + push if allowed)
-          </p>
+          <button onclick="saveRoomDetails('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(v.uids) ? v.uids : [userId]).replace(/"/g,"'")})" style="width:100%;padding:9px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;">💾 Save & Notify Team</button>
         </div>
 
-        <!-- ── Actions ────────────────────────────── -->
         <div style="display:flex;gap:8px;margin-top:4px;">
-          <button onclick="openNotifyModal('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(v.uids) ? v.uids : [userId]).replace(/"/g,"'")},'${escHtml(v.teamName ?? "Team")}')"
-            style="flex:1;padding:10px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;font-size:13px;">
-            🔔 Notify This Team
-          </button>
+          <button onclick="openNotifyModal('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(v.uids) ? v.uids : [userId]).replace(/"/g,"'")},'${escHtml(v.teamName ?? "Team")}')" style="flex:1;padding:10px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">🔔 Notify This Team</button>
         </div>
 
-        <button onclick="document.getElementById('statusModalOverlay').remove()"
-          style="width:100%;margin-top:10px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">
-          Close
-        </button>
-      </div>`;
+        <button onclick="document.getElementById('statusModalOverlay').remove(); if(window._statusModalListener){window._statusModalListener();window._statusModalListener=null;}" style="width:100%;margin-top:10px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">Close</button>
+      `;
+    }
 
-    document.body.appendChild(overlay);
+    // Initial render
+    renderStatusContent(p);
 
-    // Close on backdrop click
-    overlay.addEventListener("click", e => {
-      if (e.target === overlay) overlay.remove();
+    // ✅ THE KEY FIX: Real-time listener for live updates
+    const participantRef = doc(db, "tournaments", tournamentId, "participants", userId);
+    window._statusModalListener = onSnapshot(participantRef, (snap) => {
+      if (!snap.exists()) return;
+      const updatedData = snap.data();
+      console.log("[STATUS] Live update received:", updatedData);
+      // Re-render with updated data
+      renderStatusContent(updatedData);
+    }, (err) => {
+      console.error("[STATUS] Listener error:", err);
     });
 
   } catch (e) {
     showToast("Error loading status: " + e.message, "error");
   }
 };
+
 
 // ── Progress tracker HTML builder ─────────────────────────────────────────
 function progressTracker(stages) {
