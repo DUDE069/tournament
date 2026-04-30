@@ -4794,8 +4794,25 @@ window.createAccount = async function() {
             localStorage.setItem("welcomeTeam", teamData.teamName);
         }
 
-        // Write Final User Data to Firestore
-        await setDoc(doc(db, "users", uid), userData);
+       // Write Final User Data to Firestore
+await setDoc(doc(db, "users", uid), userData);
+        
+// ✅ NEW: Setup notifications after account is created
+try {
+    const { setupNotifications } = await import('../notificationService.js');
+    const result = await setupNotifications(db, auth);
+    
+    if (result.enabled) {
+        console.log("[AUTH] 🔔 Notifications enabled!");
+        showMessage("🔔 Notifications enabled!");
+    } else {
+        console.log("[AUTH] Notifications skipped:", result.reason);
+    }
+} catch (notifErr) {
+    console.warn("[AUTH] Notification setup error (non-blocking):", notifErr.message);
+}
+
+
         
         showMessage("Account created successfully!");
         closeModal();
