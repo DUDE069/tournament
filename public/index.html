@@ -431,6 +431,39 @@
 
       <a href="javascript:void(0)" id="loginBtn">Login</a>
 
+<button class="info-btn" onclick="openInfoModal()" aria-label="Information" style="background:none; border:none; color:inherit; cursor:pointer; padding:8px; display:flex; align-items:center;">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"></circle>
+    <line x1="12" y1="16" x2="12" y2="12"></line>
+    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+  </svg>
+</button>
+
+<div id="infoModal" class="modal-overlay">
+  <div class="modal-card" style="max-width: 500px; text-align: left;">
+    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="color:#00ff88; margin:0;">Information Center</h2>
+      <button class="close-modal" onclick="closeInfoModal()">×</button>
+    </div>
+    <div style="display:grid; gap:15px;">
+      <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #333;">
+        <h3 style="color:#fff; font-size:15px; margin-bottom:5px;">🎮 How it Works</h3>
+        <p style="color:#888; font-size:13px;">Register your team, get verified, and secure your slot with the entry fee. Match details are shared 15 mins before start.</p>
+      </div>
+      <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #333;">
+        <h3 style="color:#fff; font-size:15px; margin-bottom:5px;">📜 Policies</h3>
+        <p style="color:#888; font-size:13px;">No emulators or hacks. UIDs must match registration. No refunds after brackets are generated.</p>
+      </div>
+      <div style="background:rgba(59,130,246,0.1); padding:15px; border-radius:8px; border:1px solid #3b82f6;">
+        <h3 style="color:#3b82f6; font-size:15px; margin-bottom:5px;">🔔 Push Notifications</h3>
+        <p style="color:#ccc; font-size:13px; margin-bottom:10px;">Receive match rooms and alerts even when the browser is closed.</p>
+        <div id="pushStatusText" style="font-size:12px; font-weight:bold; margin-bottom:10px;"></div>
+        <button onclick="requestPushFromInfo()" style="width:100%; background:#3b82f6; color:#fff; border:none; padding:10px; border-radius:6px; cursor:pointer; font-weight:bold;">Manage Permissions</button>
+      </div>
+    </div>
+  </div>
+</div>
+
       <!-- ── NOTIFICATION BELL ──────────────────────────── -->
       <div class="notif-bell-wrapper" id="notifBellWrapper">
         <button class="notif-bell-btn" id="notifBellBtn" aria-label="Notifications">

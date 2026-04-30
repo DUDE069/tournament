@@ -3711,44 +3711,43 @@ function startTutorial() {
     document.getElementById("tutorialOverlay")?.remove();
     document.querySelector(".tutorial-spotlight")?.remove();
 
-    // 🌟 ADD YOUR IMAGES HERE: Replace the "https://placehold.co/..." links with your actual image URLs or paths (e.g., "images/menu-tutorial.jpg")
-    const tutorialSteps = [
-        {
-            id: "menu",
-            icon: "🎮",
-            title: "Welcome to NPC Esports!",
-            content: `Maps easily using our <span class="highlight-text">Menu</span> at the top.<br><br>
-                      Access <strong>Tournaments</strong>, <strong>Leaderboard</strong>, <strong>Profile</strong>, and <strong>Dashboard</strong> from anywhere.`,
-            image: "./images/tut-menu.jpg",
-            highlight: ".navbar"
-        },
-        {
-            id: "tournaments",
-            icon: "🏆",
-            title: "Find Your Tournament",
-            content: `Browse <span class="highlight-text">Ongoing</span>, <span class="highlight-text">Upcoming</span>, and <span class="highlight-text">Limited</span> tournaments.<br><br>
-                      Register your team, get verified, then pay the entry fee.`,
-            image: "./images/tut-tournaments.jpg",
-            highlight: "#tournaments"
-        },
-        {
-            id: "dashboard",
-            icon: "📊",
-            title: "Your Dashboard",
-            content: `Track your <span class="highlight-text">Profile</span>, <span class="highlight-text">Tournament History</span>, <span class="highlight-text">Performance</span>, and <span class="highlight-text">Wallet</span> all in one place.`,
-            image: "./images/tut-dashboard.jpg",
-            highlight: ".dashboard"
-        },
-        {
-            id: "complete",
-            icon: "🎉",
-            title: "You're All Set!",
-            content: `Try a <span class="highlight-text">free tournament</span> to get started.<br><br>
-                      Your journey to becoming a champion starts here. Good luck! 💪`,
-            image: null, // Set to null if you don't want an image for a specific step
-            highlight: null
-        }
-    ];
+  const tutorialSteps = [
+    {
+        id: "menu",
+        icon: "🎮",
+        title: "Welcome to NPC Esports!",
+        content: `Maps easily using our <span class="highlight-text">Menu</span> at the top.<br><br>
+                  Access <strong>Tournaments</strong>, <strong>Leaderboard</strong>, <strong>Profile</strong>, and <strong>Dashboard</strong> from anywhere.`,
+        image: "/images/tut-menu.jpeg", // FIX: added / and changed to .jpeg
+        highlight: ".navbar"
+    },
+    {
+        id: "tournaments",
+        icon: "🏆",
+        title: "Find Your Tournament",
+        content: `Browse <span class="highlight-text">Ongoing</span>, <span class="highlight-text">Upcoming</span>, and <span class="highlight-text">Limited</span> tournaments.<br><br>
+                  Register your team, get verified, then pay the entry fee.`,
+        image: "/images/tut-tournaments.jpeg", // FIX: added / and changed to .jpeg
+        highlight: "#tournaments"
+    },
+    {
+        id: "dashboard",
+        icon: "📊",
+        title: "Your Dashboard",
+        content: `Track your <span class="highlight-text">Profile</span>, <span class="highlight-text">Tournament History</span>, <span class="highlight-text">Performance</span>, and <span class="highlight-text">Wallet</span> all in one place.`,
+        image: "/images/tut-dashboard.jpeg", // FIX: added / and changed to .jpeg
+        highlight: ".dashboard"
+    },
+    {
+        id: "complete",
+        icon: "🎉",
+        title: "You're All Set!",
+        content: `Try a <span class="highlight-text">free tournament</span> to get started.<br><br>
+                  Your journey to becoming a champion starts here. Good luck! 💪`,
+        image: null,
+        highlight: null
+    }
+];
 
     let currentStep = 0;
     let overlay = null;
@@ -4978,6 +4977,50 @@ window.editRejectedApplication = async function(tournamentId) {
     showMessage("Please correct your details and resubmit.");
 };
 
+
+// ===============================
+// INFO & PERMISSIONS MODAL LOGIC
+// ===============================
+window.openInfoModal = function() {
+    const modal = document.getElementById("infoModal");
+    if (modal) {
+        modal.classList.add("active");
+        updatePushStatusDisplay(); // Updates text showing if blocked/allowed
+    }
+};
+
+window.closeInfoModal = function() {
+    const modal = document.getElementById("infoModal");
+    if (modal) modal.classList.remove("active");
+};
+
+function updatePushStatusDisplay() {
+    const display = document.getElementById("pushStatusText");
+    if (!display || !('Notification' in window)) return;
+
+    if (Notification.permission === "granted") {
+        display.innerHTML = "<span style='color:#00ff88;'>✅ Notifications: Allowed</span>";
+    } else if (Notification.permission === "denied") {
+        display.innerHTML = "<span style='color:#ff4444;'>❌ Notifications: Blocked</span>";
+    } else {
+        display.innerHTML = "<span style='color:#ffd700;'>⏳ Notifications: Not Set</span>";
+    }
+}
+
+window.requestPushFromInfo = async function() {
+    if (Notification.permission === "denied") {
+        showPopup("error", "You blocked notifications. Click the Padlock 🔒 in your address bar to reset permissions.", "Got it");
+        return;
+    }
+    const granted = await Notification.requestPermission();
+    if (granted === "granted") {
+        // This import only works if you moved the file to public/js/
+        const { setupNotifications } = await import('./notificationService.js');
+        setupNotifications(app, db, auth);
+        showPopup("success", "Notifications enabled!", "Great");
+    }
+    updatePushStatusDisplay();
+};
 
 
 
