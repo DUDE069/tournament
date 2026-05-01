@@ -3073,63 +3073,51 @@ window.markAllRead = async function() {
 };
 
 window.handleNotificationClick = async function(notifId, actionLink, type) {
-    // 1. Mark the notification as read in Firestore
+    // 1. Mark as read
     try {
         await updateDoc(doc(db, "users", currentUser.uid, "notifications", notifId), { read: true });
-    } catch (err) {
-        console.error("Notification read update failed:", err);
-    }
+    } catch (err) { console.error("Update failed:", err); }
 
-    // Close the notification menu
     if (window.toggleNotifications) window.toggleNotifications();
+    closeJoinModal(); // Ensure forms are closed
 
-    // 2. Handle Approval Route
-    if (type === "verification" || type === "approval") {
-        let tournamentId = null;
-
-        // Extract tournamentId from the link (e.g., "tournament=XYZ123")
-        if (typeof actionLink === "string" && actionLink.includes("tournament=")) {
-            tournamentId = actionLink.split("tournament=")[1]?.trim() || null;
-        }
-
-        if (!tournamentId) {
-            showMessage("Tournament information is missing.");
-            return;
-        }
-
-        closeJoinModal(); // Close any open registration forms
-
+    // 🔴 FIX: IF PAYMENT IS CONFIRMED -> SHOW SUCCESS POPUP ONLY (NO MODAL)
+    if (type === "payment_confirmed") {
         showPopup(
             "success", 
-            "Your application for this tournament has been approved! Press continue to proceed to the next stage.", 
-            "Continue →", 
-            () => {
-                document.getElementById('customPopup')?.remove();
-                // Now load the actual payment/review interface
-                showApprovedReviewInterface(tournamentId, currentUser.uid);
-            }
+            "✅ Payment Verified! You are fully registered. Room ID and password will be shared here 15 mins before the match.", 
+            "Got it", 
+            () => document.getElementById('customPopup')?.remove()
         );
+        return; // STOP execution here
+    }
+
+    // 🟢 IF TEAM IS APPROVED -> SHOW REVIEW/PAYMENT INTERFACE
+    if (type === "verification" || type === "approval" || type === "upcoming_approved") {
+        let tournamentId = actionLink?.includes("tournament=") ? actionLink.split("tournament=")[1]?.trim() : null;
+        if (!tournamentId) return;
+
+        showPopup("success", "Your application is approved! Press continue to review and pay.", "Continue →", () => {
+            document.getElementById('customPopup')?.remove();
+            showApprovedReviewInterface(tournamentId, currentUser.uid);
+        });
         return;
     }
 
-    // 3. Handle Rejection Route (NEW FIX)
-    // 3. Handle Rejection Route (NEW FIX)
+    // 🔴 IF REJECTED
     if (type === "rejected") {
         try {
             const snap = await getDoc(doc(db, "users", currentUser.uid, "notifications", notifId));
             if (snap.exists()) {
-                const notif = snap.data();
-                showPopup("error", notif.message, "✏️ Edit Application", () => {
+                showPopup("error", snap.data().message, "✏️ Edit Application", () => {
                     document.getElementById('customPopup')?.remove();
-                    // Trigger the resubmission flow
-                    window.editRejectedApplication(notif.tournamentId);
+                    window.editRejectedApplication(snap.data().tournamentId);
                 });
             }
-        } catch (err) {
-            console.error("Error fetching rejection reason:", err);
-        }
+        } catch (err) {}
         return;
     }
+
     // Handle other notification types
     if (type === "team_stage_locked") {
         showMessage("Your teammate is already handling this payment stage.");
@@ -3413,30 +3401,36 @@ async function showApprovedReviewInterface(tournamentId, userId) {
         document.getElementById("joinDisplayTeam").textContent = regData.teamName || userProfile.teamName;
         document.getElementById("joinDisplayCode").textContent = "Code: " + (userProfile.teamCode || "N/A");
         
-        // Fill locked UID fields (read-only style)
-        const uidFields = [
-            { id: "uidPlayer1", val: regData.uids?.[0] || "", label: "Player 1 (Leader)" },
-            { id: "uidPlayer2", val: regData.uids?.[1] || "", label: "Player 2" },
-            { id: "uidPlayer3", val: regData.uids?.[2] || "", label: "Player 3" },
-            { id: "uidPlayer4", val: regData.uids?.[3] || "", label: "Player 4" },
-            { id: "uidPlayer5", val: regData.uids?.[4] || "", label: "Player 5 (Sub)" }
-        ];
+      // Inside showApprovedReviewInterface in main.js
+const uidFields = [
+    { id: "uidPlayer1", val: regData.uids?.[0] || "", label: "Player 1 (Leader)", key: "p1" },
+    { id: "uidPlayer2", val: regData.uids?.[1] || "", label: "Player 2", key: "p2" },
+    { id: "uidPlayer3", val: regData.uids?.[2] || "", label: "Player 3", key: "p3" },
+    { id: "uidPlayer4", val: regData.uids?.[3] || "", label: "Player 4", key: "p4" },
+    { id: "uidPlayer5", val: regData.uids?.[4] || "", label: "Player 5 (Sub)", key: "p5" }
+];
+
+const verifiedStatus = regData.verifiedPlayers || {}; // Added this line
+
+uidFields.forEach((field, index) => {
+    const input = document.getElementById(field.id);
+    if (input) {
+        input.value = field.val;
+        input.readOnly = true;
+        input.style.background = "#2a2a2a";
+        input.style.color = "#888";
         
-        uidFields.forEach((field, index) => {
-            const input = document.getElementById(field.id);
-            if (input) {
-                input.value = field.val;
-                input.readOnly = true;
-                input.style.background = "#2a2a2a";
-                input.style.color = "#888";
-                input.style.borderColor = "#444";
-                // Add label showing it's locked
-                const label = input.previousElementSibling;
-                if (label && field.val) {
-                    label.innerHTML = `${field.label} <span style="color:#00ff88;font-size:11px;">✓ Verified</span>`;
-                }
+        // Only show green checkmark if the Admin actually checked them off
+        const label = input.previousElementSibling;
+        if (label && field.val) {
+            if (verifiedStatus[field.key]) {
+                label.innerHTML = `${field.label} <span style="color:#00ff88;font-size:11px;">✓ Verified</span>`;
+            } else {
+                label.innerHTML = `${field.label} <span style="color:#ffd700;font-size:11px;">(Pending Verification)</span>`;
             }
-        });
+        }
+    }
+});
         
         // Fill locked contact details
         const phoneInput = document.getElementById("joinPhone");
@@ -3462,6 +3456,7 @@ const agreeCheckbox = document.getElementById('agreeGuidelines');
 
 // Automatically uncheck and update text
 if (agreeCheckbox) agreeCheckbox.checked = false;
+// Change "Tournament Guidelines" to "Payment Guidelines"
 if (guidelinesLabel) {
     guidelinesLabel.innerHTML = isUpcoming 
         ? `I have read and agree to the <a href="#" onclick="showGuidelines()" style="color:#ffd700;text-decoration:underline;">Payment Guidelines (Refunds Possible up to 24h prior)</a>.`
