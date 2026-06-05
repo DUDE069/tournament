@@ -2650,37 +2650,27 @@ function renderProfileTab(content) {
             </div>`;
     }
 
-    // 2. Wallet Section Logic
+    // 2. Wallet Section Logic — Team balance only, no buttons
     const walletSection = `
-        <div style="padding:15px;background:#1a2a1a;border-radius:8px;border:1px solid #ffd700;margin-bottom:15px;">
-            <h4 style="color:#ffd700;margin:0 0 15px;font-size:14px;">💰 Wallet Balance</h4>
-            <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div>
-                    <div style="font-size:32px;color:#ffd700;font-weight:bold;">₹${userWallet.balance || 0}</div>
-                    <div style="color:#888;font-size:12px;">Available for tournaments</div>
-                </div>
-                <button onclick="openWalletModal()" style="background:#ffd700;color:#000;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:bold;">
-                    Add Funds
-                </button>
-            </div>
-            <button onclick="viewTransactionHistory()" style="background:transparent;color:#888;border:1px solid #444;padding:8px 16px;border-radius:4px;cursor:pointer;margin-top:10px;width:100%;">
-                View History
-            </button>
+        <div style="padding:15px;background:#1a2a1a;border-radius:8px;border:2px solid #ffd700;margin-bottom:15px;">
+            <h4 style="color:#ffd700;margin:0 0 10px;font-size:14px;">💰 Team Wallet Balance</h4>
+            <div style="font-size:32px;color:#ffd700;font-weight:bold;">₹${userWallet.balance || 0}</div>
+            <div style="color:#888;font-size:12px;margin-top:4px;">Combined team balance available for tournaments</div>
         </div>
     `;
 
     // 3. Render Main Content
     content.innerHTML = `
-        <h2 style="color:#00ff88;margin-bottom:20px;">My Profile</h2>
+        <h2 style="color:#00ff88;margin-bottom:20px;">Team Profile</h2>
 
         <div style="display:flex;align-items:center;gap:15px;margin-bottom:25px;padding:20px;
             background:linear-gradient(135deg,#1a1a1a 0%,#2a2a2a 100%);border-radius:12px;border:1px solid #333;">
             <div style="width:60px;height:60px;background:#00ff88;border-radius:50%;display:flex;align-items:center;justify-content:center;
                 font-size:24px;color:#000;font-weight:bold;">
-                ${(userProfile.email || 'U').charAt(0).toUpperCase()}
+                ${(userProfile.teamName || userProfile.email || 'T').charAt(0).toUpperCase()}
             </div>
             <div style="flex:1;min-width:0;">
-                <h3 style="margin:0;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${userProfile.email?.split('@')[0] || 'User'}</h3>
+                <h3 style="margin:0;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${userProfile.teamName || userProfile.email?.split('@')[0] || 'User'}</h3>
                 <span style="display:inline-block;background:${userProfile.isLeader ? '#ffd700' : userProfile.role === 'member' ? '#4a90e2' : '#666'};
                     color:#000;padding:4px 12px;border-radius:12px;font-size:12px;font-weight:bold;margin-top:5px;">
                     ${roleBadge}
@@ -2691,18 +2681,6 @@ function renderProfileTab(content) {
 
         <div style="display:grid;gap:15px;">
             ${walletSection}
-
-            <div style="padding:15px;background:#1a1a1a;border-radius:8px;border:1px solid #333;">
-                <h4 style="color:#888;margin:0 0 15px;font-size:14px;text-transform:uppercase;">Account Details</h4>
-                <div style="display:grid;gap:10px;color:#ccc;">
-                    <p style="margin:0;font-size:14px;word-break:break-all;"><strong style="color:#fff;">Email:</strong> ${userProfile.email || 'N/A'}</p>
-                    <p style="margin:0;"><strong style="color:#fff;">Age:</strong> ${userProfile.age || 'N/A'} years</p>
-                    <p style="margin:0;"><strong style="color:#fff;">Account Type:</strong> ${userProfile.role || 'Viewer'}</p>
-                    <p style="margin:0;"><strong style="color:#fff;">Joined:</strong>
-                        ${userProfile.createdAt ? new Date(userProfile.createdAt.toDate?.() || userProfile.createdAt).toLocaleDateString() : 'N/A'}
-                    </p>
-                </div>
-            </div>
 
             ${teamSection}
 
@@ -2728,15 +2706,6 @@ function renderProfileTab(content) {
                     + Add New Tournament
                 </button>
             </div>` : ''}
-
-            <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap;">
-                <button onclick="openEditProfile()"
-                    style="background:#00ff88;color:#000;border:none;padding:12px;flex:1;border-radius:6px;cursor:pointer;min-width:120px;font-weight:bold;">Edit Profile</button>
-                <button onclick="openChangePassword()"
-                    style="background:#4a90e2;color:#fff;border:none;padding:12px;flex:1;border-radius:6px;cursor:pointer;min-width:120px;">Change Password</button>
-                <button onclick="logout()"
-                    style="background:#ff4444;color:#fff;border:none;padding:12px;flex:1;border-radius:6px;cursor:pointer;min-width:120px;">Logout</button>
-            </div>
         </div>`;
 }
 // renderPerformanceTab is now async and defined above in the dashboard section
@@ -3633,14 +3602,22 @@ function showPopup(type, message, buttonText = null, action = null) {
 // Mobile menu toggle
 window.toggleMobileMenu = function() {
   const nav = document.querySelector('.navbar nav');
-  const currentDisplay = window.getComputedStyle(nav).display;
-  
-  if (currentDisplay === 'none' || nav.style.display === 'none') {
-    nav.style.display = 'flex';
-  } else {
-    nav.style.display = 'none';
-  }
+  if (!nav) return;
+  // Toggle open class (CSS handles display via .open)
+  nav.classList.toggle('open');
 };
+
+// Close mobile menu when a nav link is clicked
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.navbar nav a').forEach(function(link) {
+    link.addEventListener('click', function() {
+      const nav = document.querySelector('.navbar nav');
+      if (nav && window.innerWidth <= 768) {
+        nav.classList.remove('open');
+      }
+    });
+  });
+});
 
 function playNotificationSound(type = 'default') {
     // FIX: Only play sound if the user has actually clicked somewhere on the page first
@@ -3878,7 +3855,7 @@ function startTutorial() {
 // FIXED DASHBOARD SYSTEM
 // ========================================
 const popupTitles = {
-    profile: "🛡️ Team Roster", // ✅ Changed from "My Profile"
+    profile: "🛡️ Team Profile",
     tournaments: "📋 Tournament History",
     matches: "📅 Upcoming Matches",
     performance: "🏆 Performance",
@@ -4024,63 +4001,163 @@ window.openDashboard = async function(type) {
 window.renderProfileContent = async function(content) {
     if (!userProfile) return;
 
-    let html = `<div class="popup-section active">`;
+    // Fetch team-level wallet balance (from team doc, not individual)
+    let teamWalletBalance = 0;
+    let teamWalletLoaded = false;
 
-    if (userProfile.teamId) {
-        html += `
-            <div style="margin-bottom: 20px; background: rgba(0,255,136,0.05); padding: 15px; border-radius: 10px; border: 1px solid #00ff88;">
-                <h3 style="color:#00ff88; margin: 0 0 5px 0;">Team: ${userProfile.teamName}</h3>
-                <p style="color:#888; font-size:13px; margin:0;">Team Code: <span style="color:#fff; font-family:monospace; background:#222; padding:3px 6px; border-radius:4px;">${userProfile.teamCode}</span></p>
+    content.innerHTML = `
+        <div class="popup-section active">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding:16px;background:rgba(0,255,136,0.05);border-radius:12px;border:1px solid rgba(0,255,136,0.2);">
+                <div style="width:50px;height:50px;background:#00ff88;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;color:#000;font-weight:bold;flex-shrink:0;">
+                    ${(userProfile.teamName || 'T').charAt(0).toUpperCase()}
+                </div>
+                <div>
+                    <div style="color:#00ff88;font-size:18px;font-weight:700;">${userProfile.teamName || 'No Team Name'}</div>
+                    <div style="color:#888;font-size:12px;margin-top:2px;">
+                        Team Code: <span style="color:#ffd700;font-family:monospace;background:#1a1a1a;padding:2px 8px;border-radius:4px;letter-spacing:1px;">${userProfile.teamCode || 'N/A'}</span>
+                        <button onclick="navigator.clipboard.writeText('${userProfile.teamCode || ''}').then(()=>showMessage&&showMessage('Code copied!'))" 
+                            style="margin-left:6px;padding:2px 8px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;">Copy</button>
+                    </div>
+                </div>
             </div>
-            <h4 style="color:#888; margin-bottom: 12px; font-size: 13px; text-transform: uppercase;">Team Roster</h4>
-            <div id="dashboardRoster" style="display:grid; gap:12px; margin-bottom:20px;">
-                <p style="color:#888; font-size:12px;">Loading teammates...</p>
-            </div>
-        `;
-    } else {
-         html += `
-            <div style="text-align:center; padding:30px; background:#1a1a1a; border-radius:10px; border:1px solid #333;">
-                <p style="color:#888; margin-bottom:15px;">You are not currently in a team.</p>
-            </div>
-         `;
-    }
 
-    html += `</div>`;
-    content.innerHTML = html;
+            <!-- TEAM WALLET BALANCE -->
+            <div id="teamWalletSection" style="padding:16px;background:linear-gradient(135deg,#1a2a1a,#1a1a2a);border-radius:10px;border:2px solid #ffd700;margin-bottom:18px;">
+                <div style="color:#ffd700;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">💰 Team Wallet Balance</div>
+                <div id="teamWalletBalance" style="color:#ffd700;font-size:36px;font-weight:900;">Loading...</div>
+                <div style="color:#888;font-size:12px;margin-top:4px;">Combined team balance available for tournaments</div>
+            </div>
 
-    // Fetch and sync team data
+            <!-- TEAM MEMBERS ROSTER -->
+            <div style="margin-bottom:18px;">
+                <div style="color:#888;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">👥 Team Members</div>
+                <div id="teamRosterList" style="display:grid;gap:10px;">
+                    <div style="text-align:center;padding:20px;color:#555;">
+                        <div style="width:28px;height:28px;border:3px solid #333;border-top:3px solid #00ff88;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 10px;"></div>
+                        Loading teammates...
+                    </div>
+                </div>
+            </div>
+
+            <!-- STATISTICS -->
+            <div style="padding:15px;background:#1a1a1a;border-radius:10px;border:1px solid #333;margin-bottom:6px;">
+                <div style="color:#888;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">📊 Team Statistics</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div style="text-align:center;padding:14px;background:#0f0f0f;border-radius:8px;">
+                        <div style="font-size:28px;color:#00ff88;font-weight:900;">${userProfile.stats?.tournamentsWon || 0}</div>
+                        <div style="font-size:11px;color:#666;margin-top:5px;">Tournaments Won</div>
+                    </div>
+                    <div style="text-align:center;padding:14px;background:#0f0f0f;border-radius:8px;">
+                        <div style="font-size:28px;color:#4a90e2;font-weight:900;">${userProfile.stats?.tournamentsJoined || 0}</div>
+                        <div style="font-size:11px;color:#666;margin-top:5px;">Matches Played</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // === Load team members ===
     if (userProfile.teamId) {
         try {
             const teamDoc = await getDoc(doc(db, "teams", userProfile.teamId));
-            if (teamDoc.exists()) {
-                const members = teamDoc.data().members || [];
-                let rosterHtml = "";
-                let memberCount = 1;
+            const rosterEl = document.getElementById("teamRosterList");
 
-                for (let i = 0; i < members.length; i++) {
-                    const uid = members[i];
-                    const mDoc = await getDoc(doc(db, "users", uid));
-                    if (mDoc.exists()) {
+            if (teamDoc.exists()) {
+                const teamData = teamDoc.data();
+                const members = teamData.members || [];
+                const leaderId = teamData.leaderId;
+
+                // Also try to get team-level wallet
+                try {
+                    const teamWalletRef = doc(db, "teams", userProfile.teamId, "wallet", "main");
+                    const teamWalletSnap = await getDoc(teamWalletRef);
+                    if (teamWalletSnap.exists()) {
+                        teamWalletBalance = teamWalletSnap.data().balance || 0;
+                    } else {
+                        // Fall back to summing individual wallet balances of all members
+                        let sumBalance = 0;
+                        for (const uid of members) {
+                            try {
+                                const wSnap = await getDoc(doc(db, "users", uid, "wallet", "main"));
+                                if (wSnap.exists()) sumBalance += wSnap.data().balance || 0;
+                            } catch (_) {}
+                        }
+                        teamWalletBalance = sumBalance;
+                    }
+                } catch (_) {
+                    teamWalletBalance = userWallet?.balance || 0;
+                }
+
+                const walletEl = document.getElementById("teamWalletBalance");
+                if (walletEl) walletEl.textContent = `₹${teamWalletBalance}`;
+
+                let rosterHtml = "";
+                let memberNum = 1;
+
+                for (const uid of members) {
+                    try {
+                        const mDoc = await getDoc(doc(db, "users", uid));
+                        if (!mDoc.exists()) continue;
                         const mData = mDoc.data();
-                        const isLeader = (uid === teamDoc.data().leaderId);
-                        const roleLabel = isLeader ? "👑 Team Leader" : `👥 Member ${memberCount++}`;
+                        const isLeader = uid === leaderId;
+
+                        // Join date
+                        let joinDateStr = "—";
+                        if (mData.createdAt) {
+                            try {
+                                const joinDate = mData.createdAt.toDate ? mData.createdAt.toDate() : new Date(mData.createdAt);
+                                joinDateStr = joinDate.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" });
+                            } catch (_) {}
+                        }
+
+                        const age = mData.age || "—";
+                        const nickname = mData.nickname || mData.email?.split("@")[0] || "Unknown";
+                        const roleLabel = isLeader ? "👑 Team Leader" : `👥 Member ${memberNum++}`;
+                        const borderColor = isLeader ? "#ffd700" : "#2a2a2a";
+                        const bgColor = isLeader ? "rgba(255,215,0,0.06)" : "#111";
+                        const nameColor = isLeader ? "#ffd700" : "#fff";
 
                         rosterHtml += `
-                            <div style="background:#111; padding:12px; border-radius:8px; border:1px solid ${isLeader ? '#ffd700' : '#2a2a2a'}; display:flex; justify-content:space-between; align-items:center;">
-                                <div>
-                                    <div style="color:${isLeader ? '#ffd700' : '#00ff88'}; font-size:11px; font-weight:bold; margin-bottom:4px; text-transform:uppercase;">${roleLabel}</div>
-                                    <div style="color:#fff; font-size:15px; font-weight:600;">${mData.nickname || 'Unknown'}</div>
-                                    <div style="color:#888; font-size:12px; margin-top:2px;">${mData.email}</div>
+                            <div style="background:${bgColor};padding:14px 16px;border-radius:10px;border:1px solid ${borderColor};position:relative;">
+                                ${isLeader ? '<div style="position:absolute;top:10px;right:10px;background:#ffd700;color:#000;font-size:9px;font-weight:800;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:0.5px;">Leader</div>' : ''}
+                                <div style="color:${isLeader ? '#ffd700' : '#00ff88'};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px;">${roleLabel}</div>
+                                <div style="color:${nameColor};font-size:16px;font-weight:700;margin-bottom:4px;">${nickname}</div>
+                                <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:6px;">
+                                    <div style="color:#888;font-size:12px;">📅 Joined: <span style="color:#ccc;">${joinDateStr}</span></div>
+                                    <div style="color:#888;font-size:12px;">🎂 Age: <span style="color:#ccc;">${age}</span></div>
                                 </div>
-                            </div>
-                        `;
-                    }
+                                ${isLeader ? `<div style="color:#888;font-size:11px;margin-top:6px;">UID (Team Code): <span style="color:#ffd700;font-family:monospace;">${userProfile.teamCode || teamData.teamCode || "N/A"}</span></div>` : ''}
+                            </div>`;
+                    } catch (_) {}
                 }
-                document.getElementById("dashboardRoster").innerHTML = rosterHtml;
+
+                if (!rosterHtml) rosterHtml = `<p style="color:#555;text-align:center;padding:16px;">No members found.</p>`;
+                if (rosterEl) rosterEl.innerHTML = rosterHtml;
+
+            } else {
+                if (rosterEl) rosterEl.innerHTML = `<p style="color:#555;text-align:center;padding:16px;">Team data not found.</p>`;
             }
         } catch (e) {
-            document.getElementById("dashboardRoster").innerHTML = `<p style="color:#ff4444; font-size:13px;">Failed to load roster.</p>`;
+            console.error("[TeamProfile] Error loading roster:", e);
+            const rosterEl = document.getElementById("teamRosterList");
+            if (rosterEl) rosterEl.innerHTML = `<p style="color:#ff4444;font-size:13px;text-align:center;">Failed to load roster.</p>`;
+            const walletEl = document.getElementById("teamWalletBalance");
+            if (walletEl) walletEl.textContent = `₹${userWallet?.balance || 0}`;
         }
+    } else {
+        // Not in a team
+        const rosterEl = document.getElementById("teamRosterList");
+        if (rosterEl) rosterEl.innerHTML = `
+            <div style="text-align:center;padding:24px;background:#1a1a1a;border-radius:10px;border:1px solid #333;">
+                <div style="font-size:36px;margin-bottom:10px;">🚫</div>
+                <p style="color:#888;margin-bottom:14px;">You are not currently in a team.</p>
+                <button onclick="closeDashboard();openLogin();showCreate();" 
+                    style="background:#00ff88;color:#000;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;font-weight:700;">
+                    Create / Join a Team
+                </button>
+            </div>`;
+        const walletEl = document.getElementById("teamWalletBalance");
+        if (walletEl) walletEl.textContent = "—";
     }
 };
 

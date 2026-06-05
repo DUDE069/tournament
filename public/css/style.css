@@ -837,6 +837,17 @@ section {
         padding: 10px 15px !important;
     }
     
+    /* Mobile nav is COLLAPSED by default; toggle removes this class */
+    .navbar nav {
+        display: none;
+    }
+    .navbar nav.open {
+        display: flex !important;
+    }
+    .navbar nav.collapsed {
+        display: none !important;
+    }
+    
     .welcome-text {
         position: relative;
         z-index: 1;
