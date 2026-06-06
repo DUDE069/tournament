@@ -28,11 +28,18 @@ const tournamentsRef = collection(db, "tournaments");
 const calendarRef    = collection(db, "calendarEvents");
 
 
-const DEBUG = true;
+const DEBUG = false;
 function log(...msg)   { if (DEBUG) console.log("[NPC DEBUG]", ...msg); }
-function warn(...msg)  { console.warn("[NPC WARN]", ...msg); }
-function error(...msg) { console.error("[NPC ERROR]", ...msg); }
+function warn(...msg)  { if (DEBUG) console.warn("[NPC WARN]", ...msg); }
+function error(...msg) { if (DEBUG) console.error("[NPC ERROR]", ...msg); }
 
+// ADD THIS TO SILENCE THE CONSOLE FOR SNOOPERS
+if (!DEBUG) {
+    console.log = function() {};
+    console.warn = function() {};
+    console.info = function() {};
+    // console.error is kept active ONLY for critical internal crash reports
+}
 // ===============================
 // GLOBAL STATE
 // ===============================
@@ -257,12 +264,13 @@ function renderTournaments() {
                     ${hasStarted ? "Closed" : "Join Now"}
                 </button>`;
                 // ✅ ADD THE NEW CODE RIGHT HERE, before the closing } of the ongoing block
-    if (t.status === 'completed') {
-        buttonHTML = `
-            <button class="join-btn" onclick="showTournamentResults('${t.id}')"
-                style="background: #ffd700; border-color: #ffd700; color: #000;">
-                🏆 See Results
-            </button>`;}
+            if (t.status === 'completed') {
+                buttonHTML = `
+                    <button class="join-btn" onclick="showTournamentResults('${t.id}')"
+                        style="background: #ffd700; border-color: #ffd700; color: #000;">
+                        🏆 See Results
+                    </button>`;
+            }
 
         } else if (t.category === "upcoming") {
             // UPCOMING LOGIC (NEW)
@@ -277,12 +285,26 @@ function renderTournaments() {
                     ${t.eventTime ? `<div style="color:#3b82f6;font-size:14px;font-weight:600;margin-top:3px;">⏰ ${t.eventTime}</div>` : ''}
                 </div>`;
             
-            buttonHTML = `
-                <button class="join-btn" onclick="handleUpcomingRegister('${t.id}')"
-                    style="background: #3b82f6; border-color: #3b82f6;">
-                    Register Team
-                </button>`;
-                
+            // Check if user has an approved registration for this tournament
+            let isApproved = false;
+            // Checks global cache if admin has approved them
+            if (typeof currentUser !== 'undefined' && currentUser && window.userUpcomingRegs && window.userUpcomingRegs[t.id]?.status === 'approved') {
+                isApproved = true;
+            }
+
+            if (isApproved) {
+                buttonHTML = `
+                    <button class="join-btn" onclick="showPaymentInterface('${t.id}')"
+                        style="background: #00ff88; border-color: #00ff88; color: #000; box-shadow: 0 0 15px rgba(0,255,136,0.4);">
+                        💳 Pay Now
+                    </button>`;
+            } else {
+                buttonHTML = `
+                    <button class="join-btn" onclick="handleUpcomingRegister('${t.id}')"
+                        style="background: #3b82f6; border-color: #3b82f6;">
+                        Register Team
+                    </button>`;
+            }
                 
             cardStyle = 'border-left: 4px solid #3b82f6;';
 
@@ -4973,12 +4995,44 @@ window.editRejectedApplication = async function(tournamentId) {
             document.getElementById("nickPlayer5").value = data.playersData[4].nickname || "";
         }
     }
-    document.getElementById("joinPhone").value = data.phone ? data.phone.replace("+91", "") : "";
-    document.getElementById("joinBackupEmail").value = data.backupEmail || "";
+document.getElementById("joinBackupEmail").value = data.backupEmail || "";
+    
+    // --- ADDED: SYNC ADMIN REJECTIONS & HIGHLIGHT FIELDS ---
+    const rejectedFields = data.rejectedFields || []; 
+
+    // 1. Reset all fields first to clean up old red borders
+    document.querySelectorAll('#tournamentJoinForm input').forEach(input => {
+        input.style.border = "1px solid #444";
+        input.style.backgroundColor = "";
+        const label = input.previousElementSibling;
+        if (label && label.tagName === 'LABEL') {
+            label.innerHTML = label.innerHTML.replace(/ <span style="color:#ff4444;font-size:12px;">❌ Action Required<\/span>/g, '');
+        }
+    });
+
+    // 2. Highlight specific rejected fields with red borders and X
+    if (rejectedFields.length > 0) {
+        rejectedFields.forEach(fieldId => {
+            const input = document.getElementById(fieldId);
+            if (input) {
+                input.style.border = "2px solid #ff4444"; 
+                input.style.backgroundColor = "rgba(255,68,68,0.1)"; 
+                const label = input.previousElementSibling;
+                if (label && label.tagName === 'LABEL') {
+                    label.innerHTML += ' <span style="color:#ff4444;font-size:12px;">❌ Action Required</span>';
+                }
+            }
+        });
+        showMessage("Please correct the highlighted fields and resubmit.");
+    } else if (data.status === "rejected") {
+        showMessage(`Rejected: ${data.rejectionNote || "Please check your details."}`);
+    } else {
+        showMessage("Please correct your details and resubmit.");
+    }
+    // -------------------------------------------------------
     
     const btn = document.getElementById("joinSubmitBtn");
     if(btn) btn.textContent = "Resubmit Application →";
-    showMessage("Please correct your details and resubmit.");
 };
 
 
