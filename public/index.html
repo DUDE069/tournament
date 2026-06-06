@@ -684,6 +684,15 @@
           <input id="regConfirm" type="password"                 placeholder="Confirm Password">
           <input id="regNickname" type="text"                    placeholder="IN-Game Nickname (e.g. progamer)">
           <input type="number"   id="regAge"  placeholder="Your Age (12-60)" min="12" max="60">
+          <select id="regGameRole" style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #2a2a2a;color:#fff;border-radius:8px;font-size:14px;font-family:inherit;margin-bottom:4px;">
+            <option value="" disabled selected style="color:#888;">Select your In-Game Role</option>
+            <option value="IGL">🎯 IGL (In-Game Leader)</option>
+            <option value="Sniper">🔭 Sniper</option>
+            <option value="Rusher">⚡ Rusher</option>
+            <option value="Support">🛡️ Support</option>
+            <option value="Fragger">💥 Fragger</option>
+            <option value="All-Rounder">🌟 All-Rounder</option>
+          </select>
           
           <button onclick="sendSignupOTP()" id="btnSendOTP" style="background:#00ff88;color:#000;">Verify Details</button>
         </div>

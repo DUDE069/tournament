@@ -831,26 +831,25 @@ section {
     }
 
     .navbar {
-        position: relative !important; 
+        position: sticky !important;
         top: 0 !important;
         flex-direction: column;
         padding: 10px 15px !important;
+        z-index: 999 !important;
     }
-    
-    /* Mobile nav is COLLAPSED by default; toggle removes this class */
+
+    .welcome-text {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 1000 !important;
+    }
+
+    /* Mobile nav is COLLAPSED by default; toggle adds .open class */
     .navbar nav {
-        display: none;
+        display: none !important;
     }
     .navbar nav.open {
         display: flex !important;
-    }
-    .navbar nav.collapsed {
-        display: none !important;
-    }
-    
-    .welcome-text {
-        position: relative;
-        z-index: 1;
     }
 
     .navbar .logo {
@@ -860,15 +859,11 @@ section {
         width: 100%;
     }
 
-    .navbar nav {
+    .navbar nav.open {
         flex-wrap: wrap;
         justify-content: center;
         gap: 8px !important;
         width: 100%;
-    }
-
-    .navbar nav.collapsed {
-        display: none !important;
     }
 
     .navbar nav a { font-size: 13px; padding: 6px 10px; }
