@@ -838,10 +838,8 @@ section {
         z-index: 999 !important;
     }
 
-    .welcome-text {
-        position: sticky !important;
-        top: 0 !important;
-        z-index: 1000 !important;
+   .welcome-text {
+        position: static !important; /* This allows it to scroll away naturally */
     }
 
     /* Mobile nav is COLLAPSED by default; toggle adds .open class */
