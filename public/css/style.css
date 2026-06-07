@@ -2093,4 +2093,73 @@ body > div, main, .wrapper, .container, .main-content {
     position: sticky !important;
     top: 0 !important;
     z-index: 9999 !important;
+}/* =============================================================================
+   ADDITION: JOINING INTERFACE & TOURNAMENT GRID RESPONSIVE FIXES
+   ============================================================================= */
+
+/* 1. Lift full-screen modals completely ABOVE the sticky menu bar */
+#joinModal,
+.modal,
+#paymentOverlay,
+.modal-overlay {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 99999 !important; /* Higher than your sticky menu's 9999 index */
+    background: rgba(0, 0, 0, 0.96) !important;
+    backdrop-filter: blur(8px);
+    overflow-y: auto !important; /* Unlocks smooth manual scrolling inside the form box */
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Ensure the active popup lines up safely for scrolling on long mobile layouts */
+#joinModal.active,
+.modal.active {
+    display: flex !important;
+    align-items: flex-start !important; 
+    justify-content: center !important;
+    padding: 2rem 1rem !important;
+}
+
+/* Fix the actual inner form box container so it expands and scrolls naturally */
+#joinModal > div,
+.modal-content {
+    background: var(--bg-card, #111) !important;
+    margin: auto !important; /* Centers shorter forms, stretches for longer forms */
+    max-width: 500px !important;
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important; /* Prevents layout clipping boundaries */
+    overflow: visible !important;
+    border: 1px solid var(--primary-neon, #00ff88) !important;
+    border-radius: 12px;
+}
+
+/* 2. Force Tournament Cards into a clean, auto-aligning grid layout */
+.tournaments-container,
+#ongoingList,
+#upcomingList,
+#limitedList,
+.tournament-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important; /* Autowraps cards neatly */
+    gap: 2rem !important;
+    width: 100% !important;
+    max-width: 1200px !important;
+    margin: 0 auto !important;
+    padding: 1.5rem 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+}
+
+/* Give all your individual cards matching structural layout weights */
+.tournament-card,
+.t-card {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    height: 100% !important;
+    min-height: 340px !important; /* Forces all cards to match sizes perfectly */
+    background: var(--bg-card, #1f2937) !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
 }
