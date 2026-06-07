@@ -1,21 +1,5 @@
 <!DOCTYPE html>
-<!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-     FILE: public/index.html  →  TOURNAMENT WEBSITE (user-facing)
-     DO NOT confuse with admin/index.html (Admin Panel)
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-     WHAT'S UPDATED vs previous version:
-     1. Push Notification Permission Banner
-        → Shown once after login. "Allow" → requests FCM permission.
-        → "Block / Later" → dismissed permanently (in-app still works).
-        → NEVER blocks or replaces in-app notifications.
-     2. Confirmation Button area placeholder
-        → paymentStage.js injects the overlay dynamically; HTML just
-          needs the correct body to receive it (already did).
-     3. customActionModal is now properly placed OUTSIDE loginModal
-        → Previously it was nested inside loginModal causing z-index issues.
-     4. Mobile menu improved — closes on nav link tap.
-     5. No structural changes to existing layout, sections, or IDs.
-     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -690,7 +674,7 @@
             <option value="Sniper">🔭 Sniper</option>
             <option value="Rusher">⚡ Rusher</option>
             <option value="Support">🛡️ Support</option>
-            <option value="Fragger">💥 Fragger</option>
+            <option value="Fragger">💥 Bomber</option>
             <option value="All-Rounder">🌟 All-Rounder</option>
           </select>
           

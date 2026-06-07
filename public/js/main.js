@@ -492,7 +492,7 @@ document.getElementById('player5Container').style.display = 'none';
     // ── END already-submitted check ───────────────────────────
 
     window.currentJoiningTournament = tournamentId;
-
+    window.currentTournamentCategory = 'ongoing';
     if (!userProfile?.teamId) {
         document.getElementById("viewerBlocker").style.display        = "block";
         document.getElementById("registrationContainer").style.display = "none";
@@ -733,14 +733,14 @@ document.addEventListener("DOMContentLoaded", function() {
                     backupEmail:  backupEmail,
                     status:       "pending",
                     registeredAt: serverTimestamp(),
-                    eventDate:    tournament.eventDate,
+                    eventDate:    tournament.eventDate || null,
                     category:     "upcoming"
                 });
 
                 await setDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId), {
                     tournamentId: tournamentId,
                     title:          tournament.title,
-                    eventDate:      tournament.eventDate,
+                   eventDate:    tournament.eventDate || null,
                     teamName:       userProfile.teamName,
                     status:         "pending_verification",
                     registeredAt:   serverTimestamp()
@@ -1287,6 +1287,14 @@ onAuthStateChanged(auth, async (user) => {
 
         // Only start PRIVATE listeners here
         initNotifications();
+        // NEW: Listen for approved upcoming registrations to change "Pay Now" button dynamically
+        onSnapshot(collection(db, "users", user.uid, "upcomingRegistrations"), (snap) => {
+            window.userUpcomingRegs = {};
+            snap.forEach(docSnap => {
+                window.userUpcomingRegs[docSnap.id] = docSnap.data();
+            });
+            if (typeof renderTournaments === 'function') renderTournaments();
+        });
 
     } else {
 
@@ -2789,9 +2797,8 @@ function initNotifications() {
                     playNotificationSound('default');
                 }
                 // --------------------------
-
-                // Check if it's an approval/rejection and hasn't been shown yet
-                if ((notif.type === "approval" || notif.type === "approved" || notif.type === "rejected") && !notif.popupShown) {
+// Check if it's an approval/rejection/room details and hasn't been shown yet
+                if ((notif.type === "approval" || notif.type === "approved" || notif.type === "rejected" || notif.type === "room_details" || notif.type === "match_started") && !notif.popupShown) {
                     console.log("🚀 Firing Popup for:", notif.type);
                     
                     if (notif.type === "approval" || notif.type === "approved") {
@@ -2802,6 +2809,11 @@ function initNotifications() {
                     } else if (notif.type === "rejected") {
                         showPopup("error", notif.message || "Your application was rejected.", "Close", () => {
                             document.getElementById('customPopup')?.remove();
+                        });
+                    } else if (notif.type === "room_details" || notif.type === "match_started") {
+                        showPopup("success", notif.message, "Open Match Room", () => {
+                            document.getElementById('customPopup')?.remove();
+                            if (typeof showMatchRoom === 'function') showMatchRoom(notif.tournamentId);
                         });
                     }
 
@@ -2814,7 +2826,6 @@ function initNotifications() {
                 }
             }
         });
-
         // 2. UPDATE THE UI (Wrapped safely so it can't crash the popup)
         try {
             const docs = snapshot.docs;
@@ -3835,7 +3846,7 @@ window.openDashboard = window._newOpenDashboard = async function(type) {
     // Show popup
     popup.classList.add("active");
     document.body.style.overflow = "hidden";
-    
+    popup.style.overflowY = "auto";
     // Set title
     title.innerHTML = popupTitles[type] || "Dashboard";
 
