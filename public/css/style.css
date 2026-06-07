@@ -2094,80 +2094,10 @@ body > div, main, .wrapper, .container, .main-content {
     top: 0 !important;
     z-index: 9999 !important;
 }/* =============================================================================
-   ADDITION: JOINING INTERFACE & TOURNAMENT GRID RESPONSIVE FIXES
+   FIXED ADDITION: ZERO-BLEED MODAL SCROLLING & AUTO-BALANCING GRID SYSTEM
    ============================================================================= */
 
-/* 1. Lift full-screen modals completely ABOVE the sticky menu bar */
-#joinModal,
-.modal,
-#paymentOverlay,
-.modal-overlay {
-    position: fixed !important;
-    inset: 0 !important;
-    z-index: 99999 !important; /* Higher than your sticky menu's 9999 index */
-    background: rgba(0, 0, 0, 0.96) !important;
-    backdrop-filter: blur(8px);
-    overflow-y: auto !important; /* Unlocks smooth manual scrolling inside the form box */
-    -webkit-overflow-scrolling: touch;
-}
-
-/* Ensure the active popup lines up safely for scrolling on long mobile layouts */
-#joinModal.active,
-.modal.active {
-    display: flex !important;
-    align-items: flex-start !important; 
-    justify-content: center !important;
-    padding: 2rem 1rem !important;
-}
-
-/* Fix the actual inner form box container so it expands and scrolls naturally */
-#joinModal > div,
-.modal-content {
-    background: var(--bg-card, #111) !important;
-    margin: auto !important; /* Centers shorter forms, stretches for longer forms */
-    max-width: 500px !important;
-    width: 100% !important;
-    height: auto !important;
-    max-height: none !important; /* Prevents layout clipping boundaries */
-    overflow: visible !important;
-    border: 1px solid var(--primary-neon, #00ff88) !important;
-    border-radius: 12px;
-}
-
-/* 2. Force Tournament Cards into a clean, auto-aligning grid layout */
-.tournaments-container,
-#ongoingList,
-#upcomingList,
-#limitedList,
-.tournament-grid {
-    display: grid !important;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important; /* Autowraps cards neatly */
-    gap: 2rem !important;
-    width: 100% !important;
-    max-width: 1200px !important;
-    margin: 0 auto !important;
-    padding: 1.5rem 0 !important;
-    height: auto !important;
-    overflow: visible !important;
-}
-
-/* Give all your individual cards matching structural layout weights */
-.tournament-card,
-.t-card {
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
-    height: 100% !important;
-    min-height: 340px !important; /* Forces all cards to match sizes perfectly */
-    background: var(--bg-card, #1f2937) !important;
-    border-radius: 10px !important;
-    overflow: hidden !important;
-}
-/* =============================================================================
-   FINAL MASTER OVERRIDE: MODAL TOP-LAYER FIXED SCROLL ACCORDING TO USER FLOW
-   ============================================================================= */
-
-/* Force the Joining Form Modal and Payment Modal to sit at the absolute highest depth layer */
+/* 1. FORCE POPUPS TO COVER THE SITE ENTIRELY AND BECOME MANUALLY SCROLLABLE */
 #joinModal,
 .modal,
 #paymentOverlay,
@@ -2175,35 +2105,67 @@ body > div, main, .wrapper, .container, .main-content {
 #dashboardPopup {
     position: fixed !important;
     inset: 0 !important;
-    z-index: 999999 !important; /* Force this higher than ANY other layout element */
-    background: #000000 !important; /* Pure opaque solid black background stops background bleeding */
-    overflow-y: auto !important; /* Explicitly grants permission to scroll manually */
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 999999 !important; /* Forces modals to ride completely ABOVE the navigation bar layer */
+    background: #000000 !important; /* Solid black hides the homepage elements completely when open */
+    
+    /* UNLOCK MANUAL SCROLL MECHANICALS: */
+    overflow-y: auto !important; /* Grants browser permission to process wheel/swipe inputs on the popup */
+    -webkit-overflow-scrolling: touch !important; /* Smooth scrolling touch response for iOS/Android devices */
     display: none;
 }
 
+/* Switch active modal display from flex to block to fix the background-bleed bug */
 #joinModal.active,
 .modal.active,
 #paymentOverlay.active,
 #dashboardPopup.active {
-    display: flex !important;
+    display: block !important; /* Dropping flexbox allows the modal content container to expand and scroll like a normal long page! */
 }
 
-/* Ensure the sticky top header bar drops behind full-screen popups completely */
-.header, 
-.navbar, 
-.nav-container, 
-.menu-section {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 1000 !important; /* Keeps it perfectly sticky on main page, but drops below 999999 */
-}
-
-/* Fix structural block boundaries for the inner dynamic registration form data */
+/* 2. ADD SPARE SPACING BUFFER AROUND THE INNER FORM BOXES */
 #joinModal > div,
 .modal-content,
 .popup-content {
-    margin: 40px auto !important; /* Adds a clean 40px margin safe zone at the top and bottom */
+    background: var(--bg-card, #111) !important;
+    margin: 40px auto !important; /* Leaves a comfortable 40px clear margin space at the top and bottom of viewports */
+    max-width: 500px !important;
+    width: 90% !important;
+    height: auto !important;
     position: relative !important;
     z-index: 1000000 !important;
-    max-height: none !important; /* Completely breaks open view limits so content expands safely */
+    border: 1px solid var(--primary-neon, #00ff88) !important;
+    border-radius: 12px !important;
+    padding: 24px !important;
+}
+
+/* 3. RESPONSIVE TOURNAMENT GRID WRAP (AUTO-ALIGNS DYNAMIC CARDS) */
+.tournaments-container,
+#ongoingList,
+#upcomingList,
+#limitedList,
+.tournament-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important; /* Automatically structures clean rows when multiple cards are added */
+    gap: 2rem !important;
+    width: 100% !important;
+    max-width: 1200px !important;
+    margin: 0 auto !important;
+    padding: 1.5rem !important;
+    height: auto !important;
+    overflow: visible !important;
+}
+
+/* Maintain equal layout dimensions for individual tournament item blocks */
+.tournament-card,
+.t-card {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    height: 100% !important;
+    min-height: 340px !important; /* Standardizes overall heights across listings rows */
+    background: var(--bg-card, #1f2937) !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
 }
