@@ -2067,3 +2067,29 @@ button, .dash-card, .role-card {
     background: #0a0a0a !important; 
     border-bottom: 1px solid #222 !important;
 }
+/* ==========================================
+   DASHBOARD TAB SCROLL FIX
+   ========================================== */
+
+.popup-content {
+    display: flex !important;
+    flex-direction: column !important;
+    max-height: 85vh !important;
+    overflow: hidden !important; /* Keeps the outer card strictly contained */
+}
+
+.popup-body, 
+#dashboardContent {
+    flex: 1 1 auto !important; 
+    min-height: 0 !important; /* THE MAGIC FIX: Forces flexbox to respect max-height and scroll */
+    overflow-y: auto !important;
+    padding-bottom: 40px !important; /* Adds a safe buffer so the bottom text isn't cut off */
+    -webkit-overflow-scrolling: touch !important; /* Butter-smooth scrolling on mobile */
+    display: block !important;
+}
+
+.popup-section.active, 
+.tab-content.active {
+    display: block !important;
+    height: auto !important;
+}

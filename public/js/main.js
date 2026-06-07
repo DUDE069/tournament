@@ -65,7 +65,20 @@ let currentStream = null;
 // ===============================
 function handleProfileClick() {
     if (currentUser) {
-        openPersonalProfile(); // ✅ FIXED: Now opens the personal summary first
+        // Check if the user's Firestore profile actually finished loading/saving
+        if (!userProfile) {
+            showMessage("Profile setup incomplete! Please finish setting up your team.");
+            // Force the setup screen back open so they aren't stuck
+            if (window.openTeamSetup) {
+                window.openTeamSetup();
+            } else {
+                openLogin();
+                showCreate();
+            }
+        } else {
+            // Profile is good, open it normally
+            openPersonalProfile(); 
+        }
     } else {
         openLogin();
     }
@@ -5081,7 +5094,193 @@ window.requestPushFromInfo = async function() {
 
 
 
+/* =====================================================================
+   GHOST ACCOUNT & PROFILE BUG FIXES (Paste at bottom of main.js)
+   ===================================================================== */
 
+// 1. FIX THE "PROFILE BUTTON DOES NOTHING" BUG
+window.handleProfileClick = function() {
+    if (currentUser) {
+        // If Firebase logged them in, but Firestore profile is missing
+        if (!userProfile) {
+            showMessage("Account setup incomplete! Launching setup...");
+            window.openTeamSetup();
+        } else {
+            window.openPersonalProfile();
+        }
+    } else {
+        openLogin();
+    }
+};
+
+// Ensure the button actually triggers our fixed function
+setTimeout(() => {
+    const lBtn = document.getElementById("loginBtn");
+    if(lBtn) {
+        lBtn.onclick = (e) => { 
+            e.preventDefault(); 
+            window.handleProfileClick(); 
+        };
+    }
+}, 1000);
+
+// 2. FIX THE "DASHBOARD INFINITE LOADING SPINNER" BUG
+const originalOpenDashboard = window.openDashboard;
+window.openDashboard = window._newOpenDashboard = async function(type) {
+    if (!currentUser) { openLogin(); return; }
+
+    if (!userProfile) {
+        const popup = document.getElementById("dashboardPopup");
+        const content = document.getElementById("dashboardContent");
+        if(popup && content) {
+            popup.classList.add("active");
+            document.body.style.overflow = "hidden";
+            content.innerHTML = `
+                <div style="text-align:center;padding:30px;">
+                    <div style="font-size:50px;margin-bottom:15px;">⚠️</div>
+                    <h3 style="color:#ff4444;margin-bottom:10px;">Incomplete Profile</h3>
+                    <p style="color:#888;margin-bottom:20px;">Your account creation was interrupted. You must complete your profile and team setup to use the dashboard.</p>
+                    <button onclick="closeDashboard(); window.openTeamSetup();" style="background:#00ff88;color:#000;padding:12px 24px;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">Complete Setup Now</button>
+                </div>
+            `;
+        }
+        return;
+    }
+    
+    // If profile exists, run the normal dashboard logic
+    if(originalOpenDashboard) {
+        originalOpenDashboard(type);
+    }
+};
+
+// 3. FIX THE "JOIN NOW SAYS CREATE TEAM" BUG
+const originalHandleJoin = window.handleJoin;
+window.handleJoin = async function(tournamentId) {
+    if (currentUser && !userProfile) {
+        showMessage("Please finish your profile setup first!");
+        window.openTeamSetup();
+        return;
+    }
+    if(originalHandleJoin) originalHandleJoin(tournamentId);
+};
+
+const originalUpcoming = window.handleUpcomingRegister;
+window.handleUpcomingRegister = async function(tournamentId) {
+    if (currentUser && !userProfile) {
+        showMessage("Please finish your profile setup first!");
+        window.openTeamSetup();
+        return;
+    }
+    if(originalUpcoming) originalUpcoming(tournamentId);
+};
+
+// 4. THE ULTIMATE GHOST ACCOUNT RECOVERY MODAL
+window.openTeamSetup = function() {
+    const content = document.getElementById("customActionContent");
+    const modal = document.getElementById("customActionModal");
+    if(!content || !modal) return;
+    
+    modal.classList.add("active");
+    
+    content.innerHTML = `
+        <div class="modal-header">
+            <h2 style="color:#ff4444;">Finish Setup</h2>
+            <button class="close-modal" onclick="closeCustomModal()">×</button>
+        </div>
+        <p style="color:#aaa;font-size:13px;margin-bottom:20px;">Your account creation was interrupted. Please finalize your profile to continue.</p>
+        
+        <label style="color:#888; font-size:12px;">In-Game Nickname</label>
+        <input id="ghostNickname" type="text" placeholder="e.g. ProGamer" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:8px;margin-bottom:15px;box-sizing:border-box;">
+        
+        <label style="color:#888; font-size:12px;">Age</label>
+        <input id="ghostAge" type="number" placeholder="12-60" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:8px;margin-bottom:15px;box-sizing:border-box;">
+        
+        <label style="color:#888; font-size:12px;">Select Your Path</label>
+        <select id="ghostRoleType" onchange="document.getElementById('ghostTeamBox').style.display = this.value === 'leader' ? 'block' : 'none'; document.getElementById('ghostJoinBox').style.display = this.value === 'join' ? 'block' : 'none';" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:8px;margin-bottom:15px;">
+            <option value="viewer">👁 Just a Viewer</option>
+            <option value="leader">👑 Create a New Team</option>
+            <option value="join">🔑 Join Existing Team</option>
+        </select>
+        
+        <div id="ghostTeamBox" style="display:none;background:#0f0f0f;padding:15px;border-radius:8px;margin-bottom:15px;border:1px solid #333;">
+            <input id="ghostTeamName" type="text" placeholder="Enter Team Name" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:8px;margin-bottom:10px;box-sizing:border-box;">
+            <button onclick="document.getElementById('ghostCode').innerText = 'NPC' + Math.floor(100000 + Math.random() * 900000)" style="background:#333;color:#fff;font-size:12px;padding:8px 12px;border:none;border-radius:4px;cursor:pointer;">Generate Code</button>
+            <p id="ghostCode" style="color:#00ff88;font-weight:bold;margin-top:10px;"></p>
+        </div>
+        
+        <div id="ghostJoinBox" style="display:none;background:#0f0f0f;padding:15px;border-radius:8px;margin-bottom:15px;border:1px solid #333;">
+            <input id="ghostJoinCode" type="text" placeholder="Enter Team Code" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:8px;box-sizing:border-box;">
+        </div>
+        
+        <button id="ghostSaveBtn" onclick="saveGhostProfile()" style="background:#00ff88;color:#000;width:100%;padding:14px;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-size:16px;">Save & Complete Account</button>
+    `;
+};
+
+window.saveGhostProfile = async function() {
+    const nick = document.getElementById("ghostNickname").value.trim();
+    const age = parseInt(document.getElementById("ghostAge").value);
+    const roleType = document.getElementById("ghostRoleType").value;
+    const btn = document.getElementById("ghostSaveBtn");
+    
+    if (!nick) { showMessage("Please enter a nickname"); return; }
+    if (isNaN(age) || age < 12) { showMessage("Please enter a valid age"); return; }
+    
+    btn.disabled = true;
+    btn.textContent = "Saving...";
+    
+    try {
+        const uid = currentUser.uid;
+        const email = currentUser.email;
+        
+        let updates = {
+            uid, email, age, nickname: nick,
+            isAdmin: false, isLeader: false,
+            teamId: null, teamName: null, teamCode: null,
+            role: "viewer",
+            createdAt: serverTimestamp(),
+            stats: { tournamentsJoined: 0, tournamentsWon: 0, matchesPlayed: 0 }
+        };
+        
+        if (roleType === "leader") {
+            const tName = document.getElementById("ghostTeamName").value.trim();
+            const codeTxt = document.getElementById("ghostCode").innerText;
+            const tCode = codeTxt ? codeTxt.replace("NPC", "NPC").trim() : "";
+            
+            if (!tName || !tCode) { showMessage("Enter team name and generate code"); btn.disabled=false; btn.textContent="Save & Complete Account"; return; }
+            
+            const tId = "team_" + Math.random().toString(36).substr(2, 9);
+            await setDoc(doc(db, "teams", tId), {
+                teamId: tId, teamName: tName, code: tCode,
+                leaderId: uid, leaderName: nick, members: [uid], maxMembers: 5, createdAt: serverTimestamp()
+            });
+            updates.isLeader = true; updates.teamId = tId; updates.teamName = tName; updates.teamCode = tCode; updates.role = "leader";
+            
+        } else if (roleType === "join") {
+            const jCode = document.getElementById("ghostJoinCode").value.trim().toUpperCase();
+            if (!jCode) { showMessage("Enter team code"); btn.disabled=false; btn.textContent="Save & Complete Account"; return; }
+            
+            const tSnap = await getDocs(query(collection(db, "teams"), where("code", "==", jCode)));
+            if (tSnap.empty) { showMessage("Invalid team code"); btn.disabled=false; btn.textContent="Save & Complete Account"; return; }
+            
+            const tData = tSnap.docs[0].data();
+            if ((tData.members || []).length >= (tData.maxMembers || 5)) { showMessage("Team is full."); btn.disabled=false; btn.textContent="Save & Complete Account"; return; }
+            
+            await updateDoc(doc(db, "teams", tData.teamId), { members: arrayUnion(uid) });
+            updates.teamId = tData.teamId; updates.teamName = tData.teamName; updates.teamCode = jCode; updates.role = "member";
+        }
+        
+        await setDoc(doc(db, "users", uid), updates);
+        closeCustomModal();
+        showMessage("Account setup complete!");
+        setTimeout(() => location.reload(), 1500);
+        
+    } catch (err) {
+        console.error(err);
+        showMessage("Error: " + err.message);
+        btn.disabled = false;
+        btn.textContent = "Save & Complete Account";
+    }
+};
 
 
 
