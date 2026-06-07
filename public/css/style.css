@@ -409,19 +409,27 @@ section {
     box-shadow: 0 0 20px rgba(34,197,94,0.3);
 }
 
+/* --- THE FIX IS IN THESE TWO CLASSES BELOW --- */
+
 .dashboard-popup {
     display: none;
     position: fixed;
     inset: 0;
     background: rgba(0,0,0,0.7);
     backdrop-filter: blur(5px);
-    justify-content: center;
-    align-items: center;
+    
+    /* FIX 1: We must allow the dark overlay itself to scroll on mobile */
+    overflow-y: auto; 
+    padding: 2rem 1rem; /* Adds safe spacing at top and bottom */
     z-index: 1000 !important;
 }
 
 .dashboard-popup.active {
     display: flex;
+    /* FIX 2: align-items: center causes scroll locks. 
+       flex-start prevents the top from getting cut off. */
+    align-items: flex-start; 
+    justify-content: center;
 }
 
 .popup-content {
@@ -430,8 +438,13 @@ section {
     border-radius: 10px;
     width: 80%;
     max-width: 500px;
-    max-height: 90vh;
-    overflow-y: auto;
+    
+    /* FIX 3: margin: auto forces it to center vertically IF it's short, 
+       but lets it stretch and scroll IF it's long! */
+    margin: auto; 
+    
+    /* FIX 4: Ensure smooth touch scrolling on smartphones */
+    -webkit-overflow-scrolling: touch; 
 }
 
 .close-btn {
