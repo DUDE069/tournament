@@ -13,7 +13,7 @@ let _currentTournamentId = null;
 let _currentUserId = null;
 
 // ⚠️ YOUR RAZORPAY KEY ID
-const RAZORPAY_KEY_ID = "rzp_test_SjOd3aCMehTIGa"; // Make sure this is correct!
+const RAZORPAY_KEY_ID = "rzp_test_SygE6AqBXyl5LI"; // Make sure this is correct!
 
 // ============================================
 // MAIN ENTRY POINT - Called from main.js

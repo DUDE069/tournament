@@ -1684,25 +1684,6 @@ window.showAdminResultsPrompt = function(tournamentId) {
     }
 };
 
-window.openResultsEditor = function(tournamentId) {
-    const first = prompt("Enter 1st Place Team Name:");
-    if (!first) return;
-    
-    const second = prompt("Enter 2nd Place Team Name:");
-    const third = prompt("Enter 3rd Place Team Name:");
-    
-    updateDoc(doc(db, "tournaments", tournamentId), {
-        'winners.firstPlace': { teamName: first },
-        'winners.secondPlace': { teamName: second || 'N/A' },
-        'winners.thirdPlace': { teamName: third || 'N/A' },
-        'winners.totalTeams': 12, 
-        resultsEntered: true,
-        status: 'completed'
-    }).then(() => {
-        // FIXED: Using showMessage instead of showToast for main.js compatibility
-        showMessage("Results saved successfully!");
-    });
-};
 
 
 window.showTournamentResults = async function(tournamentId) {
@@ -1777,7 +1758,12 @@ window.showAdminResultsPrompt = function(tournamentId) {
 };
 
 window.openResultsEditor = function(tournamentId) {
-    // Simple prompt-based for now, can be made into a modal
+    // 🛡️ SECURITY GUARD: Block non-admins instantly
+    if (!userProfile?.isAdmin) {
+        console.warn("[SECURITY] Unauthorized access attempt blocked.");
+        return;
+    }
+
     const first = prompt("Enter 1st Place Team Name:");
     if (!first) return;
     
@@ -1789,15 +1775,13 @@ window.openResultsEditor = function(tournamentId) {
         'winners.firstPlace': { teamName: first },
         'winners.secondPlace': { teamName: second || 'N/A' },
         'winners.thirdPlace': { teamName: third || 'N/A' },
-        'winners.totalTeams': 12, // You'd calculate this from registrations
+        'winners.totalTeams': 12, 
         resultsEntered: true,
         status: 'completed'
     }).then(() => {
-        // ✅ FIXED: Using showMessage instead of showToast
         showMessage("Results saved successfully!");
     });
 };
-
 // ===============================
 // PHASE 3: WALLET SYSTEM
 // ===============================
@@ -1921,8 +1905,10 @@ window.viewTransactionHistory = async function() {
 window.startTournamentMatches = async function(tournamentId) {
     if (!userProfile?.isAdmin) return;
     
-    const roomCode = 'NPC' + Math.random().toString(36).substring(2, 8).toUpperCase();
-    const password = Math.floor(1000 + Math.random() * 9000);
+const array = new Uint32Array(2);
+crypto.getRandomValues(array);
+const roomCode = 'NPC' + array[0].toString(36).substring(0, 6).toUpperCase();
+const password = 1000 + (array[1] % 9000);
     
     await updateDoc(doc(db, "tournaments", tournamentId), {
         'matchDetails.roomCode': roomCode,
