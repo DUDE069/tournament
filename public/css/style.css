@@ -2025,147 +2025,82 @@ button, .dash-card, .role-card {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 }
+/* ==========================================
+   THE ULTIMATE LAYOUT & SCROLL FIX
+   ========================================== */
 
-/* ========================================== */
-/* DASHBOARD SCROLL FREEZE & OVERFLOW FIXES  */
-/* ========================================== */
-
-/* Force the main dashboard popup wrapper to handle vertical scroll safely */
-#dashboardPopup, 
-.dashboard-popup,
-.popup-overlay.active {
-    overflow-y: auto !important;
-    max-height: 100vh !important;
-    -webkit-overflow-scrolling: touch; /* Smooth scrolling for mobile views */
-}
-
-/* Force the inner content box to allow scrolling when tab content changes */
-#dashboardContent,
-.dashboard-content-wrapper,
-.dashboard-body {
-    overflow-y: auto !important;
-    max-height: 75vh !important; /* Prevents container from extending below visible viewport */
-    padding-bottom: 30px !important; /* Extra padding so bottom items aren't cut off */
-    display: block !important; /* Ensures layout block structure isn't broken */
-}
-
-/* Ensure individual tab panels behave correctly inside the container */
-.tab-content, 
-.dashboard-section {
-    height: auto !important;
-    overflow: visible !important;
-}
-
-/* Clean up custom scrollbar look inside your futuristic dashboard elements */
-#dashboardContent::-webkit-scrollbar {
-    width: 6px;
-}
-#dashboardContent::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.2);
-}
-#dashboardContent::-webkit-scrollbar-thumb {
-    background: var(--npc-blue, #3b82f6);
-    border-radius: 4px;
-}
-
-/* ========================================== */
-/* THE ULTIMATE SCROLL UNFREEZE               */
-/* ========================================== */
-
+/* 1. RESTORE STICKY NAVBAR */
 html, body {
-    position: static !important;   /* REMOVES the lock preventing manual scroll */
-    overflow-y: auto !important;   /* Forces the scrollbar to wake up */
-    overflow-x: hidden !important; 
-    height: auto !important;       /* Lets the page be as tall as it needs to be */
-    min-height: 100vh !important;
-    touch-action: auto !important; /* Restores finger swiping on smartphones */
-}
-
-/* If you have a main wrapper locking the screen, this breaks it open */
-body > div, main, .wrapper, .container, .main-content {
+    position: static !important;
     height: auto !important;
-    max-height: none !important;
-    overflow-y: visible !important;
+    min-height: 100vh !important;
+    /* Use 'clip' instead of 'hidden'. It prevents horizontal scroll 
+       WITHOUT breaking position: sticky! */
+    overflow-x: clip !important;
+    overflow-y: auto !important;
+    touch-action: auto !important;
 }
 
-/* Ensure ONLY the menu is sticky, not the whole page */
+/* 2. LOCK BACKGROUND WHEN MODAL IS OPEN */
+body.modal-open {
+    overflow: hidden !important;
+    touch-action: none !important; /* Kills mobile background swiping */
+}
+
+/* 3. ENSURE STICKY MENU WORKS */
 .header, .navbar, .nav-container {
     position: sticky !important;
     top: 0 !important;
-    z-index: 9999 !important;
-}/* =============================================================================
-   FIXED ADDITION: ZERO-BLEED MODAL SCROLLING & AUTO-BALANCING GRID SYSTEM
-   ============================================================================= */
+    z-index: 1000 !important;
+}
 
-/* 1. FORCE POPUPS TO COVER THE SITE ENTIRELY AND BECOME MANUALLY SCROLLABLE */
+/* 4. MODAL OVERLAYS (FULL SCREEN & SCROLLABLE) */
+#joinTournamentModal, 
 #joinModal,
-.modal,
-#paymentOverlay,
-.modal-overlay,
-#dashboardPopup {
+.modal, 
+.modal-overlay, 
+#paymentOverlay, 
+#dashboardPopup,
+#customActionModal {
     position: fixed !important;
     inset: 0 !important;
-    width: 100% !important;
-    height: 100% !important;
-    z-index: 999999 !important; /* Forces modals to ride completely ABOVE the navigation bar layer */
-    background: #000000 !important; /* Solid black hides the homepage elements completely when open */
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 999999 !important; /* Forces it above the navbar */
+    background: rgba(0, 0, 0, 0.95) !important;
     
-    /* UNLOCK MANUAL SCROLL MECHANICALS: */
-    overflow-y: auto !important; /* Grants browser permission to process wheel/swipe inputs on the popup */
-    -webkit-overflow-scrolling: touch !important; /* Smooth scrolling touch response for iOS/Android devices */
+    /* Unlock manual scrolling */
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
     display: none;
+    
+    /* Add a safe buffer area for scrolling */
+    padding: 40px 20px !important; 
+    box-sizing: border-box !important;
 }
 
-/* Switch active modal display from flex to block to fix the background-bleed bug */
+/* 5. ACTIVATING MODALS (USING BLOCK PREVENTS SCROLL LOCK) */
+#joinTournamentModal.active, 
 #joinModal.active,
-.modal.active,
-#paymentOverlay.active,
-#dashboardPopup.active {
-    display: block !important; /* Dropping flexbox allows the modal content container to expand and scroll like a normal long page! */
+.modal.active, 
+.modal-overlay.active, 
+#paymentOverlay.active, 
+#dashboardPopup.active,
+#customActionModal.active {
+    /* Using block instead of flex prevents tall forms from 
+       cropping at the top of the screen */
+    display: block !important; 
 }
 
-/* 2. ADD SPARE SPACING BUFFER AROUND THE INNER FORM BOXES */
+/* 6. MODAL INNER CONTENT BOXES */
+#joinTournamentModal > div, 
 #joinModal > div,
-.modal-content,
-.popup-content {
-    background: var(--bg-card, #111) !important;
-    margin: 40px auto !important; /* Leaves a comfortable 40px clear margin space at the top and bottom of viewports */
-    max-width: 500px !important;
-    width: 90% !important;
-    height: auto !important;
+.modal-card, 
+.popup-content, 
+#registrationContainer {
     position: relative !important;
     z-index: 1000000 !important;
-    border: 1px solid var(--primary-neon, #00ff88) !important;
-    border-radius: 12px !important;
-    padding: 24px !important;
-}
-
-/* 3. RESPONSIVE TOURNAMENT GRID WRAP (AUTO-ALIGNS DYNAMIC CARDS) */
-.tournaments-container,
-#ongoingList,
-#upcomingList,
-#limitedList,
-.tournament-grid {
-    display: grid !important;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important; /* Automatically structures clean rows when multiple cards are added */
-    gap: 2rem !important;
-    width: 100% !important;
-    max-width: 1200px !important;
-    margin: 0 auto !important;
-    padding: 1.5rem !important;
+    margin: 0 auto !important; /* Centers the box horizontally */
     height: auto !important;
-    overflow: visible !important;
-}
-
-/* Maintain equal layout dimensions for individual tournament item blocks */
-.tournament-card,
-.t-card {
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
-    height: 100% !important;
-    min-height: 340px !important; /* Standardizes overall heights across listings rows */
-    background: var(--bg-card, #1f2937) !important;
-    border-radius: 10px !important;
-    overflow: hidden !important;
+    max-height: none !important; /* Allows it to stretch its parent */
 }
