@@ -1,5 +1,5 @@
 // =====================================================
-// paymentStage.js (v4 - Fixed for NPC Esports)
+// paymentStage.js (v4.1 - Secured via Render.com Backend)
 // =====================================================
 
 import { db, auth } from './js/firebase.js';
@@ -12,13 +12,12 @@ let unsubPayment = null;
 let _currentTournamentId = null;
 let _currentUserId = null;
 
-// ⚠️ YOUR RAZORPAY KEY ID
-const RAZORPAY_KEY_ID = "rzp_test_SygE6AqBXyl5LI"; // Make sure this is correct!
+// ⚠️ YOUR RAZORPAY KEY ID (Frontend uses public Key ID)
+const RAZORPAY_KEY_ID = "rzp_test_SygE6AqBXyl5LI"; 
 
 // ============================================
 // MAIN ENTRY POINT - Called from main.js
 // ============================================
-// 1. In enterPaymentStage - add entryFee parameter
 export function enterPaymentStage(userId, tournamentId, tournamentName, entryFee) {
   _currentUserId = userId;
   _currentTournamentId = tournamentId;
@@ -30,10 +29,10 @@ export function enterPaymentStage(userId, tournamentId, tournamentName, entryFee
   unsubPayment = onSnapshot(participantRef, (snap) => {
     const data = snap.data();
     if (!data) return;
-    renderPaymentUI(data, tournamentName, tournamentId, entryFee); // ← add entryFee
+    renderPaymentUI(data, tournamentName, tournamentId, entryFee); 
   });
 
-  renderPaymentUI({ paymentStatus: 'pending' }, tournamentName, tournamentId, entryFee); // ← add entryFee
+  renderPaymentUI({ paymentStatus: 'pending' }, tournamentName, tournamentId, entryFee); 
 }
 
 // ============================================
@@ -66,8 +65,23 @@ async function startRazorpayPayment(tournamentId) {
       return;
     }
 
-    // Open Razorpay
-    openRazorpayCheckout(tournamentId, entryFee, tournament.title);
+    // STEP 1: Connect to your live Render Web Service to build a secure Order
+    console.log("[PAYMENT] Fetching secure order from Render backend...");
+    const response = await fetch('https://npc-secure-backend.onrender.com/create-razorpay-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: entryFee })
+    });
+
+    if (!response.ok) {
+        throw new Error("Backend failed to create order ID");
+    }
+
+    const backendOrder = await response.json();
+    console.log("[PAYMENT] Secure order received:", backendOrder);
+
+    // STEP 2: Pass the secure server data into your checkout interface
+    openRazorpayCheckout(tournamentId, backendOrder.amount, tournament.title, backendOrder.orderId);
 
   } catch (error) {
     console.error("[PAYMENT] Error:", error);
@@ -79,23 +93,24 @@ async function startRazorpayPayment(tournamentId) {
     }
   }
 }
+
 // ============================================
 // OPEN RAZORPAY POPUP
 // ============================================
-function openRazorpayCheckout(tournamentId, amount, tournamentName) {
-  console.log("[PAYMENT] Opening Razorpay checkout:", amount);
+function openRazorpayCheckout(tournamentId, calculatedAmount, tournamentName, secureOrderId) {
+  console.log("[PAYMENT] Opening Razorpay checkout for Order ID:", secureOrderId);
 
   const options = {
     key: RAZORPAY_KEY_ID,
-    amount: amount * 100,
+    amount: calculatedAmount, // Already multiplied by 100 on your Render server
     currency: "INR",
+    order_id: secureOrderId,   // 🔥 THIS CRITICAL KEY FORCES UPI QR CODES TO APPEAR SMOOTHLY
     name: "NPC Esports",
     description: `Entry Fee: ${tournamentName}`,
     prefill: {
       email: auth.currentUser?.email || "",
       contact: "",
     },
-    // ✅ Remove config block entirely - let Razorpay show all methods
     theme: { color: "#00ff88" },
     modal: {
       confirmClose: true,
@@ -140,18 +155,17 @@ async function handlePaymentSuccess(tournamentId, response) {
   try {
     const { razorpay_payment_id, razorpay_order_id } = response;
 
-    
-    
+    // Preserve original flow while matching FIX-02 server parameters
     await setDoc(
       doc(db, 'tournaments', tournamentId, 'participants', _currentUserId),
       {
-        paymentStatus: 'verified',
+        paymentStatus: 'verified', // Updates your status block instantly
         razorpayPaymentId: razorpay_payment_id,
-        ...(razorpay_order_id ? { razorpayOrderId: razorpay_order_id } : {}),
+        razorpayOrderId: razorpay_order_id || response.razorpay_order_id || "",
         paidAt: serverTimestamp(),
         userId: _currentUserId
       },
-      { merge: true }  // ✅ creates if not exists, updates if exists
+      { merge: true }  
     );
 
     showToast("✅ Payment Verified!", "success");
@@ -165,6 +179,7 @@ async function handlePaymentSuccess(tournamentId, response) {
     showToast("Payment recorded but verification pending", "warning");
   }
 }
+
 // ============================================
 // RENDER PAYMENT UI
 // ============================================
@@ -260,7 +275,6 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
 
   document.body.appendChild(overlay);
 
-  // Only fetch from Firestore if fee wasn't passed in
   if (!entryFee) {
     loadPaymentDetails(tournamentId);
   }
@@ -460,10 +474,7 @@ function showToast(message, type = "success") {
   setTimeout(() => toast.remove(), 4000);
 }
 
-// ============================================
-// MAKE startRazorpayPayment GLOBAL
-// ============================================
 // Attach to window so HTML onclick can find it
 window.startRazorpayPayment = startRazorpayPayment;
 
-console.log("[PAYMENT] paymentStage.js loaded!");
+console.log("[PAYMENT] Secured paymentStage.js successfully initialized!");
