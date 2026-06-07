@@ -4303,7 +4303,9 @@ window.closeDashboard = function() {
     const popup = document.getElementById("dashboardPopup");
     if (popup) {
         popup.classList.remove("active");
-        document.body.style.overflow = "auto";
+        // 🔥 THE FIX: Change "auto" to an empty string ""
+        // This forces the browser to let go of the lock completely.
+        document.body.style.overflow = ""; 
     }
 };
 
