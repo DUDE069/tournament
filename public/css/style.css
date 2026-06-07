@@ -2067,3 +2067,30 @@ button, .dash-card, .role-card {
     background: var(--npc-blue, #3b82f6);
     border-radius: 4px;
 }
+
+/* ========================================== */
+/* THE ULTIMATE SCROLL UNFREEZE               */
+/* ========================================== */
+
+html, body {
+    position: static !important;   /* REMOVES the lock preventing manual scroll */
+    overflow-y: auto !important;   /* Forces the scrollbar to wake up */
+    overflow-x: hidden !important; 
+    height: auto !important;       /* Lets the page be as tall as it needs to be */
+    min-height: 100vh !important;
+    touch-action: auto !important; /* Restores finger swiping on smartphones */
+}
+
+/* If you have a main wrapper locking the screen, this breaks it open */
+body > div, main, .wrapper, .container, .main-content {
+    height: auto !important;
+    max-height: none !important;
+    overflow-y: visible !important;
+}
+
+/* Ensure ONLY the menu is sticky, not the whole page */
+.header, .navbar, .nav-container {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 9999 !important;
+}
