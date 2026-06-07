@@ -2012,3 +2012,45 @@ button, .dash-card, .role-card {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* ========================================== */
+/* DASHBOARD SCROLL FREEZE & OVERFLOW FIXES  */
+/* ========================================== */
+
+/* Force the main dashboard popup wrapper to handle vertical scroll safely */
+#dashboardPopup, 
+.dashboard-popup,
+.popup-overlay.active {
+    overflow-y: auto !important;
+    max-height: 100vh !important;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling for mobile views */
+}
+
+/* Force the inner content box to allow scrolling when tab content changes */
+#dashboardContent,
+.dashboard-content-wrapper,
+.dashboard-body {
+    overflow-y: auto !important;
+    max-height: 75vh !important; /* Prevents container from extending below visible viewport */
+    padding-bottom: 30px !important; /* Extra padding so bottom items aren't cut off */
+    display: block !important; /* Ensures layout block structure isn't broken */
+}
+
+/* Ensure individual tab panels behave correctly inside the container */
+.tab-content, 
+.dashboard-section {
+    height: auto !important;
+    overflow: visible !important;
+}
+
+/* Clean up custom scrollbar look inside your futuristic dashboard elements */
+#dashboardContent::-webkit-scrollbar {
+    width: 6px;
+}
+#dashboardContent::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+}
+#dashboardContent::-webkit-scrollbar-thumb {
+    background: var(--npc-blue, #3b82f6);
+    border-radius: 4px;
+}
