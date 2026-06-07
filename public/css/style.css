@@ -2163,3 +2163,47 @@ body > div, main, .wrapper, .container, .main-content {
     border-radius: 10px !important;
     overflow: hidden !important;
 }
+/* =============================================================================
+   FINAL MASTER OVERRIDE: MODAL TOP-LAYER FIXED SCROLL ACCORDING TO USER FLOW
+   ============================================================================= */
+
+/* Force the Joining Form Modal and Payment Modal to sit at the absolute highest depth layer */
+#joinModal,
+.modal,
+#paymentOverlay,
+.modal-overlay,
+#dashboardPopup {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 999999 !important; /* Force this higher than ANY other layout element */
+    background: #000000 !important; /* Pure opaque solid black background stops background bleeding */
+    overflow-y: auto !important; /* Explicitly grants permission to scroll manually */
+    display: none;
+}
+
+#joinModal.active,
+.modal.active,
+#paymentOverlay.active,
+#dashboardPopup.active {
+    display: flex !important;
+}
+
+/* Ensure the sticky top header bar drops behind full-screen popups completely */
+.header, 
+.navbar, 
+.nav-container, 
+.menu-section {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 1000 !important; /* Keeps it perfectly sticky on main page, but drops below 999999 */
+}
+
+/* Fix structural block boundaries for the inner dynamic registration form data */
+#joinModal > div,
+.modal-content,
+.popup-content {
+    margin: 40px auto !important; /* Adds a clean 40px margin safe zone at the top and bottom */
+    position: relative !important;
+    z-index: 1000000 !important;
+    max-height: none !important; /* Completely breaks open view limits so content expands safely */
+}
