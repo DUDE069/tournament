@@ -2026,115 +2026,44 @@ button, .dash-card, .role-card {
   to { opacity: 1; transform: translateY(0); }
 }
 /* ==========================================
-   THE ULTIMATE LAYOUT & SCROLL FIX
+   TRUE FULL-SCREEN INTERFACES & STICKY MENU
    ========================================== */
 
-/* 1. RESTORE STICKY NAVBAR */
-html, body {
-    position: static !important;
-    height: auto !important;
-    min-height: 100vh !important;
-    /* Use 'clip' instead of 'hidden'. It prevents horizontal scroll 
-       WITHOUT breaking position: sticky! */
-    overflow-x: clip !important;
-    overflow-y: auto !important;
-    touch-action: auto !important;
-}
-
-/* 2. LOCK BACKGROUND WHEN MODAL IS OPEN */
-body.modal-open {
-    overflow: hidden !important;
-    touch-action: none !important; /* Kills mobile background swiping */
-}
-
-/* 3. ENSURE STICKY MENU WORKS */
-.header, .navbar, .nav-container {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 1000 !important;
-}
-
-/* 4. MODAL OVERLAYS (FULL SCREEN & SCROLLABLE) */
-#joinTournamentModal, 
-#joinModal,
-.modal, 
-.modal-overlay, 
-#paymentOverlay, 
-#dashboardPopup,
-#customActionModal {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
-    z-index: 999999 !important; /* Forces it above the navbar */
-    background: rgba(0, 0, 0, 0.95) !important;
-    
-    /* Unlock manual scrolling */
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    display: none;
-    
-    /* Add a safe buffer area for scrolling */
-    padding: 40px 20px !important; 
-    box-sizing: border-box !important;
-}
-
-/* 5. ACTIVATING MODALS (USING BLOCK PREVENTS SCROLL LOCK) */
-#joinTournamentModal.active, 
-#joinModal.active,
-.modal.active, 
-.modal-overlay.active, 
-#paymentOverlay.active, 
-#dashboardPopup.active,
-#customActionModal.active {
-    /* Using block instead of flex prevents tall forms from 
-       cropping at the top of the screen */
-    display: block !important; 
-}
-
-/* 6. MODAL INNER CONTENT BOXES */
-#joinTournamentModal > div, 
-#joinModal > div,
-.modal-card, 
-.popup-content, 
-#registrationContainer {
-    position: relative !important;
-    z-index: 1000000 !important;
-    margin: 0 auto !important; /* Centers the box horizontally */
-    height: auto !important;
-    max-height: none !important; /* Allows it to stretch its parent */
-}
-
-/* ==========================================
-   FINAL TOUCHES: STICKY MENUS & SMOOTH SCROLL
-   ========================================== */
-
-/* 1. FIX THE MAIN HOMEPAGE NAVBAR STICKY */
+/* 1. THE HOMEPAGE MENU (Sticks to the top smoothly) */
 .navbar {
     position: sticky !important;
     top: 0 !important; 
-    z-index: 9999 !important; /* Keeps it above all homepage sections */
+    z-index: 1000 !important; /* High enough to float over homepage content */
+    background: #111827 !important; /* Solid color so text doesn't bleed through it */
 }
 
-/* 2. FIX THE JOIN INTERFACE TOP MENU (Prevent Overlap) */
-#joinTournamentModal nav {
-    position: sticky !important;
-    top: 0 !important;
-    /* The form has a z-index of 1,000,000. 
-       This menu must be even higher so the form slides BEHIND it! */
-    z-index: 9999999 !important; 
-    background: #0a0a0a !important; /* Ensure it stays solid black */
-    /* Optional: Adds a slight shadow so you can see it floating over the form */
-    box-shadow: 0 4px 15px rgba(0,0,0,0.8) !important; 
-}
-
-/* 3. RESTORE BUTTER-SMOOTH TOUCH SCROLLING FOR ALL MODALS */
+/* 2. THE "NEW SCREEN" EFFECT FOR INTERFACES */
 #joinTournamentModal, 
-.modal, 
 .modal-overlay, 
 #paymentOverlay, 
 #dashboardPopup {
-    /* Forces mobile browsers to use hardware acceleration for scrolling */
-    -webkit-overflow-scrolling: touch !important; 
-    scroll-behavior: smooth !important;
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100% !important;
+    height: 100vh !important;
+    
+    /* THE FIX: A completely solid background. 
+       This kills the "popup" vibe and makes it feel like a completely new webpage. */
+    background: #0b0f1a !important; 
+    
+    /* This completely buries the homepage menu */
+    z-index: 99999 !important; 
+    
+    /* Smooth scrolling enabled */
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+
+/* 3. THE JOIN INTERFACE'S OWN MENU (Keeps the "Back" button at the top) */
+#joinTournamentModal nav {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 999999 !important; /* Stays at the very top of the new screen */
+    background: #0a0a0a !important; 
+    border-bottom: 1px solid #222 !important;
 }
