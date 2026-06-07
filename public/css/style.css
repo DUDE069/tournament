@@ -68,6 +68,7 @@ section {
     text-align: center;
     top: 0;
     background: var(--bg-main);
+    /* ✅ Stays at 1000 — modals at 10000+ will always clear it */
     z-index: 1000;
     border-bottom: 2px solid var(--npc-blue);
     padding: 10px 0;
@@ -75,7 +76,8 @@ section {
 
 .navbar {
     position: sticky;
-    top: 60px; /* below welcome text */
+    top: 42px; /* ✅ FIX: Height of welcome-text (~42px); adjust if yours differs */
+    /* ✅ Stays at 999 — clearly below all overlays */
     z-index: 999;
     background: var(--bg-secondary);
     display: flex;
@@ -414,36 +416,46 @@ section {
 .dashboard-popup {
     display: none;
     position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.7);
-    backdrop-filter: blur(5px);
-    
-    /* FIX 1: We must allow the dark overlay itself to scroll on mobile */
-    overflow-y: auto; 
-    padding: 2rem 1rem; /* Adds safe spacing at top and bottom */
-    z-index: 1000 !important;
+    /* ✅ FIX: inset:0 must account for sticky nav height (welcome bar ~42px + navbar ~60px = ~102px) */
+    /* We use top:0 to cover full screen, and padding-top compensates for nav */
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    /* ✅ FIX: The OVERLAY must scroll, not the inner popup-content */
+    overflow-y: auto;
+    /* Padding creates safe zone so content doesn't hide behind sticky nav */
+    padding: 110px 16px 30px;
+    /* ✅ FIX: z-index MUST be higher than sticky nav (z-index 999/1000) */
+    z-index: 10000;
+    box-sizing: border-box;
 }
 
 .dashboard-popup.active {
     display: flex;
-    /* FIX 2: align-items: center causes scroll locks. 
-       flex-start prevents the top from getting cut off. */
-    align-items: flex-start; 
+    align-items: flex-start; /* ✅ FIX: NOT center — center causes scroll lock on tall content */
     justify-content: center;
+    animation: fadeIn 0.25s ease;
 }
 
+/* ✅ FIX: popup-content should NEVER have its own overflow-y unless content exceeds viewport */
 .popup-content {
     background: var(--bg-card);
+    border-radius: 14px;
     padding: 2rem;
-    border-radius: 10px;
-    width: 80%;
-    max-width: 500px;
-    
-    /* FIX 3: margin: auto forces it to center vertically IF it's short, 
-       but lets it stretch and scroll IF it's long! */
-    margin: auto; 
-    
-    /* FIX 4: Ensure smooth touch scrolling on smartphones */
+    width: 100%;
+    max-width: 560px;
+    /* ✅ FIX: margin:auto centers it within flex when it's shorter than viewport */
+    margin: auto;
+    /* ✅ FIX: max-height prevents content from escaping viewport. The overlay scrolls, not this. */
+    max-height: none; /* Let the overlay scroll, not the popup */
+    position: relative;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+    border: 1px solid rgba(255,255,255,0.06);
+    /* ✅ FIX: webkit smooth scrolling for iOS */
     -webkit-overflow-scrolling: touch; 
 }
 
@@ -601,18 +613,22 @@ section {
 .modal-card {
     background: var(--bg-card);
     width: 90%;
-    max-width: 380px;
-    max-height: 80vh;
-    overflow-y: auto;
+    max-width: 400px;
+    /* ✅ FIX: Remove max-height cap — let overlay scroll instead. This prevents
+       content being clipped and scroll fighting with the overlay. */
+    max-height: none;
+    overflow-y: visible;
     padding: 2.5rem 1.5rem 2rem;
     border-radius: 16px;
     position: relative;
     display: flex;
     flex-direction: column;
     gap: 18px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+    box-shadow: 0 10px 50px rgba(0, 0, 0, 0.7);
     border: 1px solid rgba(255,255,255,0.08);
     animation: modalSlide 0.3s ease;
+    /* ✅ FIX: margin:auto within flex properly centers vertically for short modals */
+    margin: auto;
 }
 
 @keyframes modalSlide {
@@ -2017,79 +2033,114 @@ button, .dash-card, .role-card {
 
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
 
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
 }
-/* ==========================================
-   TRUE FULL-SCREEN INTERFACES & STICKY MENU
-   ========================================== */
 
-/* 1. THE HOMEPAGE MENU (Sticks to the top smoothly) */
-.navbar {
-    position: sticky !important;
-    top: 0 !important; 
-    z-index: 1000 !important; /* High enough to float over homepage content */
-    background: #111827 !important; /* Solid color so text doesn't bleed through it */
+/* ─────────────────────────────────────────────────────────────────────────────
+   FIX 5: MOBILE RESPONSIVE MODAL FIXES
+   ──────────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+
+    /* ✅ FIX: Dashboard popup on mobile */
+    .dashboard-popup {
+        /* On mobile, sticky nav is collapsed into one bar (~60px) */
+        padding: 70px 10px 20px;
+    }
+
+    .dashboard-popup.active {
+        align-items: flex-start !important;
+    }
+
+    .popup-content {
+        width: 97% !important;
+        max-width: none;
+        padding: 1.5rem 1rem;
+        margin: 0 auto;
+    }
+
+    /* ✅ FIX: Login/Register modal on mobile */
+    .modal-card {
+        width: 95% !important;
+        margin: 0 auto;
+        padding: 1.8rem 1.2rem;
+        max-height: none !important; /* Overlay scrolls */
+        overflow-y: visible !important;
+    }
+
+    /* ✅ FIX: Modal overlay padding on mobile — navbar is ~60px tall on mobile */
+    .modal-overlay {
+        padding: 70px 10px 20px;
+    }
+
+    /* ✅ FIX: Join modal inner registration container */
+    #registrationContainer {
+        padding-bottom: 40px !important; /* Safe zone for bottom submit button */
+    }
+
+    /* Ensure all critical overlays fully cover on mobile too */
+    #joinTournamentModal,
+    .modal-overlay,
+    .dashboard-popup {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain; /* Prevents scroll chaining to body */
+    }
 }
 
-/* 2. THE "NEW SCREEN" EFFECT FOR INTERFACES */
-#joinTournamentModal, 
-.modal-overlay, 
-#paymentOverlay, 
-#dashboardPopup {
-    position: fixed !important;
-    inset: 0 !important;
-    width: 100% !important;
-    height: 100vh !important;
-    
-    /* THE FIX: A completely solid background. 
-       This kills the "popup" vibe and makes it feel like a completely new webpage. */
-    background: #0b0f1a !important; 
-    
-    /* This completely buries the homepage menu */
-    z-index: 99999 !important; 
-    
-    /* Smooth scrolling enabled */
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
+@media (max-width: 480px) {
+    .dashboard-popup {
+        padding: 65px 8px 20px;
+    }
+    .popup-content {
+        padding: 1.2rem 0.9rem;
+    }
 }
 
-/* 3. THE JOIN INTERFACE'S OWN MENU (Keeps the "Back" button at the top) */
-#joinTournamentModal nav {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 999999 !important; /* Stays at the very top of the new screen */
-    background: #0a0a0a !important; 
-    border-bottom: 1px solid #222 !important;
-}
-/* ==========================================
-   DASHBOARD TAB SCROLL FIX
-   ========================================== */
 
-.popup-content {
-    display: flex !important;
-    flex-direction: column !important;
-    max-height: 85vh !important;
-    overflow: hidden !important; /* Keeps the outer card strictly contained */
-}
+/* ─────────────────────────────────────────────────────────────────────────────
+   FIX 6: DASHBOARD TAB CONTENT SCROLL
+   ──────────────────────────────────────────────────────────────────────────── */
 
-.popup-body, 
+/* ✅ FIX: The tab content panel within the dashboard popup */
 #dashboardContent {
-    flex: 1 1 auto !important; 
-    min-height: 0 !important; /* THE MAGIC FIX: Forces flexbox to respect max-height and scroll */
-    overflow-y: auto !important;
-    padding-bottom: 40px !important; /* Adds a safe buffer so the bottom text isn't cut off */
-    -webkit-overflow-scrolling: touch !important; /* Butter-smooth scrolling on mobile */
-    display: block !important;
+    /* Do NOT set overflow:hidden here. The overlay itself scrolls. */
+    width: 100%;
 }
 
-.popup-section.active, 
-.tab-content.active {
-    display: block !important;
-    height: auto !important;
+/* ✅ FIX: Dash-table (Team Account table) must be visible without inner scrolling */
+.dash-table-wrapper {
+    width: 100%;
+    overflow-x: auto; /* Allow horizontal scroll on small screens */
+    -webkit-overflow-scrolling: touch;
+}
+
+/* ✅ Smooth scrolling across the entire dashboard overlay */
+.dashboard-popup,
+.modal-overlay,
+#joinTournamentModal {
+    scroll-behavior: smooth;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   FIX 7: PAYMENT INTERFACE MODAL Z-INDEX
+   ──────────────────────────────────────────────────────────────────────────── */
+
+#paymentInterfaceModal,
+#paymentModal,
+#walletModal {
+    z-index: 10003 !important; /* Above everything else — payments are critical */
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   FIX 8: CUSTOM ACTION MODAL (Used by Ghost Account Recovery)
+   ──────────────────────────────────────────────────────────────────────────── */
+
+#customActionModal {
+    z-index: 10004 !important;
 }

@@ -689,7 +689,8 @@ document.addEventListener("DOMContentLoaded", function() {
         ];
 
         // Keep the old simple array so the Admin Panel doesn't break!
-        const uids = [p1Uid, p2Uid, p3Uid, p4Uid];
+        // ✅ Part 2.3: Apply Deduplication to member arrays
+        const uids = window.getDeduplicatedTeamMembers([p1Uid, p2Uid, p3Uid, p4Uid], p1Uid);
 
         // NEW: Capture Optional 5th Player if enabled
         const p5Enabled = document.getElementById("enablePlayer5")?.checked;
@@ -703,7 +704,6 @@ document.addEventListener("DOMContentLoaded", function() {
                 return;
             }
             playersData.push({ uid: p5Uid, nickname: p5Nick, type: p5Type });
-            uids.push(p5Uid);
         }
         // Validate phone
         const phoneRaw = document.getElementById("joinPhone").value.trim();
@@ -1247,59 +1247,53 @@ startFirebaseListeners();
 onAuthStateChanged(auth, async (user) => {
     if (user) {
         currentUser = user;
-        isLoggedIn  = true;
-
-        // Create loading promise with retry logic for race conditions
-               // Create loading promise with retry logic for race conditions
-        profileLoadPromise = (async () => {
-            let attempts = 0;
-            const maxAttempts = 3;
-            
-            while (attempts < maxAttempts) {
-                try {
-                    console.log(`[AUTH] Attempt ${attempts + 1}: Reading /users/${user.uid}`);
-                    const userDoc = await getDoc(doc(db, "users", user.uid));
-                    
-                    if (userDoc.exists()) {
-                        userProfile = userDoc.data();
-                        await loadUserWallet();
-                        console.log("[AUTH] ✓ Profile loaded:", userProfile.email);
-                        return; // Success - exit function
-                    } else {
-                        // Document doesn't exist yet - wait and retry
-                        console.warn(`[AUTH] User doc not found (attempt ${attempts + 1}/${maxAttempts})`);
-                        attempts++;
-                        
-                        if (attempts < maxAttempts) {
-                            console.log(`[AUTH] Waiting 500ms before retry...`);
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                        }
-                    }
-                } catch (e) {
-                    console.warn(`[AUTH] Attempt ${attempts + 1} failed: ${e.code || e.message}`);
-                    attempts++;
-                    
-                    if (attempts < maxAttempts) {
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                    }
-                }
-            }
-            
-            // All attempts failed
-            console.error("[AUTH] ✗ Failed to load profile after all retries");
-            userProfile = null;
-        })();
-
-        // Wait for profile to load before proceeding
+        
+        // ✅ GHOST FIX: Check if Firestore profile exists
+        const userRef = doc(db, "users", user.uid);
+        let snap;
         try {
-            await profileLoadPromise;
+            snap = await getDoc(userRef);
         } catch (e) {
-            console.error("[AUTH] Profile load failed:", e);
-            userProfile = null;
+            console.error("[GHOST] getDoc failed:", e);
+            return;
         }
+        
+        if (!snap.exists()) {
+            // User is authenticated but has NO Firestore profile — ghost!
+            const isFreshReg = sessionStorage.getItem("npc_fresh_registration") === user.uid;
+            
+            if (!isFreshReg) {
+                // This is a returning ghost — trigger recovery
+                console.warn("[GHOST] Ghost account detected for:", user.uid);
+                userProfile = null;
+                isLoggedIn  = true;
+                // Recovery is triggered via handleProfileClick or openDashboard
+                return;
+            }
+            // If fresh registration, the setDoc is still in progress — wait a tick
+            await new Promise(r => setTimeout(r, 800));
+            const retrySnap = await getDoc(userRef);
+            if (!retrySnap.exists()) {
+                userProfile = null;
+                return;
+            }
+            userProfile = retrySnap.data();
+        } else {
+            userProfile = snap.data();
+        }
+        
+        sessionStorage.removeItem("npc_fresh_registration");
+        isLoggedIn = true;
 
+        // Load wallet and private listeners
+        await loadUserWallet();
         // Only start PRIVATE listeners here
         initNotifications();
+        
+        // ✅ Part 4.1: Acceptance and Push wiring
+        window.listenForApprovals(user.uid);
+        window.requestPushPermissions();
+
         // NEW: Listen for approved upcoming registrations to change "Pay Now" button dynamically
         onSnapshot(collection(db, "users", user.uid, "upcomingRegistrations"), (snap) => {
             window.userUpcomingRegs = {};
@@ -1308,9 +1302,7 @@ onAuthStateChanged(auth, async (user) => {
             });
             if (typeof renderTournaments === 'function') renderTournaments();
         });
-
     } else {
-
         // Cleanup
         if (unsubNotifications) { 
             unsubNotifications(); 
@@ -2944,6 +2936,21 @@ window.handleNotificationClick = async function(notifId, actionLink, type) {
     if (window.toggleNotifications) window.toggleNotifications();
     closeJoinModal(); // Ensure forms are closed
 
+    // Handle Pay Later reminder
+    if (type === "pay_later_reminder") {
+        // Re-open the payment interface when user clicks the "pay later" reminder
+        try {
+            const snap = await getDoc(doc(db, "users", currentUser.uid, "notifications", notifId));
+            if (snap.exists()) {
+                const n = snap.data();
+                if (n.tournamentId && n.entryFee) {
+                    if (window.openPaymentInterface) window.openPaymentInterface(n.tournamentId, n.entryFee);
+                }
+            }
+        } catch(e) {}
+        return;
+    }
+
     // 🔴 FIX: IF PAYMENT IS CONFIRMED -> SHOW SUCCESS POPUP ONLY (NO MODAL)
     if (type === "payment_confirmed") {
         showPopup(
@@ -4513,10 +4520,10 @@ window.verifyAndCreate = async function() {
 // ==========================================
 // VIEW PERSONAL PROFILE (READ-ONLY OVERVIEW)
 // ==========================================
-// Inside main.js
-window.openPersonalProfile = function() {
+window.openPersonalProfile = function(...args) {
     if (!userProfile) return;
     const content = document.getElementById("customActionContent");
+    if (!content) return;
     document.getElementById("customActionModal").classList.add("active");
     const roleText = userProfile.isAdmin ? "Admin" : "Standard User";
     const joinDate = userProfile.createdAt ? new Date(userProfile.createdAt.toDate?.() || userProfile.createdAt).toLocaleDateString() : 'Unknown';
@@ -4554,6 +4561,29 @@ window.openPersonalProfile = function() {
             <button onclick="logout()" style="background:rgba(255,68,68,0.1); color:#ff4444; border:1px solid #ff4444; padding:14px; border-radius:8px; cursor:pointer;">🚪 Logout</button>
         </div>
     `;
+
+    // ✅ Part 2.2: Viewer Upgrade Hook
+    setTimeout(() => {
+        if (userProfile && userProfile.role === "viewer") {
+            const container = content;
+            
+            if (container && !document.getElementById("viewerUpgradeCTA")) {
+                container.insertAdjacentHTML("beforeend", `
+                    <div id="viewerUpgradeCTA" style="margin-top:20px; padding:18px; background:rgba(255,165,0,0.08); border:1px solid orange; border-radius:10px; text-align:center;">
+                        <div style="font-size:28px; margin-bottom:8px;">👁️</div>
+                        <h4 style="color:orange; margin-bottom:8px;">Viewer Account</h4>
+                        <p style="color:#9ca3af; font-size:13px; margin-bottom:14px;">
+                            You joined as a viewer. Create or join a team to compete in tournaments!
+                        </p>
+                        <button onclick="closeCustomModal(); window.openViewerUpgradeModal();"
+                                style="background:orange; color:#000; font-weight:bold; padding:10px 24px; border:none; border-radius:7px; cursor:pointer; font-family:inherit;">
+                            Upgrade to Player →
+                        </button>
+                    </div>
+                `);
+            }
+        }
+    }, 300);
 };
 
 
@@ -4831,8 +4861,11 @@ window.createAccount = async function() {
             localStorage.setItem("welcomeTeam", teamData.teamName);
         }
 
-       // Write Final User Data to Firestore
-await setDoc(doc(db, "users", uid), userData);
+        // ✅ GHOST FIX: Use a transaction-style write with immediate verification
+        try {
+            await setDoc(doc(db, "users", uid), userData, { merge: false });
+            const verifySnap = await getDoc(doc(db, "users", uid));
+            if (!verifySnap.exists()) throw new Error("Profile write failed silently");
         
 // ✅ NEW: Setup notifications after account is created
 try {
@@ -4849,9 +4882,11 @@ try {
     console.warn("[AUTH] Notification setup error (non-blocking):", notifErr.message);
 }
 
-
+            // ✅ Mark as fresh registration for the Auth listener
+            sessionStorage.setItem("npc_fresh_registration", uid);
         
-        showMessage("Account created successfully!");
+            userProfile = verifySnap.data();
+            showMessage("Account created successfully!");
         closeModal();
         
         if (selectedRole === "leader") {
@@ -4865,6 +4900,15 @@ try {
         setTimeout(() => {
             location.reload();
         }, 2000);
+
+        } catch (writeError) {
+            console.error("[GHOST FIX] Profile write failed:", writeError);
+            sessionStorage.setItem("npc_ghost_uid", uid);
+            showMessage("Account created but profile setup incomplete. Please finish setup.");
+            closeModal();
+            // Open recovery modal after short delay
+            setTimeout(() => { if (window.openTeamSetup) window.openTeamSetup(); }, 1500);
+        }
         
     } catch (err) {
         console.error("Account Finalization Error:", err);
@@ -5284,6 +5328,329 @@ window.saveGhostProfile = async function() {
 
 
 
+// =============================================================================
+// PART 2.2 — VIEWER ROLE UPGRADE SYSTEM
+// =============================================================================
+
+window.openViewerUpgradeModal = function() {
+    const existing = document.getElementById("viewerUpgradeModal");
+    if (existing) existing.remove();
+    
+    document.body.insertAdjacentHTML("beforeend", `
+        <div id="viewerUpgradeModal" style="
+            position:fixed; inset:0; background:rgba(0,0,0,0.92);
+            display:flex; align-items:center; justify-content:center;
+            z-index:10005; padding:20px; overflow-y:auto;
+        ">
+            <div style="background:#111827; border:1px solid orange; border-radius:14px; padding:28px; width:100%; max-width:440px; margin:auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                    <h3 style="color:orange; margin:0;">👑 Upgrade Account</h3>
+                    <button onclick="document.getElementById('viewerUpgradeModal').remove()" 
+                            style="background:none;border:none;color:#888;font-size:22px;cursor:pointer;">×</button>
+                </div>
+                <p style="color:#9ca3af; font-size:13px; margin-bottom:20px;">
+                    You are currently a Viewer. Choose your path to compete in tournaments.
+                </p>
+                
+                <select id="upgradeRoleSelect" 
+                        onchange="document.getElementById('upgradeTeamBox').style.display=this.value==='leader'?'block':'none'; document.getElementById('upgradeJoinBox').style.display=this.value==='join'?'block':'none';"
+                        style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #444;color:#fff;border-radius:8px;margin-bottom:16px;font-family:inherit;">
+                    <option value="">— Select your role —</option>
+                    <option value="leader">👑 Create a New Team (Team Leader)</option>
+                    <option value="join">🔑 Join an Existing Team (Team Member)</option>
+                </select>
+                
+                <div id="upgradeTeamBox" style="display:none; background:#0f0f0f; padding:14px; border-radius:8px; margin-bottom:14px; border:1px solid #333;" >
+                    <label style="color:#666; font-size:12px; display:block; margin-bottom:6px;">Team Name</label>
+                    <input id="upgradeTeamName" type="text" placeholder="e.g. NPC Warriors" 
+                           style="width:100%;padding:11px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;margin-bottom:10px;box-sizing:border-box;">
+                    <button onclick="
+                        const code = 'NPC' + Math.floor(100000 + Math.random() * 900000);
+                        document.getElementById('upgradeGeneratedCode').textContent = code;
+                        document.getElementById('upgradeGeneratedCode').dataset.code = code;
+                    " style="background:#333;color:#fff;border:none;padding:7px 12px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:13px;">
+                        Generate Team Code
+                    </button>
+                    <p id="upgradeGeneratedCode" data-code="" style="color:#22c55e; font-weight:bold; margin-top:10px; font-size:16px;"></p>
+                </div>
+                
+                <div id="upgradeJoinBox" style="display:none; background:#0f0f0f; padding:14px; border-radius:8px; margin-bottom:14px; border:1px solid #333;">
+                    <label style="color:#666; font-size:12px; display:block; margin-bottom:6px;">Team Code</label>
+                    <input id="upgradeJoinCode" type="text" placeholder="e.g. NPC123456" 
+                           style="width:100%;padding:11px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;box-sizing:border-box; text-transform:uppercase;">
+                </div>
+                
+                <button onclick="window.processViewerUpgrade()" 
+                        style="width:100%;padding:13px;background:orange;color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;font-family:inherit;">
+                    Upgrade Account →
+                </button>
+            </div>
+        </div>
+    `);
+};
+
+window.processViewerUpgrade = async function() {
+    if (!currentUser || !userProfile) {
+        showMessage("Please log in first.");
+        return;
+    }
+    
+    const roleType = document.getElementById("upgradeRoleSelect").value;
+    if (!roleType) {
+        showMessage("Please select a role.");
+        return;
+    }
+    
+    const btn = document.querySelector("#viewerUpgradeModal button:last-of-type");
+    if (btn) { btn.disabled = true; btn.textContent = "Upgrading..."; }
+    
+    try {
+        const uid = currentUser.uid;
+        let updates = {};
+        
+        if (roleType === "leader") {
+            const tName = document.getElementById("upgradeTeamName").value.trim();
+            const tCode = document.getElementById("upgradeGeneratedCode").dataset.code;
+            
+            if (!tName || !tCode) {
+                showMessage("Enter team name and generate a code.");
+                if (btn) { btn.disabled = false; btn.textContent = "Upgrade Account →"; }
+                return;
+            }
+            
+            const tId = "team_" + Math.random().toString(36).substr(2, 9);
+            await setDoc(doc(db, "teams", tId), {
+                teamId: tId,
+                teamName: tName,
+                code: tCode,
+                leaderId: uid,
+                leaderName: userProfile.nickname || "Leader",
+                members: [uid],
+                maxMembers: 5,
+                createdAt: serverTimestamp()
+            });
+            
+            updates = {
+                role: "leader",
+                isLeader: true,
+                teamId: tId,
+                teamName: tName,
+                teamCode: tCode
+            };
+            
+        } else if (roleType === "join") {
+            const jCode = document.getElementById("upgradeJoinCode").value.trim().toUpperCase();
+            if (!jCode) {
+                showMessage("Please enter a team code.");
+                if (btn) { btn.disabled = false; btn.textContent = "Upgrade Account →"; }
+                return;
+            }
+            
+            const tSnap = await getDocs(query(collection(db, "teams"), where("code", "==", jCode)));
+            if (tSnap.empty) {
+                showMessage("Invalid team code. Check and try again.");
+                if (btn) { btn.disabled = false; btn.textContent = "Upgrade Account →"; }
+                return;
+            }
+            
+            const tData = tSnap.docs[0].data();
+            if ((tData.members || []).length >= (tData.maxMembers || 5)) {
+                showMessage("This team is already full!");
+                if (btn) { btn.disabled = false; btn.textContent = "Upgrade Account →"; }
+                return;
+            }
+            
+            await updateDoc(doc(db, "teams", tData.teamId), {
+                members: arrayUnion(uid)
+            });
+            
+            updates = {
+                role: "member",
+                isLeader: false,
+                teamId: tData.teamId,
+                teamName: tData.teamName,
+                teamCode: jCode
+            };
+        }
+        
+        await updateDoc(doc(db, "users", uid), updates);
+        
+        document.getElementById("viewerUpgradeModal").remove();
+        showMessage("Account upgraded successfully! Refreshing...");
+        setTimeout(() => location.reload(), 1500);
+        
+    } catch (err) {
+        console.error("[UPGRADE]", err);
+        showMessage("Error: " + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = "Upgrade Account →"; }
+    }
+};
+
+// =============================================================================
+// PART 2.3 — TEAM ROSTER DEDUPLICATION FIX
+// =============================================================================
+window.getDeduplicatedTeamMembers = function(rawMembers, leaderId) {
+    const uid = leaderId || (currentUser ? currentUser.uid : null);
+    const allMembers = [
+        ...(Array.isArray(rawMembers) ? rawMembers : []),
+        ...(uid ? [uid] : [])
+    ];
+    return [...new Set(allMembers.filter(Boolean))];
+};
+
+// =============================================================================
+// PART 3 — ADMIN STATUS SYNC
+// =============================================================================
+window.syncAcceptanceToUser = async function(tournamentId, userId, teamData = {}) {
+    try {
+        const batch = writeBatch(db);
+        const regRef = doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId);
+        batch.update(regRef, { status: "accepted", processedAt: serverTimestamp() });
+        
+        const userRegRef = doc(db, "users", userId, "upcomingRegistrations", tournamentId);
+        batch.update(userRegRef, { status: "accepted", paymentStatus: "pending", processedAt: serverTimestamp() });
+        
+        if (teamData && teamData.teamId) {
+            const slotRef = doc(db, "tournaments", tournamentId, "slots", teamData.teamId);
+            const members = window.getDeduplicatedTeamMembers(teamData.members, userId);
+            batch.set(slotRef, {
+                teamId: teamData.teamId,
+                teamName: teamData.teamName || "Unknown Team",
+                teamCode: teamData.teamCode || "N/A",
+                members: members,
+                memberCount: members.length,
+                paymentStatus: "Pending Payment",
+                assignedAt: serverTimestamp()
+            }, { merge: true });
+        }
+        await batch.commit();
+    } catch (err) { console.error("[STATUS SYNC]", err); throw err; }
+};
+
+// =============================================================================
+// PART 4.1 — REAL-TIME ACCEPTANCE LISTENER
+// =============================================================================
+window.listenForApprovals = function(uid) {
+    if (!uid) return;
+    if (window._approvalListenerUnsub) { window._approvalListenerUnsub(); window._approvalListenerUnsub = null; }
+    
+    window._approvalListenerUnsub = onSnapshot(collection(db, "users", uid, "upcomingRegistrations"), (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type !== "modified") return;
+            const data = change.doc.data();
+            const docId = change.doc.id;
+            
+            if (data.status === "accepted" && data.paymentStatus !== "paid") {
+                const popupKey = `npc_accept_notified_${docId}`;
+                if (localStorage.getItem(popupKey)) return;
+                localStorage.setItem(popupKey, "1");
+                
+                window.triggerPushNotification("Application Accepted! 🎉", `Your team was accepted for ${data.title || "a tournament"}.`);
+                window.showPayLaterPopup(docId, data.title || "Tournament", data.entryFee || 0);
+            }
+            
+            if (data.roomId && data.roomPassword) {
+                const roomKey = `npc_room_notified_${docId}`;
+                if (localStorage.getItem(roomKey)) return;
+                localStorage.setItem(roomKey, "1");
+                window.triggerPushNotification("🔑 Room Details Ready!", `ID: ${data.roomId} | Password: ${data.roomPassword}`);
+                showMessage(`Room details for ${data.title || "your tournament"} are ready!`, "success");
+            }
+        });
+    });
+};
+
+// =============================================================================
+// PART 4.2 — "PAY NOW OR PAY LATER" MODAL
+// =============================================================================
+window.showPayLaterPopup = function(tournamentId, tournamentName, entryFee) {
+    document.getElementById("payLaterModal")?.remove();
+    document.body.insertAdjacentHTML("beforeend", `
+        <div id="payLaterModal" style="position:fixed; inset:0; background:rgba(0,0,0,0.94); z-index:10006; display:flex; align-items:center; justify-content:center; padding:20px; overflow-y:auto;">
+            <div style="background:#111827; border:2px solid #22c55e; border-radius:16px; padding:32px; text-align:center; max-width:420px; width:100%; margin:auto; box-shadow: 0 0 40px rgba(34, 197, 94, 0.15); animation: modalSlide 0.3s ease;">
+                <div style="font-size:52px; margin-bottom:12px;">🎉</div>
+                <h2 style="color:#fff; margin-bottom:10px; font-family:'Orbitron', sans-serif;">Application Accepted!</h2>
+                <p style="color:#9ca3af; margin-bottom:6px; font-size:14px; line-height:1.6;">Your team has been approved for<br><strong style="color:#fff;">${tournamentName}</strong></p>
+                <p style="color:#9ca3af; margin-bottom:24px; font-size:13px;">Entry Fee: <strong style="color:#22c55e;">₹${entryFee}</strong></p>
+                <div style="display:flex; flex-direction:column; gap:12px;">
+                    <button onclick="document.getElementById('payLaterModal').remove(); window.showPaymentInterface('${tournamentId}')" style="background:#22c55e; color:#000; font-weight:bold; padding:14px; border:none; border-radius:10px; cursor:pointer;">💳 Pay Now — Secure Slot</button>
+                    <button onclick="document.getElementById('payLaterModal').remove(); window._addPayLaterNotification('${tournamentId}', '${tournamentName.replace(/'/g, "\\'")}', ${entryFee}); showMessage('Reminder saved.');" style="background:transparent; color:#9ca3af; border:1px solid #374151; padding:12px; border-radius:10px; cursor:pointer;">Pay Later — Remind Me</button>
+                    <button onclick="document.getElementById('payLaterModal').remove();" style="background:transparent; color:#555; border:none; padding:8px; cursor:pointer;">Close</button>
+                </div>
+            </div>
+        </div>
+    `);
+};
+
+window._addPayLaterNotification = async function(tournamentId, tournamentName, entryFee) {
+    if (!currentUser) return;
+    try {
+        await addDoc(collection(db, "users", currentUser.uid, "notifications"), {
+            type: "pay_later_reminder", title: "💳 Complete Your Payment", message: `Pay ₹${entryFee} to confirm your slot for ${tournamentName}.`,
+            actionLink: `tournament=${tournamentId}`, entryFee: entryFee, tournamentId: tournamentId, read: false, createdAt: serverTimestamp()
+        });
+    } catch (e) {}
+};
+
+// =============================================================================
+// PART 4.4 — BROWSER PUSH NOTIFICATION SYSTEM
+// =============================================================================
+window.requestPushPermissions = async function() {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "granted") { window._registerServiceWorker(); return; }
+    if (Notification.permission === "default") {
+        if (sessionStorage.getItem("npc_push_asked")) return;
+        sessionStorage.setItem("npc_push_asked", "1");
+        await new Promise(r => setTimeout(r, 3000));
+        if ((await Notification.requestPermission()) === "granted") window._registerServiceWorker();
+    }
+};
+
+window._registerServiceWorker = function() {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/firebase-messaging-sw.js").then(reg => { window._swRegistration = reg; })
+    .catch(() => navigator.serviceWorker.register("/sw.js").then(reg => { window._swRegistration = reg; }));
+};
+
+window.triggerPushNotification = function(title, body, options = {}) {
+    if (Notification.permission !== "granted") return;
+    const opt = { body, icon: "/logo.png", badge: "/logo.png", tag: "npc-notification", ...options };
+    if (window._swRegistration) window._swRegistration.showNotification(title, opt).catch(() => new Notification(title, opt));
+    else new Notification(title, opt);
+};
+
+// =============================================================================
+// PART 3.4 — 12-SLOT MANUAL LEADERBOARD GRID
+// =============================================================================
+window.renderLeaderboard = async function(tournamentId) {
+    const container = document.getElementById("leaderboardTableBody") || document.querySelector(".leaderboard-table tbody");
+    if (!container) return;
+    container.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#666;">Loading...</td></tr>`;
+    try {
+        const snap = await getDocs(query(collection(db, "tournaments", tournamentId, "leaderboard"), orderBy("rank", "asc")));
+        const existing = {}; snap.forEach(d => { existing[d.data().rank] = d.data(); });
+        let html = ""; const rankColors = { 1: "gold", 2: "silver", 3: "#cd7f32" };
+        for (let i = 1; i <= 12; i++) {
+            const d = existing[i]; const color = rankColors[i] || "#aaa";
+            html += `<tr style="${d ? "" : "opacity:0.4;"}"><td style="color:${color}; font-weight:bold; text-align:center;">#${i}</td><td style="color:${d ? "#fff" : "#555"};">${d?.teamName || "—"}</td><td style="color:${color}; text-align:center;">${d?.score ?? "—"}</td><td style="color:#aaa; text-align:center;">${d?.kills ?? "—"}</td></tr>`;
+        }
+        container.innerHTML = html;
+    } catch (err) { container.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#ff4444;">Error.</td></tr>`; }
+};
+
+// =============================================================================
+// PART 3.3 — SLOT STATUS UPDATE FUNCTIONS
+// =============================================================================
+window.listenForSlotStatus = function(tournamentId, teamId) {
+    if (!currentUser || !teamId) return;
+    return onSnapshot(doc(db, "tournaments", tournamentId, "slots", teamId), (snap) => {
+        if (!snap.exists()) return;
+        const d = snap.data(); const el = document.getElementById(`slot-status-${tournamentId}`);
+        if (el) { el.textContent = d.paymentStatus || "Pending"; el.style.color = d.paymentStatus === "Paid" ? "#22c55e" : "#fbbf24"; }
+    });
+};
+
+
 // ===============================
 // GLOBAL EXPORTS
 // ===============================
@@ -5335,3 +5702,14 @@ window.forgotPasswordFlow      = forgotPasswordFlow;
 window.updateUserPassword      = updateUserPassword;
 window.openPersonalProfile     = openPersonalProfile;
 window.openResultsEditor       = window.openResultsEditor;
+
+// Patch exports
+window.openViewerUpgradeModal  = window.openViewerUpgradeModal;
+window.processViewerUpgrade    = window.processViewerUpgrade;
+window.listenForApprovals      = window.listenForApprovals;
+window.showPayLaterPopup       = window.showPayLaterPopup;
+window.requestPushPermissions  = window.requestPushPermissions;
+window.triggerPushNotification = window.triggerPushNotification;
+window.renderLeaderboard       = window.renderLeaderboard;
+window.getDeduplicatedTeamMembers = window.getDeduplicatedTeamMembers;
+window.syncAcceptanceToUser    = window.syncAcceptanceToUser;

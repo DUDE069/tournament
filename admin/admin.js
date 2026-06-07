@@ -985,32 +985,88 @@ function upcomingCard(d, type) {
 }
 
 window.approveUpcoming = async function(tournamentId, userId) {
-  try {
-    await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
-      status: "approved", processedAt: serverTimestamp(),
-    });
-
-    let allMemberIds = [userId];
     try {
-      const uSnap = await getDoc(doc(db, "users", userId));
-      if (uSnap.exists() && uSnap.data().teamId) {
-        const tSnap = await getDoc(doc(db, "teams", uSnap.data().teamId));
-        if (tSnap.exists()) allMemberIds = [...new Set([...(tSnap.data().members ?? []), userId])];
-      }
-    } catch (_) {}
+        // ✅ FIX: Use writeBatch to update BOTH the tournament doc AND the user's personal log
+        // This ensures the user's dashboard card changes from "pending" to "accepted" immediately.
+        const batch = writeBatch(db);
+        
+        // 1. Update the tournament's upcomingRegistrations sub-collection (admin view)
+        const regRef = doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId);
+        batch.update(regRef, {
+            status:      "approved",
+            processedAt: serverTimestamp()
+        });
+        
+        // 2. ✅ FIX: Update the USER'S personal registration log (user view)
+        //    This is the document their dashboard reads. Without this, user stays on "pending".
+        const userRegRef = doc(db, "users", userId, "upcomingRegistrations", tournamentId);
+        batch.set(userRegRef, {
+            status:        "accepted",
+            paymentStatus: "pending",
+            processedAt:   serverTimestamp(),
+            tournamentId:  tournamentId
+        }, { merge: true }); // merge:true is safe — won't erase existing fields
+        
+        await batch.commit();
 
-    await Promise.all(allMemberIds.map(mid => sendDualNotification(mid, {
-      type:      "upcoming_approved",
-      title:     "Registration Approved! 🎉",
-      message:   "Your upcoming tournament registration has been approved! Stay tuned for match details.",
-      extra:     { tournamentId },
-      actionLink: `tournament=${tournamentId}`,
-    })));
+        // 3. Resolve all team members to notify (fetch team members)
+        let allMemberIds = [userId];
+        try {
+            const uSnap = await getDoc(doc(db, "users", userId));
+            if (uSnap.exists() && uSnap.data().teamId) {
+                const tSnap = await getDoc(doc(db, "teams", uSnap.data().teamId));
+                if (tSnap.exists()) {
+                    // ✅ FIX: Use Set to deduplicate — prevents double-notification
+                    allMemberIds = [...new Set([...(tSnap.data().members ?? []), userId])];
+                }
+            }
+        } catch (_) {}
+        
+        // 4. ✅ FIX: Also auto-create the slot entry so Slot Management table is never "undefined"
+        try {
+            const uSnap = await getDoc(doc(db, "users", userId));
+            if (uSnap.exists()) {
+                const uData = uSnap.data();
+                if (uData.teamId) {
+                    const tSnap = await getDoc(doc(db, "teams", uData.teamId));
+                    if (tSnap.exists()) {
+                        const tData = tSnap.data();
+                        // ✅ FIX: Deduplicate members before writing slot
+                        const deduped = [...new Set([...(tData.members || []), userId])];
+                        
+                        await setDoc(doc(db, "tournaments", tournamentId, "slots", uData.teamId), {
+                            teamId:        uData.teamId,
+                            teamName:      uData.teamName  || tData.teamName  || "Unknown Team",
+                            teamCode:      uData.teamCode  || tData.code      || "N/A",
+                            members:       deduped,
+                            memberCount:   deduped.length,
+                            leaderId:      tData.leaderId  || userId,
+                            leaderEmail:   uData.email     || "",
+                            paymentStatus: "Pending Payment", // ✅ Explicit string — never "undefined"
+                            assignedAt:    serverTimestamp()
+                        }, { merge: true });
+                    }
+                }
+            }
+        } catch (slotErr) {
+            // Slot write failure must not block the approval
+            console.warn("[SLOT AUTO-FILL] Failed:", slotErr.message);
+        }
 
-    showToast(`Registration approved! Notified ${allMemberIds.length} member(s).`, "success");
-  } catch (e) {
-    showToast("Error: " + e.message, "error");
-  }
+        // 5. Send dual notifications to all members
+        await Promise.all(allMemberIds.map(mid => sendDualNotification(mid, {
+            type:       "upcoming_approved",
+            title:      "Registration Approved! 🎉",
+            message:    "Your upcoming tournament registration has been approved! Stay tuned for match details.",
+            extra:      { tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        })));
+
+        showToast(`Registration approved! Notified ${allMemberIds.length} member(s).`, "success");
+        
+    } catch (e) {
+        showToast("Error approving: " + e.message, "error");
+    }
 };
 
 // UPGRADE: custom modal instead of browser prompt()
@@ -1533,142 +1589,243 @@ window.executeGlobalSearch = async function() {
 // SLOT & WAITLIST MANAGEMENT
 // ==========================================
 window.manageTournamentSlots = async function(tournamentId) {
-    // Generate a dedicated Grid view for the specified tournament.
     document.getElementById("statusModalOverlay")?.remove();
     const overlay = document.createElement("div");
     overlay.id = "statusModalOverlay";
     overlay.className = "status-modal-overlay";
     
-    // Base setup for Skeleton Table
     overlay.innerHTML = `
-        <div class="status-modal" style="max-width:850px; width:100%;">
-            <h3 style="color:var(--gold);">🎯 Slot Management - ${tournamentId}</h3>
+        <div class="status-modal" style="max-width:900px; width:100%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:10px;">
+                <h3 style="color:var(--gold); margin:0;">🎯 Slot Management</h3>
+                <input type="text" id="slotSearch" placeholder="🔍 Search team or code…"
+                       style="padding:8px 12px; border-radius:6px; border:1px solid #444; background:#1a1a1a; color:#fff; width:200px;"
+                       onkeyup="filterSlots()">
+            </div>
             
-            <div style="margin-bottom: 15px; display: flex; justify-content: space-between;">
-                <input type="text" id="slotSearch" placeholder="🔍 Search Team or UID..." style="padding: 8px; border-radius: 6px; border: 1px solid #444; background: #1a1a1a; color: white; width: 50%;" onkeyup="filterSlots()">
+            <div id="rg-tiebreaker-area"></div>
+            <div id="rg-waitlist-bar-area"></div>
+            
+            <div id="table-container" style="overflow-x:auto; max-height:55vh; margin-bottom:15px; border-radius:8px; border:1px solid #333;">
+                <p style="color:#888; padding:15px; text-align:center;">Loading slots…</p>
             </div>
 
-            <div id="table-container" style="overflow-x: auto; max-height: 50vh; margin-bottom:15px; border-radius: 8px; border: 1px solid #333;">
-                <p style="color:#888; padding: 10px;">Loading slots...</p>
+            <div id="waitlistPanel" style="background:#111; padding:12px; border:1px solid #333; border-radius:8px;">
+                <h4 style="color:var(--blue); margin-bottom:10px;">📋 Waitlist Queue</h4>
+                <div id="waitlistGrid"><p style="color:#666; font-size:13px;">No teams in waitlist.</p></div>
             </div>
-
-            <div id="waitlistPanel" style="background:#111; padding:10px; border:1px solid #333; border-radius:8px;">
-                <h4 style="color:var(--blue); margin-bottom:10px;">Waitlist Queue</h4>
-                <div id="waitlistGrid"><p style="color:#666;">No teams in waitlist.</p></div>
-            </div>
-            <button onclick="document.getElementById('statusModalOverlay').remove()" style="width:100%; margin-top:15px; padding:10px; background:#333; color:#fff; border:none; border-radius:8px; cursor:pointer;">Close Dashboard</button>
+            
+            <button onclick="document.getElementById('statusModalOverlay').remove()"
+                    style="width:100%; margin-top:14px; padding:10px; background:#333; color:#fff; border:none; border-radius:8px; cursor:pointer; font-family:inherit;">
+                Close
+            </button>
         </div>
     `;
     document.body.appendChild(overlay);
 
     try {
-        // Fetch tournament details (to get mode) AND participants simultaneously
-        const [tSnap, pSnap] = await Promise.all([
+        // ✅ FIX: Read from /slots sub-collection (auto-filled by approveUpcoming)
+        // Also fall back to /participants if /slots is empty (backward compat)
+        const [tSnap, slotsSnap, participantsSnap] = await Promise.all([
             getDoc(doc(db, "tournaments", tournamentId)),
+            getDocs(collection(db, "tournaments", tournamentId, "slots")),
             getDocs(collection(db, "tournaments", tournamentId, "participants"))
         ]);
 
         const tournament = tSnap.exists() ? tSnap.data() : {};
         
-        const teams = pSnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => {
-            const timeA = a.joinedAt || a.createdAt || a.approvedAt || 0;
-            const timeB = b.joinedAt || b.createdAt || b.approvedAt || 0;
-            return timeA - timeB;
+        // Prefer /slots, fall back to /participants for backward compat
+        let allTeams = [];
+        if (!slotsSnap.empty) {
+            allTeams = slotsSnap.docs.map(d => ({ id: d.id, _source: "slots", ...d.data() }));
+        } else {
+            allTeams = participantsSnap.docs.map(d => ({ id: d.id, _source: "participants", ...d.data() }));
+        }
+        
+        // Sort by assignment time
+        allTeams.sort((a, b) => {
+            const tA = a.assignedAt || a.joinedAt || a.createdAt || 0;
+            const tB = b.assignedAt || b.joinedAt || b.createdAt || 0;
+            return tA - tB;
         });
-        
-        const confirmed = teams.slice(0, 12);
-        const waitlisted = teams.slice(12);
 
-        // Determine rows per team based on mode (Squad=4, Duo=2, Solo/Default=1)
-        let rowsPerTeam = tournament.mode?.toLowerCase() === 'squad' ? 4 : (tournament.mode?.toLowerCase() === 'duo' ? 2 : 1);
-        const maxTeams = 12; // Standard Custom Room Size
+        const confirmed  = allTeams.filter(t => t.paymentStatus !== "Waitlist").slice(0, 12);
+        const waitlisted = allTeams.filter(t => t.paymentStatus === "Waitlist" || allTeams.indexOf(t) >= 12);
         
+        const mode = tournament.mode?.toLowerCase() || "squad";
+        const rowsPerTeam = mode === "squad" ? 4 : mode === "duo" ? 2 : 1;
+        
+        // ── Build the main table ────────────────────────────────────────────
         let html = `
-        <table class="admin-table" style="width:100%; border-collapse: collapse; text-align: left; font-size: 13px;">
-            <thead style="background: #1a1a1a; border-bottom: 2px solid #333;">
-                <tr>
-                    <th style="padding: 10px;">Slot</th>
-                    <th style="padding: 10px;">Team Name</th>
-                    <th style="padding: 10px;">Player UID</th>
-                    <th style="padding: 10px;">In-Game Name</th>
-                    <th style="padding: 10px; text-align:center;">Status</th>
-                    <th style="padding: 10px; text-align:center;">Action</th>
-                </tr>
-            </thead>
-            <tbody id="slotTableBody">`;
+            <table class="admin-table" style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
+                <thead style="background:#1a1a1a; position:sticky; top:0; z-index:1;">
+                    <tr>
+                        <th style="padding:10px; border-bottom:2px solid #333; white-space:nowrap;">Slot</th>
+                        <th style="padding:10px; border-bottom:2px solid #333;">Team</th>
+                        <th style="padding:10px; border-bottom:2px solid #333;">Player UID</th>
+                        <th style="padding:10px; border-bottom:2px solid #333;">Nickname</th>
+                        <th style="padding:10px; border-bottom:2px solid #333; text-align:center;">Payment</th>
+                        <th style="padding:10px; border-bottom:2px solid #333; text-align:center;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="slotTableBody">`;
 
-        // Skeleton loop: Render exact slots, filling in blanks if no team exists
-        for (let slot = 1; slot <= maxTeams; slot++) {
-            const team = confirmed[slot - 1]; // Get team if they exist, else null
+        for (let slot = 1; slot <= 12; slot++) {
+            const team = confirmed[slot - 1] || null;
 
-            for (let playerIdx = 0; playerIdx < rowsPerTeam; playerIdx++) {
-                const isFirstRow = playerIdx === 0;
+            for (let pi = 0; pi < rowsPerTeam; pi++) {
+                const isFirst = pi === 0;
+                const isLast  = pi === rowsPerTeam - 1;
                 
-                // Fetch player info if available
-                const player = team?.playersData ? team.playersData[playerIdx] : null;
-                let uidStr = player?.uid || '—';
-                let nickStr = player?.nickname || '—';
+                // ✅ FIX: Multiple safe fallback paths for player data
+                let uidStr  = "—";
+                let nickStr = "—";
                 
-                // Fallback if playersData is missing but old uids array exists
-                if (!player && team?.uids && team.uids[playerIdx]) {
-                    uidStr = team.uids[playerIdx];
+                if (team) {
+                    // Path 1: playersData array (richest)
+                    if (Array.isArray(team.playersData) && team.playersData[pi]) {
+                        uidStr  = team.playersData[pi].uid      || "—";
+                        nickStr = team.playersData[pi].nickname || "—";
+                    }
+                    // Path 2: uids array (legacy)
+                    else if (Array.isArray(team.uids) && team.uids[pi]) {
+                        uidStr  = team.uids[pi];
+                        nickStr = team[`nickPlayer${pi+1}`] || "—";
+                    }
+                    // Path 3: members array (simplest)
+                    else if (Array.isArray(team.members) && team.members[pi]) {
+                        uidStr = team.members[pi];
+                    }
                 }
-
-                html += `<tr class="slot-row" style="border-bottom: ${playerIdx === rowsPerTeam - 1 ? '2px solid #3b82f6' : '1px solid #222'};">`;
                 
-                if (isFirstRow) {
-                    html += `<td rowspan="${rowsPerTeam}" style="border-right: 1px solid #222; text-align:center; padding: 8px;"><b>#${slot}</b></td>`;
-                    html += `<td rowspan="${rowsPerTeam}" style="border-right: 1px solid #222; padding: 8px; color: ${team ? '#fff' : '#555'}; font-weight: bold;">
-                                ${team ? escHtml(team.teamName) : '<i>Empty Slot</i>'}
-                             </td>`;
-                }
-
-                html += `<td style="padding: 8px; color: ${team ? '#aaa' : '#444'};">${escHtml(uidStr)}</td>`;
-                html += `<td style="padding: 8px; color: ${team ? '#fff' : '#444'};">${escHtml(nickStr)}</td>`;
+                const rowBorder = isLast ? "border-bottom:2px solid #3b82f6;" : "border-bottom:1px solid #222;";
+                html += `<tr class="slot-row" style="${rowBorder}">`;
                 
-                if (isFirstRow) {
-                    const statusBadge = team ? 
-                        `<span style="background: ${team.paymentStatus === 'paid' ? 'var(--green)' : '#ff9800'}; color:#000; padding:3px 8px; border-radius:12px; font-size:10px; font-weight:bold;">${team.paymentStatus || 'Pending'}</span>` 
-                        : '<span style="color:#444;">—</span>';
-                    html += `<td rowspan="${rowsPerTeam}" style="border-left: 1px solid #222; text-align:center; padding: 8px;">${statusBadge}</td>`;
+                if (isFirst) {
+                    // ✅ FIX: team.teamName with multiple fallbacks — NEVER "undefined"
+                    const teamDisplay = team
+                        ? escHtml(team.teamName || team.name || "Unnamed Team")
+                        : '<i>Empty Slot</i>';
+                    const codeDisplay = team
+                        ? `<span style="color:#555; font-size:10px;">(${escHtml(team.teamCode || team.code || "N/A")})</span>`
+                        : "";
                     
-                    const actionBtn = team ? 
-                        `<button onclick="kickTeamFromSlot('${tournamentId}', '${team.id}')" style="background: var(--red); color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer;">Kick</button>`
-                        : '<span style="color:#444;">—</span>';
-                    html += `<td rowspan="${rowsPerTeam}" style="border-left: 1px solid #222; text-align:center; padding: 8px;">${actionBtn}</td>`;
+                    // Payment status badge
+                    const pStatus = team?.paymentStatus || "Empty";
+                    const pColor  = pStatus === "Paid" || pStatus === "verified"
+                        ? "#22c55e"
+                        : pStatus === "Pending Payment"
+                        ? "#fbbf24"
+                        : "#555";
+                    const pBg = pStatus === "Paid" || pStatus === "verified"
+                        ? "rgba(34,197,94,0.15)"
+                        : pStatus === "Pending Payment"
+                        ? "rgba(251,191,36,0.15)"
+                        : "transparent";
+                    
+                    // Action buttons
+                    const actionBtns = team ? `
+                        <div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:center;">
+                            <button onclick="moveToWaitlist('${tournamentId}','${team.id}')"
+                                style="background:#f59e0b;color:#000;border:none;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
+                                ⏳ Waitlist
+                            </button>
+                            <button onclick="kickTeamFromSlot('${tournamentId}','${team.id}')"
+                                style="background:#ef4444;color:#fff;border:none;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
+                                🚫 Kick
+                            </button>
+                            <button onclick="deleteSlot('${tournamentId}','${team.id}')"
+                                style="background:transparent;color:#ef4444;border:1px solid #ef4444;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
+                                🗑 Delete
+                            </button>
+                        </div>
+                    ` : `<span style="color:#444; font-size:11px;">—</span>`;
+                    
+                    html += `
+                        <td rowspan="${rowsPerTeam}" style="border-right:1px solid #222; text-align:center; padding:8px; font-weight:bold; color:${team ? "#aaa" : "#333"};">#${slot}</td>
+                        <td rowspan="${rowsPerTeam}" style="border-right:1px solid #222; padding:8px; font-weight:bold; color:${team ? "#fff" : "#333"};">
+                            ${teamDisplay} ${codeDisplay}
+                        </td>`;
+                    
+                    html += `<td style="padding:8px; color:${team ? "#9ca3af" : "#444"};">${escHtml(uidStr)}</td>`;
+                    html += `<td style="padding:8px; color:${team ? "#fff" : "#444"};">${escHtml(nickStr)}</td>`;
+                    
+                    html += `
+                        <td rowspan="${rowsPerTeam}" style="border-left:1px solid #222; text-align:center; padding:8px;">
+                            <span style="background:${pBg}; color:${pColor}; padding:3px 8px; border-radius:12px; font-size:10px; font-weight:bold; display:inline-block;">
+                                ${escHtml(pStatus)}
+                            </span>
+                        </td>
+                        <td rowspan="${rowsPerTeam}" style="border-left:1px solid #222; text-align:center; padding:8px;">
+                            ${actionBtns}
+                        </td>`;
+                } else {
+                    html += `<td style="padding:8px; color:#9ca3af;">${escHtml(uidStr)}</td>`;
+                    html += `<td style="padding:8px; color:#fff;">${escHtml(nickStr)}</td>`;
                 }
+                
                 html += `</tr>`;
             }
         }
+
         html += `</tbody></table>`;
         document.getElementById("table-container").innerHTML = html;
 
-        // Populate Waitlist
+        // ── Waitlist Queue ──────────────────────────────────────────────────
         const wlGrid = document.getElementById("waitlistGrid");
-        wlGrid.innerHTML = waitlisted.map((t, idx) => `
-            <div class="wl-row" style="display:flex; justify-content:space-between; align-items:center; background:#1a1a1a; padding:10px; border-radius:6px; margin-bottom:5px;">
-                <div>
-                    <span style="color:#888; margin-right:10px;">#${idx + 1}</span>
-                    <span style="color:#fff; font-weight:bold;">${escHtml(t.teamName)}</span>
+        if (waitlisted.length === 0) {
+            wlGrid.innerHTML = `<p style="color:#666; font-size:13px;">Queue is empty.</p>`;
+        } else {
+            wlGrid.innerHTML = waitlisted.map((t, idx) => `
+                <div class="wl-row" style="display:flex; justify-content:space-between; align-items:center; background:#1a1a1a; padding:10px 14px; border-radius:6px; margin-bottom:5px; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <span style="color:#555; margin-right:8px; font-size:11px;">#${idx + 1}</span>
+                        <span style="color:#fff; font-weight:bold;">${escHtml(t.teamName || "Unnamed Team")}</span>
+                        <span style="color:#555; font-size:11px; margin-left:6px;">${escHtml(t.teamCode || "")}</span>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button onclick="promoteFromWaitlist('${tournamentId}','${t.id}')"
+                            style="background:var(--blue);color:#fff;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;">
+                            ⬆ Promote
+                        </button>
+                        <button onclick="deleteSlot('${tournamentId}','${t.id}')"
+                            style="background:transparent;color:var(--red);border:1px solid var(--red);padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;">
+                            Remove
+                        </button>
+                    </div>
                 </div>
-                <button onclick="promoteFromWaitlist('${tournamentId}', '${t.id}')" style="background: var(--blue); color: #fff; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 11px;">Promote</button>
-            </div>
-        `).join('') || '<p style="color:#666;">Queue empty.</p>';
+            `).join("");
+        }
 
     } catch (e) {
-        console.error(e);
-        document.getElementById("table-container").innerHTML = `<p style="color:var(--red); padding:10px;">Error loading slots: ${e.message}</p>`;
+        console.error("[SLOTS]", e);
+        document.getElementById("table-container").innerHTML = `
+            <p style="color:var(--red); padding:15px; text-align:center;">Error loading slots: ${escHtml(e.message)}</p>
+        `;
     }
 };
 
 window.kickTeamFromSlot = async function(tournamentId, teamId) {
-    if(!confirm("Are you sure you want to kick this team and open up their slot?")) return;
+    if (!confirm("Kick this team? This will delete their slot and notify them.")) return;
     try {
-        await deleteDoc(doc(db, "tournaments", tournamentId, "participants", teamId));
-        showToast("Team removed from slot.", "success");
-        alert("Slot opened! Please promote the next team in the Waitlist Queue.");
-        manageTournamentSlots(tournamentId); // Refresh UI
-    } catch(e) { showToast(e.message, "error"); }
+        // Delete from slots (prefer) or participants
+        await deleteDoc(doc(db, "tournaments", tournamentId, "slots", teamId)).catch(() => {});
+        await deleteDoc(doc(db, "tournaments", tournamentId, "participants", teamId)).catch(() => {});
+        
+        // Notify the kicked team
+        await sendDualNotification(teamId, {
+            type:       "admin_notice",
+            title:      "❌ Removed from Tournament",
+            message:    "Your team has been removed from the tournament slot. Please contact admin for details.",
+            actionLink: `tournament=${tournamentId}`
+        });
+        
+        showToast("Team kicked & notified.", "success");
+        manageTournamentSlots(tournamentId); // Refresh
+        
+    } catch (e) {
+        showToast("Error: " + e.message, "error");
+    }
 };
 
 window.promoteFromWaitlist = async function(tournamentId, teamId) {
@@ -1874,5 +2031,243 @@ window.sendGlobalNotification = async function() {
     } catch (err) {
         console.error("Global notif error:", err);
         alert("Failed to send global notification.");
+    }
+};
+
+// =============================================================================
+// PART 3.3b — NEW SLOT ACTION FUNCTIONS (Kick, Waitlist, Delete)
+// APPEND TO BOTTOM of admin.js
+// =============================================================================
+
+window.moveToWaitlist = async function(tournamentId, teamId) {
+    if (!confirm("Move this team to the Waitlist? They will be notified.")) return;
+    try {
+        const slotRef = doc(db, "tournaments", tournamentId, "slots", teamId);
+        await updateDoc(slotRef, { paymentStatus: "Waitlist", waitlistedAt: serverTimestamp() });
+        
+        // Notify the team
+        await sendDualNotification(teamId, {
+            type:       "admin_notice",
+            title:      "⏳ Moved to Waitlist",
+            message:    "Your slot has been moved to the waitlist. You will be notified if a slot opens up.",
+            actionLink: `tournament=${tournamentId}`
+        });
+        
+        showToast("Team moved to waitlist & notified.", "success");
+        manageTournamentSlots(tournamentId); // Refresh
+        
+    } catch (e) {
+        showToast("Error: " + e.message, "error");
+    }
+};
+
+window.deleteSlot = async function(tournamentId, teamId) {
+    if (!confirm("Permanently delete this slot entry? This cannot be undone.")) return;
+    try {
+        // Try deleting from both /slots and /participants for backward compat
+        const promises = [
+            deleteDoc(doc(db, "tournaments", tournamentId, "slots", teamId)).catch(() => {}),
+            deleteDoc(doc(db, "tournaments", tournamentId, "participants", teamId)).catch(() => {})
+        ];
+        await Promise.all(promises);
+        
+        showToast("Slot deleted.", "success");
+        manageTournamentSlots(tournamentId); // Refresh
+        
+    } catch (e) {
+        showToast("Error deleting: " + e.message, "error");
+    }
+};
+
+// =============================================================================
+// PART 3.4 — 12-SLOT MANUAL LEADERBOARD GRID (Admin Side)
+// APPEND TO BOTTOM of admin.js
+// Call: window.renderAdminLeaderboardGrid(tournamentId)
+// =============================================================================
+
+window.renderAdminLeaderboardGrid = async function(tournamentId) {
+    const container = document.getElementById("adminLeaderboardGrid");
+    if (!container) {
+        console.warn("[LEADERBOARD] No #adminLeaderboardGrid element found in HTML");
+        return;
+    }
+
+    container.innerHTML = `
+        <div style="text-align:center; padding:20px; color:var(--green);">
+            ⏳ Loading leaderboard slots…
+        </div>
+    `;
+
+    try {
+        const lbRef  = collection(db, "tournaments", tournamentId, "leaderboard");
+        const snap   = await getDocs(query(lbRef, orderBy("rank", "asc")));
+        
+        const existing = {};
+        snap.forEach(d => { existing[d.data().rank] = d.data(); });
+
+        const rankStyles = {
+            1: { color: "gold",    bg: "rgba(255,215,0,0.08)",   border: "gold" },
+            2: { color: "silver",  bg: "rgba(192,192,192,0.06)", border: "silver" },
+            3: { color: "#cd7f32", bg: "rgba(205,127,50,0.06)",  border: "#cd7f32" },
+        };
+
+        let gridHtml = `
+            <div style="display:grid; grid-template-columns:1fr; gap:10px; max-width:780px; margin:0 auto;">
+                <div style="display:grid; grid-template-columns:50px 1fr 120px 120px 80px; gap:8px; padding:0 12px; margin-bottom:2px;">
+                    <span style="color:#444; font-size:11px; text-transform:uppercase;">Rank</span>
+                    <span style="color:#444; font-size:11px; text-transform:uppercase;">Team Name</span>
+                    <span style="color:#444; font-size:11px; text-transform:uppercase;">Score</span>
+                    <span style="color:#444; font-size:11px; text-transform:uppercase;">Kills</span>
+                    <span style="color:#444; font-size:11px; text-transform:uppercase;"></span>
+                </div>
+        `;
+
+        // ✅ FIX: Force exactly 12 rows — even if database has 0 entries
+        for (let rank = 1; rank <= 12; rank++) {
+            const data  = existing[rank] || {};
+            const style = rankStyles[rank] || { color: "#aaa", bg: "rgba(255,255,255,0.02)", border: "#2a2a2a" };
+
+            gridHtml += `
+                <div style="
+                    display:grid;
+                    grid-template-columns:50px 1fr 120px 120px 80px;
+                    gap:8px;
+                    align-items:center;
+                    background:${style.bg};
+                    border:1px solid ${style.border};
+                    border-left:4px solid ${style.color};
+                    border-radius:8px;
+                    padding:10px 12px;
+                ">
+                    <div style="font-weight:bold; font-size:17px; color:${style.color}; text-align:center;">#${rank}</div>
+                    
+                    <input type="text"
+                           id="lb_name_${rank}"
+                           value="${escHtml(data.teamName || "")}"
+                           placeholder="Team Name"
+                           style="padding:9px 10px; background:#0f0f0f; border:1px solid #333; color:#fff; border-radius:6px; font-family:inherit; font-size:13px; width:100%; box-sizing:border-box;"
+                    >
+                    
+                    <input type="number"
+                           id="lb_score_${rank}"
+                           value="${data.score !== undefined ? data.score : ""}"
+                           placeholder="Score"
+                           style="padding:9px 10px; background:#0f0f0f; border:1px solid #333; color:#fff; border-radius:6px; font-family:inherit; font-size:13px; width:100%; box-sizing:border-box;"
+                    >
+                    
+                    <input type="number"
+                           id="lb_kills_${rank}"
+                           value="${data.kills !== undefined ? data.kills : ""}"
+                           placeholder="Kills"
+                           style="padding:9px 10px; background:#0f0f0f; border:1px solid #333; color:#fff; border-radius:6px; font-family:inherit; font-size:13px; width:100%; box-sizing:border-box;"
+                    >
+                    
+                    <button onclick="window.saveLeaderboardRow('${tournamentId}', ${rank})"
+                            style="padding:9px 12px; background:var(--blue); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-family:inherit; font-size:13px; white-space:nowrap; transition:0.15s;"
+                            onmouseover="this.style.background='#60a5fa'"
+                            onmouseout="this.style.background='var(--blue)'">
+                        Save
+                    </button>
+                </div>
+            `;
+        }
+
+        gridHtml += `
+            </div>
+            <div style="margin-top:16px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                <button onclick="window.saveAllLeaderboardRows('${tournamentId}')"
+                        style="background:var(--green); color:#000; border:none; padding:11px 24px; border-radius:8px; cursor:pointer; font-weight:bold; font-family:inherit; font-size:14px;">
+                    💾 Save All Rows
+                </button>
+                <button onclick="window.clearLeaderboard('${tournamentId}')"
+                        style="background:transparent; color:var(--red); border:1px solid var(--red); padding:11px 24px; border-radius:8px; cursor:pointer; font-family:inherit; font-size:14px;">
+                    🗑 Clear Leaderboard
+                </button>
+            </div>
+        `;
+
+        container.innerHTML = gridHtml;
+
+    } catch (err) {
+        console.error("[LEADERBOARD]", err);
+        container.innerHTML = `
+            <div style="color:var(--red); text-align:center; padding:20px;">
+                ⚠️ Failed to load grid: ${escHtml(err.message)}
+            </div>
+        `;
+    }
+};
+
+window.saveLeaderboardRow = async function(tournamentId, rank) {
+    const tName = (document.getElementById(`lb_name_${rank}`)?.value  || "").trim();
+    const tScore = parseInt(document.getElementById(`lb_score_${rank}`)?.value) || 0;
+    const tKills = parseInt(document.getElementById(`lb_kills_${rank}`)?.value) || 0;
+
+    if (!tName) {
+        showToast(`Enter a team name for Rank #${rank}`, "warning");
+        return;
+    }
+
+    try {
+        await setDoc(
+            doc(db, "tournaments", tournamentId, "leaderboard", `rank_${rank}`),
+            {
+                rank:      rank,
+                teamName:  tName,
+                score:     tScore,
+                kills:     tKills,
+                updatedAt: serverTimestamp()
+            },
+            { merge: false }
+        );
+        showToast(`✅ Rank #${rank} — ${tName} saved!`, "success");
+    } catch (err) {
+        showToast(`Error saving Rank #${rank}: ${err.message}`, "error");
+    }
+};
+
+window.saveAllLeaderboardRows = async function(tournamentId) {
+    const batch = writeBatch(db);
+    let count = 0;
+    
+    for (let rank = 1; rank <= 12; rank++) {
+        const tName  = (document.getElementById(`lb_name_${rank}`)?.value || "").trim();
+        const tScore = parseInt(document.getElementById(`lb_score_${rank}`)?.value) || 0;
+        const tKills = parseInt(document.getElementById(`lb_kills_${rank}`)?.value) || 0;
+        
+        if (!tName) continue; // Skip empty rows
+        
+        batch.set(
+            doc(db, "tournaments", tournamentId, "leaderboard", `rank_${rank}`),
+            { rank, teamName: tName, score: tScore, kills: tKills, updatedAt: serverTimestamp() }
+        );
+        count++;
+    }
+    
+    if (count === 0) {
+        showToast("No rows to save — fill in at least one team name.", "warning");
+        return;
+    }
+    
+    try {
+        await batch.commit();
+        showToast(`✅ ${count} leaderboard rows saved!`, "success");
+    } catch (err) {
+        showToast("Error saving batch: " + err.message, "error");
+    }
+};
+
+window.clearLeaderboard = async function(tournamentId) {
+    if (!confirm("Clear entire leaderboard? This cannot be undone.")) return;
+    try {
+        const snap = await getDocs(collection(db, "tournaments", tournamentId, "leaderboard"));
+        const batch = writeBatch(db);
+        snap.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        showToast("Leaderboard cleared.", "success");
+        // Re-render empty grid
+        window.renderAdminLeaderboardGrid(tournamentId);
+    } catch (err) {
+        showToast("Error clearing: " + err.message, "error");
     }
 };
