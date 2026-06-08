@@ -27,19 +27,12 @@ import {
 const tournamentsRef = collection(db, "tournaments");
 const calendarRef    = collection(db, "calendarEvents");
 
+// ===============================
+// DEBUG MODE (MASTER SWITCH)
+// ===============================
+const DEBUG_MODE = true;
+if (!DEBUG_MODE) { console.log = () => {}; console.error = () => {}; console.warn = () => {}; console.info = () => {}; }
 
-const DEBUG = false;
-function log(...msg)   { if (DEBUG) console.log("[NPC DEBUG]", ...msg); }
-function warn(...msg)  { if (DEBUG) console.warn("[NPC WARN]", ...msg); }
-function error(...msg) { if (DEBUG) console.error("[NPC ERROR]", ...msg); }
-
-// ADD THIS TO SILENCE THE CONSOLE FOR SNOOPERS
-if (!DEBUG) {
-    console.log = function() {};
-    console.warn = function() {};
-    console.info = function() {};
-    // console.error is kept active ONLY for critical internal crash reports
-}
 // ===============================
 // GLOBAL STATE
 // ===============================
@@ -773,7 +766,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     title:          tournament.title,
                    eventDate:    tournament.eventDate || null,
                     teamName:       userProfile.teamName,
-                    status:         "pending_verification",
+                    status:         "pending",
                     registeredAt:   serverTimestamp()
                 });
 
@@ -865,6 +858,9 @@ window.showPaymentInterface = async function(tournamentId) {
             tournamentId, 
             tournament?.title || "Tournament",
             tournament?.entryFee || 0    // ← only change
+            tournament?.title || "Tournament", 
+            tournament?.entryFee || 0,
+            window.currentTournamentCategory === 'upcoming' // Pass isUpcoming flag
         );
     });
 };
@@ -3286,7 +3282,7 @@ async function showApprovedReviewInterface(tournamentId, userId) {
         document.getElementById("joinEntryFeeDisplay").textContent = tournament.entryFee;
         document.getElementById("paymentAmount").textContent = tournament.entryFee;
 
-        // ✅ FIXED DYNAMIC TIMING (UPCOMING)
+        // Consistent dynamic timing display
     const dateStr = tournament.eventDate ? new Date(tournament.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : "TBA";
     const timeStr = tournament.eventTime || "TBA";
     const joinStartTimeEl = document.getElementById("joinStartTime");
@@ -3301,35 +3297,44 @@ async function showApprovedReviewInterface(tournamentId, userId) {
         document.getElementById("joinDisplayCode").textContent = "Code: " + (userProfile.teamCode || "N/A");
         
       // Inside showApprovedReviewInterface in main.js
-const uidFields = [
-    { id: "uidPlayer1", val: regData.uids?.[0] || "", label: "Player 1 (Leader)", key: "p1" },
-    { id: "uidPlayer2", val: regData.uids?.[1] || "", label: "Player 2", key: "p2" },
-    { id: "uidPlayer3", val: regData.uids?.[2] || "", label: "Player 3", key: "p3" },
-    { id: "uidPlayer4", val: regData.uids?.[3] || "", label: "Player 4", key: "p4" },
-    { id: "uidPlayer5", val: regData.uids?.[4] || "", label: "Player 5 (Sub)", key: "p5" }
-];
+        // Populate and lock player UID/Nickname fields
+        const playersData = regData.playersData || [];
+        const verifiedStatus = regData.verifiedPlayers || {};
 
-const verifiedStatus = regData.verifiedPlayers || {}; // Added this line
+        for (let i = 1; i <= 5; i++) {
+            const player = playersData[i - 1];
+            const uidInput = document.getElementById(`uidPlayer${i}`);
+            const nickInput = document.getElementById(`nickPlayer${i}`);
+            const typeSelect = document.getElementById(`typePlayer${i}`);
+            const playerLabel = uidInput?.previousElementSibling;
 
-uidFields.forEach((field, index) => {
-    const input = document.getElementById(field.id);
-    if (input) {
-        input.value = field.val;
-        input.readOnly = true;
-        input.style.background = "#2a2a2a";
-        input.style.color = "#888";
-        
-        // Only show green checkmark if the Admin actually checked them off
-        const label = input.previousElementSibling;
-        if (label && field.val) {
-            if (verifiedStatus[field.key]) {
-                label.innerHTML = `${field.label} <span style="color:#00ff88;font-size:11px;">✓ Verified</span>`;
-            } else {
-                label.innerHTML = `${field.label} <span style="color:#ffd700;font-size:11px;">(Pending Verification)</span>`;
+            if (uidInput && player) {
+                uidInput.value = player.uid || "";
+                uidInput.readOnly = true;
+                uidInput.style.background = "#2a2a2a";
+                uidInput.style.color = "#888";
+                if (playerLabel) {
+                    playerLabel.innerHTML = playerLabel.innerHTML.split('<span')[0].trim(); // Clear old status
+                    if (verifiedStatus[`p${i}`]) {
+                        playerLabel.innerHTML += ` <span style="color:#00ff88;font-size:11px;">✓ Verified</span>`;
+                    } else {
+                        playerLabel.innerHTML += ` <span style="color:#ffd700;font-size:11px;">(Pending Verification)</span>`;
+                    }
+                }
+            }
+            if (nickInput && player) {
+                nickInput.value = player.nickname || "";
+                nickInput.readOnly = true;
+                nickInput.style.background = "#2a2a2a";
+                nickInput.style.color = "#888";
+            }
+            if (typeSelect && player) {
+                typeSelect.value = player.type || "friend";
+                typeSelect.disabled = true; // Disable select element
+                typeSelect.style.background = "#2a2a2a";
+                typeSelect.style.color = "#888";
             }
         }
-    }
-});
         
         // Fill locked contact details
         const phoneInput = document.getElementById("joinPhone");
@@ -4900,7 +4905,7 @@ window.createAccount = async function() {
         
 // ✅ NEW: Setup notifications after account is created
 try {
-    const { setupNotifications } = await import('../notificationService.js');
+    const { setupNotifications } = await import('./notificationService.js'); // Corrected path
     const result = await setupNotifications(db, auth);
     
     if (result.enabled) {

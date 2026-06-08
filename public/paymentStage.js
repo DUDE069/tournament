@@ -28,6 +28,7 @@ export function enterPaymentStage(userId, tournamentId, tournamentName, entryFee
   
   unsubPayment = onSnapshot(participantRef, (snap) => {
     const data = snap.data();
+    _isUpcomingTournament = isUpcoming; // Assign the passed flag
     if (!data) return;
     renderPaymentUI(data, tournamentName, tournamentId, entryFee); 
   });
@@ -153,19 +154,43 @@ async function handlePaymentSuccess(tournamentId, response) {
   }
 
   try {
-    const { razorpay_payment_id, razorpay_order_id } = response;
+    const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = response;
 
-    // Preserve original flow while matching FIX-02 server parameters
+    console.log("[PAYMENT] Sending verification request to backend...");
+    const verificationResponse = await fetch('https://npc-secure-backend.onrender.com/verify-payment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: _currentUserId,
+        tournamentId: tournamentId,
+        razorpay_payment_id: razorpay_payment_id,
+        razorpay_order_id: razorpay_order_id,
+        razorpay_signature: razorpay_signature,
+        isUpcoming: _isUpcomingTournament // Pass the isUpcoming flag
+      })
+    });
+
+    const verificationResult = await verificationResponse.json();
+    console.log("[PAYMENT] Backend verification response:", verificationResult);
+
+    if (!verificationResponse.ok || !verificationResult.success) {
+      console.error("[PAYMENT] Backend verification failed:", verificationResult.message || "Unknown error");
+      showToast(`Payment verification failed: ${verificationResult.message || "Please contact support."}`, "error");
+      // Optionally, update Firestore with a 'failed' status here if needed
+      return;
+    }
+
+    // If backend verification is successful, update Firestore
     await setDoc(
-      doc(db, 'tournaments', tournamentId, 'participants', _currentUserId),
+      doc(db, 'tournaments', tournamentId, 'participants', _currentUserId), // Assuming this is the main participant record
       {
-        paymentStatus: 'verified', // Updates your status block instantly
+        paymentStatus: 'verified',
         razorpayPaymentId: razorpay_payment_id,
-        razorpayOrderId: razorpay_order_id || response.razorpay_order_id || "",
+        razorpayOrderId: razorpay_order_id,
         paidAt: serverTimestamp(),
-        userId: _currentUserId
+        userId: _currentUserId,
       },
-      { merge: true }  
+      { merge: true }
     );
 
     showToast("✅ Payment Verified!", "success");
