@@ -612,6 +612,7 @@ window.closeJoinModal = function() {
     document.getElementById('registrationContainer').style.display = 'none';
     window.currentJoiningTournament = null;
 
+    window.currentTournamentCategory = null; // FIX: Reset category on modal close
     if (window.headerTimerInterval) {
         clearInterval(window.headerTimerInterval);
         window.headerTimerInterval = null;

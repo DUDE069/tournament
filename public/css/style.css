@@ -1463,9 +1463,10 @@ button, .dash-card, .role-card {
   padding: 0;
   border-radius: 16px;
   width: 90%;
-  max-width: 560px;
-  max-height: 85vh;
-  overflow: hidden;
+  max-width: 560px; /* Keep max-width for desktop sizing */
+  /* Removed max-height and overflow:hidden to allow inner content to scroll */
+  /* max-height: 85vh; */
+  /* overflow: hidden; */
   position: relative;
   display: flex;
   flex-direction: column;
