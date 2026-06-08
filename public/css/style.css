@@ -1428,12 +1428,10 @@ button, .dash-card, .role-card {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.85);
   background: rgba(0, 0, 0, 0.88);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   justify-content: center;
-  align-items: center;
   /* Change from center to flex-start to allow scrolling */
   align-items: flex-start; 
   z-index: 1000;
@@ -1469,10 +1467,6 @@ button, .dash-card, .role-card {
   padding: 0;
   border-radius: 16px;
   width: 90%;
-  max-width: 560px; /* Keep max-width for desktop sizing */
-  /* Removed max-height and overflow:hidden to allow inner content to scroll */
-  /* max-height: 85vh; */
-  /* overflow: hidden; */
   max-width: 600px;
   overflow: visible; 
   position: relative;

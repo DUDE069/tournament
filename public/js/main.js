@@ -109,6 +109,23 @@ window.handleUpcomingRegister = async function(tournamentId) {
     const tournament = tournaments.find(t => t.id === tournamentId);
     if (!tournament) { showMessage("Tournament not found"); return; }
 
+    // NEW: Check if user already submitted for upcoming tournament
+    try {
+        const existingSnap = await getDoc(
+            doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid)
+        );
+
+        if (existingSnap.exists()) {
+            const existing = existingSnap.data();
+            // Use the status modal to show they are already registered/accepted
+            showAlreadyAppliedModal(existing, tournamentId, tournament, 'upcoming');
+            return; 
+        }
+    } catch (checkErr) {
+        console.warn("Could not check existing upcoming application:", checkErr.message);
+    }
+    // END NEW CHECK
+
     // Check if user has team (required)
     if (!userProfile?.teamId) {
         showMessage("Please create or join a team first!");
