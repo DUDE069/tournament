@@ -4096,8 +4096,10 @@ window.renderProfileContent = async function(content) {
                 const age       = mData.age       || "—";
                 const gameRole  = mData.gameRole  || "All-Rounder";
                 const gameEmoji = roleEmoji[gameRole] || "🎮";
-
-                const teamRoleLabel = isLeader ? "👑 Team Leader" : `👥 Member ${memberNum++}`;
+                
+                const teamRoleLabel = isLeader
+                    ? (uid === currentUser.uid ? "👑 You are the Team Leader" : "👑 Team Leader")
+                    : "👥 Team Member"; // Simplified, removed memberNum++
                 const borderColor   = isLeader ? "#ffd700"            : "#222";
                 const bgColor       = isLeader ? "rgba(255,215,0,0.06)" : "#111";
                 const accentColor   = isLeader ? "#ffd700"            : "#00ff88";
