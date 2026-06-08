@@ -3232,16 +3232,27 @@ async function showApprovedReviewInterface(tournamentId, userId) {
     
     // Fetch the submitted data from pendingPayment
     try {
-        const pendingRef = doc(db, "users", userId, "pendingPayment", tournamentId);
-        const pendingSnap = await getDoc(pendingRef);
+        let regData = null;
+        let isUpcoming = false;
+
+        // First, try to fetch from pendingPayment (for ongoing tournaments)
+        let snap = await getDoc(doc(db, "users", userId, "pendingPayment", tournamentId));
+        if (snap.exists()) {
+            regData = snap.data();
+        } else {
+            // If not found in pendingPayment, try upcomingRegistrations (for upcoming tournaments)
+            snap = await getDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId));
+            if (snap.exists()) {
+                regData = snap.data();
+                isUpcoming = true;
+            }
+        }
         const tournament = tournaments.find(t => t.id === tournamentId);
         
-        if (!pendingSnap.exists() || !tournament) {
+        if (!regData || !tournament) {
             showMessage("Registration data not found");
             return;
         }
-        
-        const regData = pendingSnap.data();
         
         // Open the join modal but show review state
         document.getElementById("joinTournamentModal").style.display = "block";
@@ -3263,7 +3274,7 @@ async function showApprovedReviewInterface(tournamentId, userId) {
     const timeStr = tournament.eventTime || "TBA";
     const joinStartTimeEl = document.getElementById("joinStartTime");
     if (joinStartTimeEl) {
-        joinStartTimeEl.textContent = `${dateStr} at ${timeStr}`;
+        joinStartTimeEl.textContent = `${dateStr} at ${timeStr}`; // Consistent display for both
     }
         
         // Fill locked user data (NON-EDITABLE)
@@ -3321,7 +3332,7 @@ uidFields.forEach((field, index) => {
         }
         
        document.getElementById('player5Container').style.display = 'none';
-const isUpcoming = tournament.category === 'upcoming';
+// const isUpcoming = tournament.category === 'upcoming'; // Already determined above
 const guidelinesLabel = document.querySelector('label[for="agreeGuidelines"] p');
 const agreeCheckbox = document.getElementById('agreeGuidelines');
 

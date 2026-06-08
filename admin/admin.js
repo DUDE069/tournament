@@ -1585,6 +1585,107 @@ window.executeGlobalSearch = async function() {
     }
 };
 
+// NEW FEATURE: Global Team Code Search
+window.searchTeamByCode = async function() {
+    const teamCodeInput = document.getElementById("globalTeamCodeSearchInput");
+    const teamCode = teamCodeInput?.value.trim().toUpperCase();
+
+    if (!teamCode) {
+        showToast("Please enter a team code.", "warning");
+        return;
+    }
+
+    try {
+        const teamsQuery = query(collection(db, "teams"), where("code", "==", teamCode));
+        const teamSnap = await getDocs(teamsQuery);
+
+        if (teamSnap.empty) {
+            showToast(`Team with code "${teamCode}" not found.`, "error");
+            return;
+        }
+
+        const teamData = teamSnap.docs[0].data();
+        openTeamDetailsModal(teamData.teamId);
+
+    } catch (e) {
+        console.error("Error searching team by code:", e);
+        showToast("Error searching team: " + e.message, "error");
+    }
+};
+
+// NEW FUNCTION: openTeamDetailsModal - Displays comprehensive team details
+window.openTeamDetailsModal = async function(teamId) {
+    document.getElementById("teamDetailsModalOverlay")?.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "teamDetailsModalOverlay";
+    overlay.className = "status-modal-overlay"; // Reuse existing modal overlay styles
+
+    overlay.innerHTML = `
+        <div class="status-modal" style="max-width:600px;width:100%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <h3 style="color:var(--blue); margin:0;">👥 Team Details</h3>
+                <button onclick="document.getElementById('teamDetailsModalOverlay').remove()" style="background:transparent;border:none;color:#888;font-size:20px;cursor:pointer;">✖</button>
+            </div>
+            <div id="teamDetailsContent" style="max-height:70vh; overflow-y:auto; padding-right:10px;">
+                <p style="color:#888; text-align:center; padding:20px;">Loading team data…</p>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    try {
+        const teamDoc = await getDoc(doc(db, "teams", teamId));
+        if (!teamDoc.exists()) {
+            document.getElementById("teamDetailsContent").innerHTML = `<p style="color:var(--red); text-align:center;">Team data not found.</p>`;
+            return;
+        }
+        const teamData = teamDoc.data();
+
+        let membersHtml = `<p style="color:#888;">No members found.</p>`;
+        if (Array.isArray(teamData.members) && teamData.members.length > 0) {
+            const memberPromises = teamData.members.map(uid => getDoc(doc(db, "users", uid)));
+            const memberSnaps = await Promise.all(memberPromises);
+            membersHtml = memberSnaps.map(snap => {
+                if (!snap.exists()) return `<div style="color:#888;">Unknown User (UID: ${snap.id})</div>`;
+                const u = snap.data();
+                const isLeader = u.uid === teamData.leaderId;
+                return `
+                    <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;margin-bottom:5px;border-left:3px solid ${isLeader ? 'var(--gold)' : '#333'};">
+                        <span style="color:#fff;font-weight:bold;">${escHtml(u.nickname || u.email?.split('@')[0] || 'N/A')}</span>
+                        ${isLeader ? '<span style="color:var(--gold);font-size:11px;margin-left:8px;">👑 Leader</span>' : ''}
+                        <br><small style="color:#888;">Email: ${escHtml(u.email || 'N/A')}</small>
+                        <br><small style="color:#888;">UID: ${escHtml(u.uid || 'N/A')}</small>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        document.getElementById("teamDetailsContent").innerHTML = `
+            <div style="display:grid;gap:10px;margin-bottom:20px;">
+                <div class="status-row"><span class="s-label">Team Name</span><span class="s-value">${escHtml(teamData.teamName || 'N/A')}</span></div>
+                <div class="status-row"><span class="s-label">Team Code</span><span class="s-value" style="color:var(--gold);font-weight:bold;">${escHtml(teamData.code || 'N/A')}</span></div>
+                <div class="status-row"><span class="s-label">Leader ID</span><span class="s-value">${escHtml(teamData.leaderId || 'N/A')}</span></div>
+                <div class="status-row"><span class="s-label">Members</span><span class="s-value">${teamData.members?.length || 0}/${teamData.maxMembers || 0}</span></div>
+                <div class="status-row"><span class="s-label">Created At</span><span class="s-value">${teamData.createdAt?.toDate?.()?.toLocaleString("en-IN") || 'N/A'}</span></div>
+            </div>
+            <h4 style="color:#fff;margin-top:20px;margin-bottom:10px;border-bottom:1px solid #222;padding-bottom:5px;">Team Roster</h4>
+            ${membersHtml}
+        `;
+
+    } catch (e) {
+        console.error("Error loading team details:", e);
+        document.getElementById("teamDetailsContent").innerHTML = `<p style="color:var(--red); text-align:center;">Error loading team details: ${escHtml(e.message)}</p>`;
+    }
+};
+
+// Add this to your existing admin.js file, perhaps near other global search functions
+// or at the end of the file.
+// You'll also need to add an input field and button to your admin/index.html
+// For example:
+// <input type="text" id="globalTeamCodeSearchInput" placeholder="Search Team Code">
+// <button onclick="searchTeamByCode()">Search Team</button>
+
 // ==========================================
 // SLOT & WAITLIST MANAGEMENT
 // ==========================================
