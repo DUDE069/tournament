@@ -5609,7 +5609,7 @@ window.requestPushPermissions = async function() {
 window._registerServiceWorker = function() {
     if (!("serviceWorker" in navigator)) return;
     navigator.serviceWorker.register("/firebase-messaging-sw.js").then(reg => { window._swRegistration = reg; })
-    .catch(() => navigator.serviceWorker.register("/sw.js").then(reg => { window._swRegistration = reg; }));
+    .catch((err) => console.warn("Service Worker registration failed (fallback to /sw.js removed):", err));
 };
 
 window.triggerPushNotification = function(title, body, options = {}) {

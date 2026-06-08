@@ -64,19 +64,17 @@ section {
 /* TOP BAR & NAVBAR */
 /* ============================= */
 .welcome-text {
-    position: sticky;
     text-align: center;
-    top: 0;
     background: var(--bg-main);
-    /* ✅ Stays at 1000 — modals at 10000+ will always clear it */
-    z-index: 1000;
+    /* Removed sticky positioning; this element will now scroll with the page */
     border-bottom: 2px solid var(--npc-blue);
     padding: 10px 0;
 }
 
 .navbar {
     position: sticky;
-    top: 42px; /* ✅ FIX: Height of welcome-text (~42px); adjust if yours differs */
+    /* Now sticky at the very top, as welcome-text is no longer sticky */
+    top: 0;
     /* ✅ Stays at 999 — clearly below all overlays */
     z-index: 999;
     background: var(--bg-secondary);
@@ -426,9 +424,9 @@ section {
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
     /* ✅ FIX: The OVERLAY must scroll, not the inner popup-content */
-    overflow-y: auto;
+    overflow-y: auto; /* This is correct, the overlay itself should scroll */
     /* Padding creates safe zone so content doesn't hide behind sticky nav */
-    padding: 110px 16px 30px;
+    padding: 70px 16px 30px; /* Adjusted padding-top to clear the navbar (now at top:0) */
     /* ✅ FIX: z-index MUST be higher than sticky nav (z-index 999/1000) */
     z-index: 10000;
     box-sizing: border-box;
@@ -436,7 +434,7 @@ section {
 
 .dashboard-popup.active {
     display: flex;
-    align-items: flex-start; /* ✅ FIX: NOT center — center causes scroll lock on tall content */
+    align-items: flex-start; /* Ensure content starts from top, allowing scroll within the overlay */
     justify-content: center;
     animation: fadeIn 0.25s ease;
 }
@@ -448,11 +446,11 @@ section {
     padding: 2rem;
     width: 100%;
     max-width: 560px;
-    /* ✅ FIX: margin:auto centers it within flex when it's shorter than viewport */
     margin: auto;
-    /* ✅ FIX: max-height prevents content from escaping viewport. The overlay scrolls, not this. */
-    max-height: none; /* Let the overlay scroll, not the popup */
-    position: relative;
+    /* Removed max-height and overflow:hidden to allow the popup-body to handle scrolling */
+    /* max-height: none; */
+    /* overflow: visible; */
+    position: relative; /* Keep position relative for child absolute positioning */
     box-shadow: 0 20px 60px rgba(0,0,0,0.7);
     border: 1px solid rgba(255,255,255,0.06);
     /* ✅ FIX: webkit smooth scrolling for iOS */
@@ -860,11 +858,9 @@ section {
     }
 
     .navbar {
-        position: sticky !important;
-        top: 0 !important;
         flex-direction: column;
-        padding: 10px 15px !important;
-        z-index: 999 !important;
+        padding: 10px 15px !important; /* Keep mobile-specific padding */
+        /* position, top, and z-index are now handled by the main .navbar rule */
     }
 
    .welcome-text {
