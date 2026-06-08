@@ -1930,12 +1930,42 @@ window.kickTeamFromSlot = async function(tournamentId, teamId) {
 };
 
 window.promoteFromWaitlist = async function(tournamentId, teamId) {
-    if(!confirm("Promote this team to an active slot? This will notify them to pay.")) return;
-    showToast("Team promoted! Notification dispatched.", "success");
-    await sendDualNotification(teamId, {
-        type: "admin_notice", title: "🎉 Slot Opened!", message: "You have been promoted from the waitlist. Please pay your entry fee now to secure your slot.", actionLink: `tournament=${tournamentId}`
-    });
-    manageTournamentSlots(tournamentId);
+    const slotNumberStr = prompt("Enter the slot number (1-12) to assign this team:");
+    if (!slotNumberStr) return;
+
+    const slotNumber = parseInt(slotNumberStr);
+    if (isNaN(slotNumber) || slotNumber < 1 || slotNumber > 12) {
+        showToast("Invalid slot number. Please enter a number between 1 and 12.", "warning");
+        return;
+    }
+
+    if (!confirm(`Promote this team to Slot #${slotNumber}? This will notify them to pay.`)) return;
+
+    try {
+        const slotRef = doc(db, "tournaments", tournamentId, "slots", teamId);
+        
+        // Actually update the database status
+        await updateDoc(slotRef, {
+            paymentStatus: "Pending Payment",
+            assignedSlot: slotNumber,
+            promotedAt: serverTimestamp()
+        });
+
+        // Send the dual notification (In-app + Push)
+        await sendDualNotification(teamId, {
+            type: "admin_notice", 
+            title: `🎉 Slot #${slotNumber} Opened!`, 
+            message: `Your team has been promoted from the waitlist to Slot #${slotNumber}. Please pay your entry fee now to secure your spot.`, 
+            actionLink: `tournament=${tournamentId}`
+        });
+
+        showToast(`Team promoted to Slot #${slotNumber} & notified!`, "success");
+        
+        // Refresh the UI
+        manageTournamentSlots(tournamentId);
+    } catch (e) {
+        showToast("Error promoting team: " + e.message, "error");
+    }
 };
 
 // Global function to make the new Search Input work beautifully

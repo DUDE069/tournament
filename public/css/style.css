@@ -79,6 +79,7 @@ section {
     z-index: 999;
     background: var(--bg-secondary);
     display: flex;
+    flex-wrap: wrap; /* Allows menu to wrap instead of cutting off */
     justify-content: space-between;
     align-items: center;
     padding: 15px 5%;
@@ -1428,13 +1429,18 @@ button, .dash-card, .role-card {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.88);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   justify-content: center;
   align-items: center;
+  /* Change from center to flex-start to allow scrolling */
+  align-items: flex-start; 
   z-index: 1000;
   opacity: 0;
   transition: opacity 0.3s ease;
+  overflow-y: auto; 
+  padding: 80px 16px 40px; 
 }
 
 .dashboard-popup.active {
@@ -1467,6 +1473,8 @@ button, .dash-card, .role-card {
   /* Removed max-height and overflow:hidden to allow inner content to scroll */
   /* max-height: 85vh; */
   /* overflow: hidden; */
+  max-width: 600px;
+  overflow: visible; 
   position: relative;
   display: flex;
   flex-direction: column;
