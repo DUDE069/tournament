@@ -270,21 +270,40 @@ function renderTournaments() {
     tournaments.forEach((t) => {
         if (!t.title) return;
 
-        // NEW: Bulletproof Room ID Watcher for all active tournaments
+       // WITH THIS
+        // NEW: Bulletproof Room ID & Message Watcher for all active tournaments
         if (typeof currentUser !== 'undefined' && currentUser && !activeParticipantListeners[t.id]) {
             const pRef = doc(db, "tournaments", t.id, "participants", currentUser.uid);
             activeParticipantListeners[t.id] = onSnapshot(pRef, async (snap) => {
                 if (!snap.exists()) return; // Document deleted, no longer relevant
                 const data = snap.data();
-                if (data.roomId && data.roomPassword && data.roomPopupShown !== true && !sessionStorage.getItem("room_seen_" + t.id)) {
-                    sessionStorage.setItem("room_seen_" + t.id, "true");
-                    if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
-                    showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
-                        document.getElementById('customPopup')?.remove();
-                        navigator.clipboard.writeText(`Room ID: ${data.roomId} | Password: ${data.roomPassword}`);
-                        if (typeof showMessage === 'function') showMessage("Room details copied to clipboard!");
-                    });
-                    try { await updateDoc(snap.ref, { roomPopupShown: true }); } catch(e){}
+                
+                // Room ID Check (Hash-based to allow updates from admin)
+                if (data.roomId && data.roomPassword && data.roomPopupShown !== true) {
+                    const roomHash = String(data.roomId) + String(data.roomPassword);
+                    if (sessionStorage.getItem("room_seen_" + t.id) !== roomHash) {
+                        sessionStorage.setItem("room_seen_" + t.id, roomHash);
+                        if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
+                        showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
+                            document.getElementById('customPopup')?.remove();
+                            navigator.clipboard.writeText(`Room ID: ${data.roomId}\nPassword: ${data.roomPassword}`);
+                            if (typeof showMessage === 'function') showMessage("Room details copied to clipboard!");
+                        });
+                        try { await updateDoc(snap.ref, { roomPopupShown: true }); } catch(e){}
+                    }
+                }
+
+                // Status Message Check (Specific Admin Messages)
+                if (data.statusMessage && data.statusMessageShown !== true) {
+                    const msgHash = String(data.statusMessage);
+                    if (sessionStorage.getItem("status_seen_" + t.id) !== msgHash) {
+                        sessionStorage.setItem("status_seen_" + t.id, msgHash);
+                        if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
+                        showPopup("success", data.statusMessage, "Got it", () => {
+                            document.getElementById('customPopup')?.remove();
+                        });
+                        try { await updateDoc(snap.ref, { statusMessageShown: true }); } catch(e){}
+                    }
                 }
             });
         }
@@ -1352,44 +1371,10 @@ onAuthStateChanged(auth, async (user) => {
         window.listenForApprovals(user.uid);
         window.requestPushPermissions();
 
+       // WITH THIS
         // Initialize Notification UI (Activates the Bell Icon, Panel, and Badges)
+        // (This function safely handles all notifications, sounds, popups, and inbox updates)
         initNotifications();
-
-        // Global Real-Time Notification Listener
-
-        // Global Real-Time Notification Listener
-        onSnapshot(collection(db, "users", user.uid, "notifications"), (snap) => {
-            snap.docChanges().forEach(async (change) => {
-                // Loosen the filter to include 'modified' events
-                if (change.type === "added" || change.type === "modified") {
-                    const notif = change.doc.data();
-                    const notifId = change.doc.id;
-                    
-                    // ... (existing notification logic from previous fix) ...
-                    if (!notif.read && !notif.popupShown && !sessionStorage.getItem("notif_seen_" + notifId)) {
-                        sessionStorage.setItem("notif_seen_" + notifId, "true");
-                        // Safe audio playback fallback
-                        if (typeof window.playCustomSound === 'function') window.playCustomSound(notif.type);
-                        
-                        showPopup("success", notif.message || notif.title || "New Notification", "View", async () => {
-                            document.getElementById('customPopup')?.remove();
-                            if (notif.actionLink) window.handleNotificationClick(notifId, notif.actionLink, notif.type);
-                            if (notif.actionLink) {
-                                window.handleNotificationClick(notifId, notif.actionLink, notif.type);
-                            } else {
-                                // Fallback: Open the notification panel if no specific action link exists
-                                if (typeof window.toggleNotifications === 'function') window.toggleNotifications();
-                            }
-                        });
-                        try {
-                            await updateDoc(change.doc.ref, { popupShown: true });
-                        } catch (e) { 
-                            console.error("❌ Error updating popupShown flag:", e); 
-                        }
-                    }
-                }
-            });
-        });
 
         // Sync local registration state and manage Participant Listeners
         onSnapshot(collection(db, "users", user.uid, "upcomingRegistrations"), (snap) => {
@@ -1416,24 +1401,46 @@ onAuthStateChanged(auth, async (user) => {
                             const data = participantSnap.data();
                             console.log(`[PARTICIPANT LISTENER] Real-time update for participant in ${tournamentId}:`, data);
 
+                            // WITH THIS
                             // Room ID Check
-                            if (data.roomId && data.roomPassword && data.roomPopupShown !== true && !sessionStorage.getItem("room_seen_" + tournamentId)) {
-                                sessionStorage.setItem("room_seen_" + tournamentId, "true");
-                                if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
-                                showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
-                                    document.getElementById('customPopup')?.remove();
-                                    navigator.clipboard.writeText(`Room ID: ${data.roomId}\nPassword: ${data.roomPassword}`).then(() => {
-                                        showMessage("Room details copied to clipboard!", "success");
-                                    }).catch(err => {
-                                        console.error("Failed to copy room details:", err);
-                                        showMessage("Failed to copy room details.", "error");
+                            if (data.roomId && data.roomPassword && data.roomPopupShown !== true) {
+                                const roomHash = String(data.roomId) + String(data.roomPassword);
+                                if (sessionStorage.getItem("room_seen_" + tournamentId) !== roomHash) {
+                                    sessionStorage.setItem("room_seen_" + tournamentId, roomHash);
+                                    if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
+                                    showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
+                                        document.getElementById('customPopup')?.remove();
+                                        navigator.clipboard.writeText(`Room ID: ${data.roomId}\nPassword: ${data.roomPassword}`).then(() => {
+                                            showMessage("Room details copied to clipboard!", "success");
+                                        }).catch(err => {
+                                            console.error("Failed to copy room details:", err);
+                                            showMessage("Failed to copy room details.", "error");
+                                        });
                                     });
-                                });
-                                // Mark as shown
-                                try {
-                                    await updateDoc(participantSnap.ref, { roomPopupShown: true });
-                                } catch (e) {
-                                    console.error("❌ Error updating roomPopupShown flag:", e);
+                                    // Mark as shown
+                                    try {
+                                        await updateDoc(participantSnap.ref, { roomPopupShown: true });
+                                    } catch (e) {
+                                        console.error("❌ Error updating roomPopupShown flag:", e);
+                                    }
+                                }
+                            }
+
+                            // Status Message Check
+                            if (data.statusMessage && data.statusMessageShown !== true) {
+                                const msgHash = String(data.statusMessage);
+                                if (sessionStorage.getItem("status_seen_" + tournamentId) !== msgHash) {
+                                    sessionStorage.setItem("status_seen_" + tournamentId, msgHash);
+                                    if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
+                                    showPopup("success", data.statusMessage, "Got it", () => {
+                                        document.getElementById('customPopup')?.remove();
+                                    });
+                                    // Mark as shown
+                                    try {
+                                        await updateDoc(participantSnap.ref, { statusMessageShown: true });
+                                    } catch (e) {
+                                        console.error("❌ Error updating statusMessageShown flag:", e);
+                                    }
                                 }
                             }
 
@@ -3042,6 +3049,7 @@ function renderNotificationList(docs, listEl) {
         return;
     }
 
+   // WITH THIS
     // FIXED: Changed 'approved' to 'approval' to match the Admin panel
     const iconMap = {
         approval:          '✓', 
@@ -3052,7 +3060,9 @@ function renderNotificationList(docs, listEl) {
         payment:           '💳',
         team_stage_locked: '🔒',
         limited_start:     '⚡',
-        upcoming_approved: '✓'
+        upcoming_approved: '✓',
+        status_message:    '💬',
+        room_details:      '🔑'
     };
 
     const colorMap = {
@@ -3064,9 +3074,10 @@ function renderNotificationList(docs, listEl) {
         payment:           '#ffd700',
         team_stage_locked: '#4a90e2',
         limited_start:     '#ffd700',
-        upcoming_approved: '#00ff88'
+        upcoming_approved: '#00ff88',
+        status_message:    '#3b82f6',
+        room_details:      '#ffd700'
     };
-
     listEl.innerHTML = docs.map(d => {
         const n     = d.data();
         const color = colorMap[n.type] || '#4a90e2';
