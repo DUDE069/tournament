@@ -5642,6 +5642,7 @@ window._addPayLaterNotification = async function(tournamentId, tournamentName, e
 window.requestPushPermissions = async function() {
     if (!("Notification" in window)) return;
     if (Notification.permission === "granted") { window._registerServiceWorker(); return; }
+    if (Notification.permission === "granted") { window._registerServiceWorker({ type: 'module' }); return; }
     if (Notification.permission === "default") {
         if (sessionStorage.getItem("npc_push_asked")) return;
         sessionStorage.setItem("npc_push_asked", "1");
@@ -5653,6 +5654,8 @@ window.requestPushPermissions = async function() {
 window._registerServiceWorker = function() {
     if (!("serviceWorker" in navigator)) return;
     navigator.serviceWorker.register("/firebase-messaging-sw.js").then(reg => { window._swRegistration = reg; })
+    if (!("serviceWorker" in navigator)) return; // Ensure the function accepts the options
+    navigator.serviceWorker.register("/firebase-messaging-sw.js", { type: 'module' }).then(reg => { window._swRegistration = reg; })
     .catch((err) => console.warn("Service Worker registration failed (fallback to /sw.js removed):", err));
 };
 
