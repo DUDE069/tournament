@@ -49,7 +49,7 @@ export async function initializeFCM(app) {
         }
 
         // ⚠️ REPLACE WITH YOUR ACTUAL VAPID KEY
-        const VAPID_KEY = "YOUR_VAPID_KEY_HERE"; 
+        const VAPID_KEY = "BOUPsaw7DyjJl2VZx4yci5iFrixgZkyhSslGZQkVYemYmyj4i1AOhECUf2SZAgpZsf12EfxZ76FOYz9VQkyBqeY"; 
 
         const token = await getToken(messaging, { vapidKey: VAPID_KEY });
 

@@ -5,16 +5,16 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { getMessaging, onBackgroundMessage } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js';
 
 // Your Firebase config - paste from Firebase Console → Project Settings
-firebase.initializeApp({
+const firebaseConfig = { // Define firebaseConfig
     apiKey: "AIzaSyAVmkZLnhoxR15k3OxK5ApcxzKz5zFm2SI",
     authDomain: "npc-esports-c3adb.firebaseapp.com",
     projectId: "npc-esports-c3adb",
     storageBucket: "npc-esports-c3adb.firebasestorage.app",
     messagingSenderId: "404452164488",
     appId: "1:404452164488:web:03179cbf527d28a3b6303d"
-});
+};
 
-const app = initializeApp(firebaseConfig); // Initialize modular app
+const app = initializeApp(firebaseConfig); // Initialize modular app with the defined config
 const messaging = getMessaging(app); // Get modular messaging instance
 
 // Handle background push notifications

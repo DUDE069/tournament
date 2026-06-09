@@ -23,6 +23,8 @@ import {
     EmailAuthProvider
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
+import { setupNotifications } from './notificationService.js'; // NEW: Import notification setup
+
 
 const tournamentsRef = collection(db, "tournaments");
 const calendarRef    = collection(db, "calendarEvents");
@@ -1302,6 +1304,14 @@ onAuthStateChanged(auth, async (user) => {
         // Only start PRIVATE listeners here
         initNotifications();
         
+        // NEW: Safely call setupNotifications on login
+        try {
+            // The 'app' object can be accessed via auth.app
+            await setupNotifications(auth.app, db, auth);
+            console.log("[NOTIF SETUP] Notifications initialized on login.");
+        } catch (error) {
+            console.error("[NOTIF SETUP ERROR]:", error);
+        }
         // ✅ Part 4.1: Acceptance and Push wiring
         window.listenForApprovals(user.uid);
         window.requestPushPermissions();
