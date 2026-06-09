@@ -1,8 +1,8 @@
 // firebase-messaging-sw.js
 // Place this file in your public/ folder (same level as index.html)
 
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js');
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js');
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getMessaging, onBackgroundMessage } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js';
 
 // Your Firebase config - paste from Firebase Console → Project Settings
 firebase.initializeApp({
@@ -14,10 +14,11 @@ firebase.initializeApp({
     appId: "1:404452164488:web:03179cbf527d28a3b6303d"
 });
 
-const messaging = firebase.messaging();
+const app = initializeApp(firebaseConfig); // Initialize modular app
+const messaging = getMessaging(app); // Get modular messaging instance
 
 // Handle background push notifications
-messaging.onBackgroundMessage((payload) => {
+onBackgroundMessage(messaging, (payload) => { // Use modular onBackgroundMessage
     console.log('[FCM SW] Background message received:', payload);
 
     const { title, body, icon } = payload.notification || payload.data || {};

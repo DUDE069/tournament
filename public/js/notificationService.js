@@ -44,7 +44,7 @@ export async function initializeFCM(app) {
         messaging = getMessaging(app);
 
         if ('serviceWorker' in navigator) {
-            const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+            const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { type: 'module' }); // Register as a module
             console.log("[FCM] Service worker registered");
         }
 
