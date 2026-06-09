@@ -2,7 +2,7 @@
 // Place this file in your public/ folder (same level as index.html)
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getMessaging, onBackgroundMessage } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js';
+import * as messagingModule from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js'; // Import as a module object
 
 // Your Firebase config - paste from Firebase Console → Project Settings
 const firebaseConfig = { // Define firebaseConfig
@@ -15,10 +15,10 @@ const firebaseConfig = { // Define firebaseConfig
 };
 
 const app = initializeApp(firebaseConfig); // Initialize modular app with the defined config
-const messaging = getMessaging(app); // Get modular messaging instance
+const messaging = messagingModule.getMessaging(app); // Get modular messaging instance
 
 // Handle background push notifications
-onBackgroundMessage(messaging, (payload) => { // Use modular onBackgroundMessage
+messagingModule.onBackgroundMessage(messaging, (payload) => { // Use modular onBackgroundMessage
     console.log('[FCM SW] Background message received:', payload);
 
     const { title, body, icon } = payload.notification || payload.data || {};
