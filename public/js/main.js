@@ -1200,6 +1200,7 @@ window.confirmPayment = async function(tournamentId) {
     }
 
     try {
+        // WITH THIS
         await updateDoc(
             doc(db, "tournaments", tournamentId, "teamSessions", userProfile.teamId),
             {
@@ -1212,6 +1213,16 @@ window.confirmPayment = async function(tournamentId) {
                 updatedAt:               serverTimestamp()
             }
         );
+
+        // ✅ FIX: Instantly trigger the Admin Panel Status Tracker!
+        try {
+            await updateDoc(doc(db, "tournaments", tournamentId, "participants", currentUser.uid), {
+                paymentStatus: "submitted",
+                confirmationReceived: true,
+                paymentUtr: utr,
+                updatedAt: serverTimestamp()
+            });
+        } catch(e) {}
 
         const memberIds = await getTeamMemberIds(userProfile.teamId);
         await Promise.all(
@@ -1804,26 +1815,50 @@ window.openUpcomingPaymentInterface = async function(tournamentId) {
     `);
 };
 
+// WITH THIS
 window.processUpcomingPayment = async function(tournamentId) {
     // Simulate payment processing
     const btn = document.querySelector('#upcomingPaymentModal button');
-    btn.textContent = "Processing...";
-    btn.disabled = true;
+    if (btn) {
+        btn.textContent = "Processing...";
+        btn.disabled = true;
+    }
     
     try {
-        // Update user's registration status
+        // 1. Update user's personal registration status
         await updateDoc(doc(db, "users", currentUser.uid, "upcomingRegistrations", tournamentId), {
             paymentStatus: "paid",
             paidAt: serverTimestamp()
         });
+
+        // 2. ✅ FIX: Instantly trigger the Admin Panel Status Tracker!
+        try {
+            await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid), {
+                paymentStatus: "paid",
+                confirmationReceived: true,
+                paidAt: serverTimestamp()
+            });
+        } catch(e) {}
         
-        document.getElementById('upcomingPaymentModal').remove();
+        try {
+            await updateDoc(doc(db, "tournaments", tournamentId, "participants", currentUser.uid), {
+                paymentStatus: "paid",
+                confirmationReceived: true,
+                paidAt: serverTimestamp()
+            });
+        } catch(e) {}
+        
+        document.getElementById('upcomingPaymentModal')?.remove();
         showPopup("success", "Payment successful! Your spot is confirmed.", "Great!", () => {
             document.getElementById('customPopup')?.remove();
         });
         
     } catch (e) {
         showMessage("Payment failed. Please try again.");
+        if (btn) {
+            btn.textContent = "Pay & Confirm";
+            btn.disabled = false;
+        }
     }
 };
 
