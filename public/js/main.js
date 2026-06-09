@@ -54,7 +54,7 @@ const activeTimers = new Map();
 let userWallet = { balance: 0, transactions: [], pending: 0 };
 let audioContext = null; // Don't initialize it immediately
 let currentStream = null;
-const locallyShownPopups = new Set(); // Prevents infinite rollback loops
+// const locallyShownPopups = new Set(); // Prevents infinite rollback loops - Replaced with sessionStorage
 let activeParticipantListeners = {}; // Store unsubscribe functions for participant listeners
 
 window.playCustomSound = function(type) {
@@ -277,7 +277,7 @@ function renderTournaments() {
                 if (!snap.exists()) return;
                 const data = snap.data();
                 if (data.roomId && data.roomPassword && data.roomPopupShown !== true) {
-                    locallyShownPopups.add(t.id + '_room');
+                    sessionStorage.setItem("room_seen_" + t.id, "true");
                     if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
                     showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
                         document.getElementById('customPopup')?.remove();
@@ -1360,8 +1360,8 @@ onAuthStateChanged(auth, async (user) => {
                     const notifId = change.doc.id;
                     
                     // ... (existing notification logic from previous fix) ...
-                    if (!notif.read && !notif.popupShown && !locallyShownPopups.has(notifId)) {
-                        locallyShownPopups.add(notifId);
+                    if (!notif.read && !notif.popupShown && !sessionStorage.getItem("notif_seen_" + notifId)) {
+                        sessionStorage.setItem("notif_seen_" + notifId, "true");
                         // Safe audio playback fallback
                         if (typeof window.playCustomSound === 'function') window.playCustomSound(notif.type);
                         
