@@ -1320,6 +1320,7 @@ onAuthStateChanged(auth, async (user) => {
         window.listenForApprovals(user.uid);
         window.requestPushPermissions();
 
+        // Global Real-Time Notification Listener
         onSnapshot(collection(db, "users", user.uid, "notifications"), (snap) => {
             snap.docChanges().forEach(async (change) => {
                 // Loosen the filter to include 'modified' events
@@ -1328,25 +1329,37 @@ onAuthStateChanged(auth, async (user) => {
                     const notifId = change.doc.id;
                     
                     // ... (existing notification logic from previous fix) ...
+                    if (!notif.read && !notif.popupShown) { 
+                        // Safe audio playback fallback
+                        try { new Audio('/notification.mp3').play(); } catch(e) {} 
+                        
+                        showPopup("success", notif.message || notif.title || "New Notification", "View", async () => {
+                            document.getElementById('customPopup')?.remove();
+                            if (notif.actionLink) window.handleNotificationClick(notifId, notif.actionLink, notif.type);
+                        });
+                        try {
+                            await updateDoc(change.doc.ref, { popupShown: true });
+                        } catch (e) { 
+                            console.error("❌ Error updating popupShown flag:", e); 
+                        }
+                    }
                 }
             });
         });
 
-        // Sync local registration state for UI button states (Register vs Pay Now)
-        // This is also the perfect place to manage participant-specific listeners
+        // Sync local registration state and manage Participant Listeners
         onSnapshot(collection(db, "users", user.uid, "upcomingRegistrations"), (snap) => {
             window.userUpcomingRegs = {};
-            const currentTournamentIds = new Set(); // Keep track of tournaments we are currently listening to
-
+            const currentTournamentIds = new Set();
+            
             snap.forEach(docSnap => {
                 const regData = docSnap.data();
                 const tournamentId = docSnap.id;
                 window.userUpcomingRegs[tournamentId] = regData;
                 currentTournamentIds.add(tournamentId);
 
-                // If the registration is approved and paid/verified, and we don't have a listener yet, or it needs re-attaching
+                // Attach listener if approved and paid/verified
                 if ((regData.status === 'approved' && (regData.paymentStatus === 'paid' || regData.paymentStatus === 'verified'))) {
-                    // Check if a listener for this tournamentId already exists and is active
                     if (!activeParticipantListeners[tournamentId]) {
                         console.log(`[PARTICIPANT LISTENER] Attaching listener for tournament: ${tournamentId}`);
                         const participantRef = doc(db, "tournaments", tournamentId, "participants", user.uid);
