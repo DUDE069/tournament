@@ -1317,20 +1317,27 @@ onAuthStateChanged(auth, async (user) => {
         window.requestPushPermissions();
 
         // Global Real-Time Notification Listener
-        onSnapshot(collection(db, "users", user.uid, "notifications"), (snap) => { // Make callback async
-            snap.docChanges().forEach(async (change) => { // Make callback async to use await
+        onSnapshot(collection(db, "users", user.uid, "notifications"), (snap) => {
+            snap.docChanges().forEach(async (change) => {
                 if (change.type === "added") {
                     const notif = change.doc.data();
-                    const notifId = change.doc.id; // Get notification ID for updating
+                    const notifId = change.doc.id;
                     const now = Date.now();
-                    const createdAt = notif.createdAt?.toMillis ? notif.createdAt.toMillis() : now;
+                    const createdAtMillis = notif.createdAt?.toMillis ? notif.createdAt.toMillis() : 0;
                     
-                    console.log("[NOTIF LISTENER] Caught notification:", notif); // ADDED: Debug log
+                    console.log("[NOTIF LISTENER] Caught notification:", notif);
 
-                    // Only show popup for unread, unshown notifications received in the last 60 seconds
-                    // (prevents old popups on refresh and duplicate popups if initNotifications already handled it)
-                    if (!notif.read && !notif.popupShown && (now - createdAt < 60000)) {
-                        window.showPopup("success", notif.message || notif.title || "New Notification", "View", async () => { // Make action async
+                    // Strict filtering:
+                    // 1. Must be newly added (change.type === "added")
+                    // 2. Must be unread (!notif.read)
+                    // 3. Must not have been shown as a popup yet (!notif.popupShown)
+                    // 4. Must be very recent (within the last 10 seconds)
+                    if (
+                        !notif.read &&
+                        !notif.popupShown &&
+                        (now - createdAtMillis < 10000) // Recency check: 10 seconds
+                    ) {
+                        window.showPopup("success", notif.message || notif.title || "New Notification", "View", async () => {
                             document.getElementById('customPopup')?.remove();
                             if (notif.actionLink) window.handleNotificationClick(notifId, notif.actionLink, notif.type);
                         });
