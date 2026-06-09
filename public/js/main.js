@@ -1347,9 +1347,15 @@ onAuthStateChanged(auth, async (user) => {
         } catch (error) {
             console.error("[NOTIF SETUP ERROR]:", error);
         }
+        // WITH THIS
         // ✅ Part 4.1: Acceptance and Push wiring
         window.listenForApprovals(user.uid);
         window.requestPushPermissions();
+
+        // Initialize Notification UI (Activates the Bell Icon, Panel, and Badges)
+        initNotifications();
+
+        // Global Real-Time Notification Listener
 
         // Global Real-Time Notification Listener
         onSnapshot(collection(db, "users", user.uid, "notifications"), (snap) => {
@@ -3699,14 +3705,20 @@ function showPopup(type, message, buttonText = null, action = null) {
     });
 }
 
+// WITH THIS
 // Mobile menu toggle
 window.toggleMobileMenu = function() {
+  if (window.event) window.event.stopPropagation(); // Stop click overlap
   const nav = document.querySelector('.navbar nav');
   if (!nav) return;
+  
   // Toggle open class (CSS handles display via .open)
   nav.classList.toggle('open');
+  
+  // Force hide the notification inbox so it doesn't accidentally open on mobile
+  const panel = document.getElementById("notifPanel");
+  if (panel) panel.classList.add("hidden");
 };
-
 // Close mobile menu when a nav link is clicked
 document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.navbar nav a').forEach(function(link) {
