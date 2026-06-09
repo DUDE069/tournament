@@ -1317,19 +1317,30 @@ onAuthStateChanged(auth, async (user) => {
         window.requestPushPermissions();
 
         // Global Real-Time Notification Listener
-        onSnapshot(collection(db, "users", user.uid, "notifications"), (snap) => {
-            snap.docChanges().forEach(change => {
+        onSnapshot(collection(db, "users", user.uid, "notifications"), (snap) => { // Make callback async
+            snap.docChanges().forEach(async (change) => { // Make callback async to use await
                 if (change.type === "added") {
                     const notif = change.doc.data();
+                    const notifId = change.doc.id; // Get notification ID for updating
                     const now = Date.now();
                     const createdAt = notif.createdAt?.toMillis ? notif.createdAt.toMillis() : now;
                     
-                    // Only show popup for unread notifications received in the last 60 seconds (prevents old popups on refresh)
-                    if (!notif.read && (now - createdAt < 60000)) {
-                        window.showPopup("success", notif.message || notif.title || "New Notification", "View", () => {
+                    console.log("[NOTIF LISTENER] Caught notification:", notif); // ADDED: Debug log
+
+                    // Only show popup for unread, unshown notifications received in the last 60 seconds
+                    // (prevents old popups on refresh and duplicate popups if initNotifications already handled it)
+                    if (!notif.read && !notif.popupShown && (now - createdAt < 60000)) {
+                        window.showPopup("success", notif.message || notif.title || "New Notification", "View", async () => { // Make action async
                             document.getElementById('customPopup')?.remove();
-                            if (notif.actionLink) window.handleNotificationClick(change.doc.id, notif.actionLink, notif.type);
+                            if (notif.actionLink) window.handleNotificationClick(notifId, notif.actionLink, notif.type);
                         });
+
+                        // Mark the popup as shown in the database to prevent showing it again
+                        try {
+                            await updateDoc(doc(db, "users", user.uid, "notifications", notifId), { popupShown: true });
+                        } catch (e) { 
+                            console.error("❌ Error updating popupShown flag in onAuthStateChanged listener:", e); 
+                        }
                     }
                 }
             });
