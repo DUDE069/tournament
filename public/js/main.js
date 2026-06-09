@@ -856,10 +856,8 @@ window.showPaymentInterface = async function(tournamentId) {
         module.enterPaymentStage(
             currentUser.uid, 
             tournamentId, 
-            tournament?.title || "Tournament",
-            tournament?.entryFee || 0    // ← only change
             tournament?.title || "Tournament", 
-            tournament?.entryFee || 0,
+            tournament?.entryFee || 0, 
             window.currentTournamentCategory === 'upcoming' // Pass isUpcoming flag
         );
     });

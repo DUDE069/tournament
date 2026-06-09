@@ -11,6 +11,7 @@ import {
 let unsubPayment = null;
 let _currentTournamentId = null;
 let _currentUserId = null;
+let _isUpcomingTournament = false;
 
 // ⚠️ YOUR RAZORPAY KEY ID (Frontend uses public Key ID)
 const RAZORPAY_KEY_ID = "rzp_test_SygE6AqBXyl5LI"; 
@@ -18,7 +19,7 @@ const RAZORPAY_KEY_ID = "rzp_test_SygE6AqBXyl5LI";
 // ============================================
 // MAIN ENTRY POINT - Called from main.js
 // ============================================
-export function enterPaymentStage(userId, tournamentId, tournamentName, entryFee) {
+export function enterPaymentStage(userId, tournamentId, tournamentName, entryFee, isUpcoming = false) {
   _currentUserId = userId;
   _currentTournamentId = tournamentId;
 
