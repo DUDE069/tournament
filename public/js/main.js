@@ -278,12 +278,26 @@ function renderTournaments() {
                 if (!snap.exists()) return; // Document deleted, no longer relevant
                 const data = snap.data();
                 
+              // WITH THIS
                 // Room ID Check (Hash-based to allow updates from admin)
                 if (data.roomId && data.roomPassword && data.roomPopupShown !== true) {
                     const roomHash = String(data.roomId) + String(data.roomPassword);
                     if (sessionStorage.getItem("room_seen_" + t.id) !== roomHash) {
                         sessionStorage.setItem("room_seen_" + t.id, roomHash);
                         if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
+                        
+                        // FIX: Save permanently to Notification Inbox
+                        try {
+                            await addDoc(collection(db, "users", currentUser.uid, "notifications"), {
+                                type: "room_details",
+                                title: "🔑 Match Room Details",
+                                message: `Room ID: ${data.roomId}\nPassword: ${data.roomPassword}`,
+                                read: false,
+                                popupShown: true, // Prevents a duplicate popup from firing
+                                createdAt: serverTimestamp()
+                            });
+                        } catch(e) { console.error("Error saving notification:", e); }
+
                         showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
                             document.getElementById('customPopup')?.remove();
                             navigator.clipboard.writeText(`Room ID: ${data.roomId}\nPassword: ${data.roomPassword}`);
@@ -299,6 +313,19 @@ function renderTournaments() {
                     if (sessionStorage.getItem("status_seen_" + t.id) !== msgHash) {
                         sessionStorage.setItem("status_seen_" + t.id, msgHash);
                         if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
+                        
+                        // FIX: Save permanently to Notification Inbox
+                        try {
+                            await addDoc(collection(db, "users", currentUser.uid, "notifications"), {
+                                type: "status_message",
+                                title: "💬 Message from Admin",
+                                message: data.statusMessage,
+                                read: false,
+                                popupShown: true, // Prevents a duplicate popup from firing
+                                createdAt: serverTimestamp()
+                            });
+                        } catch(e) { console.error("Error saving notification:", e); }
+
                         showPopup("success", data.statusMessage, "Got it", () => {
                             document.getElementById('customPopup')?.remove();
                         });
@@ -1401,13 +1428,26 @@ onAuthStateChanged(auth, async (user) => {
                             const data = participantSnap.data();
                             console.log(`[PARTICIPANT LISTENER] Real-time update for participant in ${tournamentId}:`, data);
 
-                            // WITH THIS
+                           // WITH THIS
                             // Room ID Check
                             if (data.roomId && data.roomPassword && data.roomPopupShown !== true) {
                                 const roomHash = String(data.roomId) + String(data.roomPassword);
                                 if (sessionStorage.getItem("room_seen_" + tournamentId) !== roomHash) {
                                     sessionStorage.setItem("room_seen_" + tournamentId, roomHash);
                                     if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
+                                    
+                                    // FIX: Save permanently to Notification Inbox
+                                    try {
+                                        await addDoc(collection(db, "users", currentUser.uid, "notifications"), {
+                                            type: "room_details",
+                                            title: "🔑 Match Room Details",
+                                            message: `Room ID: ${data.roomId}\nPassword: ${data.roomPassword}`,
+                                            read: false,
+                                            popupShown: true, // Prevents a duplicate popup from firing
+                                            createdAt: serverTimestamp()
+                                        });
+                                    } catch(e) { console.error("Error saving notification:", e); }
+
                                     showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
                                         document.getElementById('customPopup')?.remove();
                                         navigator.clipboard.writeText(`Room ID: ${data.roomId}\nPassword: ${data.roomPassword}`).then(() => {
@@ -1432,6 +1472,19 @@ onAuthStateChanged(auth, async (user) => {
                                 if (sessionStorage.getItem("status_seen_" + tournamentId) !== msgHash) {
                                     sessionStorage.setItem("status_seen_" + tournamentId, msgHash);
                                     if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
+                                    
+                                    // FIX: Save permanently to Notification Inbox
+                                    try {
+                                        await addDoc(collection(db, "users", currentUser.uid, "notifications"), {
+                                            type: "status_message",
+                                            title: "💬 Message from Admin",
+                                            message: data.statusMessage,
+                                            read: false,
+                                            popupShown: true, // Prevents a duplicate popup from firing
+                                            createdAt: serverTimestamp()
+                                        });
+                                    } catch(e) { console.error("Error saving notification:", e); }
+
                                     showPopup("success", data.statusMessage, "Got it", () => {
                                         document.getElementById('customPopup')?.remove();
                                     });
@@ -3123,6 +3176,7 @@ window.markAllRead = async function() {
     await batch.commit();
 };
 
+// WITH THIS
 window.handleNotificationClick = async function(notifId, actionLink, type) {
     // 1. Mark as read
     try {
@@ -3131,6 +3185,27 @@ window.handleNotificationClick = async function(notifId, actionLink, type) {
 
     if (window.toggleNotifications) window.toggleNotifications();
     closeJoinModal(); // Ensure forms are closed
+
+    // NEW FEATURE: Show full details popup when clicking Room IDs and Admin Messages
+    if (type === "status_message" || type === "room_details") {
+        try {
+            const snap = await getDoc(doc(db, "users", currentUser.uid, "notifications", notifId));
+            if (snap.exists()) {
+                const n = snap.data();
+                let btnText = type === "room_details" ? "Copy Details" : "Got it";
+                
+                showPopup("success", n.message || "No details available.", btnText, () => {
+                    document.getElementById('customPopup')?.remove();
+                    // If it's a room detail, let them copy it again
+                    if (type === "room_details" && n.message) {
+                        navigator.clipboard.writeText(n.message);
+                        if (typeof showMessage === 'function') showMessage("Details copied to clipboard!");
+                    }
+                });
+            }
+        } catch (err) { console.error("Failed to load notification details:", err); }
+        return; // Stop execution here since the popup handles it
+    }
 
     // Handle Pay Later reminder
     if (type === "pay_later_reminder") {
