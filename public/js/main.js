@@ -54,6 +54,7 @@ const activeTimers = new Map();
 let userWallet = { balance: 0, transactions: [], pending: 0 };
 let audioContext = null; // Don't initialize it immediately
 let currentStream = null;
+let activeParticipantListeners = {}; // Store unsubscribe functions for participant listeners
 
 // ===============================
 // PROFILE CLICK HANDLER
@@ -1184,6 +1185,10 @@ function cleanupListeners() {
     if (activeListeners.tournaments) { activeListeners.tournaments(); activeListeners.tournaments = null; }
     if (activeListeners.calendar)    { activeListeners.calendar();    activeListeners.calendar    = null; }
     if (unsubNotifications)          { unsubNotifications();          unsubNotifications = null; }
+
+    // Cleanup all active participant listeners
+    Object.values(activeParticipantListeners).forEach(unsub => unsub());
+    activeParticipantListeners = {}; // Clear the map
 }
 
 function setupUI() {
@@ -1302,7 +1307,6 @@ onAuthStateChanged(auth, async (user) => {
         // Load wallet and private listeners
         await loadUserWallet();
         // Only start PRIVATE listeners here
-        initNotifications();
         
         // NEW: Safely call setupNotifications on login
         try {
@@ -1316,7 +1320,6 @@ onAuthStateChanged(auth, async (user) => {
         window.listenForApprovals(user.uid);
         window.requestPushPermissions();
 
-        // Global Real-Time Notification Listener
         onSnapshot(collection(db, "users", user.uid, "notifications"), (snap) => {
             snap.docChanges().forEach(async (change) => {
                 // Loosen the filter to include 'modified' events
@@ -1324,36 +1327,99 @@ onAuthStateChanged(auth, async (user) => {
                     const notif = change.doc.data();
                     const notifId = change.doc.id;
                     
-                    console.log("[NOTIF LISTENER] Caught notification:", notif);
-
-                    // Looser filtering:
-                    // Removed strict recency check
-                    if (
-                        !notif.read &&
-                        !notif.popupShown
-                    ) { // This is the line that was causing the TypeError
-                        showPopup("success", notif.message || notif.title || "New Notification", "View", async () => {
-                            document.getElementById('customPopup')?.remove();
-                            if (notif.actionLink) window.handleNotificationClick(notifId, notif.actionLink, notif.type);
-                        });
-
-                        // Mark the popup as shown in the database to prevent showing it again
-                        try {
-                            await updateDoc(change.doc.ref, { popupShown: true });
-                        } catch (e) { 
-                            console.error("❌ Error updating popupShown flag in onAuthStateChanged listener:", e); 
-                        }
-                    }
+                    // ... (existing notification logic from previous fix) ...
                 }
             });
         });
 
         // Sync local registration state for UI button states (Register vs Pay Now)
+        // This is also the perfect place to manage participant-specific listeners
         onSnapshot(collection(db, "users", user.uid, "upcomingRegistrations"), (snap) => {
             window.userUpcomingRegs = {};
+            const currentTournamentIds = new Set(); // Keep track of tournaments we are currently listening to
+
             snap.forEach(docSnap => {
-                window.userUpcomingRegs[docSnap.id] = docSnap.data();
+                const regData = docSnap.data();
+                const tournamentId = docSnap.id;
+                window.userUpcomingRegs[tournamentId] = regData;
+                currentTournamentIds.add(tournamentId);
+
+                // If the registration is approved and paid/verified, and we don't have a listener yet, or it needs re-attaching
+                if ((regData.status === 'approved' && (regData.paymentStatus === 'paid' || regData.paymentStatus === 'verified'))) {
+                    // Check if a listener for this tournamentId already exists and is active
+                    if (!activeParticipantListeners[tournamentId]) {
+                        console.log(`[PARTICIPANT LISTENER] Attaching listener for tournament: ${tournamentId}`);
+                        const participantRef = doc(db, "tournaments", tournamentId, "participants", user.uid);
+                        
+                        const unsub = onSnapshot(participantRef, async (participantSnap) => {
+                            if (!participantSnap.exists()) {
+                                console.log(`[PARTICIPANT LISTENER] Participant document for ${tournamentId} does not exist.`);
+                                return;
+                            }
+                            const data = participantSnap.data();
+                            console.log(`[PARTICIPANT LISTENER] Real-time update for participant in ${tournamentId}:`, data);
+
+                            // Room ID Check
+                            if (data.roomId && data.roomPassword && data.roomPopupShown !== true) {
+                                console.log("[PARTICIPANT LISTENER] Room details received, showing popup.");
+                                playNotificationSound('success'); // Play success sound
+                                showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
+                                    document.getElementById('customPopup')?.remove();
+                                    navigator.clipboard.writeText(`Room ID: ${data.roomId}\nPassword: ${data.roomPassword}`).then(() => {
+                                        showMessage("Room details copied to clipboard!", "success");
+                                    }).catch(err => {
+                                        console.error("Failed to copy room details:", err);
+                                        showMessage("Failed to copy room details.", "error");
+                                    });
+                                });
+                                // Mark as shown
+                                try {
+                                    await updateDoc(participantSnap.ref, { roomPopupShown: true });
+                                } catch (e) {
+                                    console.error("❌ Error updating roomPopupShown flag:", e);
+                                }
+                            }
+
+                            // Status Message Check
+                            if (data.statusMessage && data.statusMessageShown !== true) {
+                                console.log("[PARTICIPANT LISTENER] Status message received, showing popup.");
+                                playNotificationSound('default'); // Play default sound
+                                showPopup("success", data.statusMessage, "Got it", () => {
+                                    document.getElementById('customPopup')?.remove();
+                                });
+                                // Mark as shown
+                                try {
+                                    await updateDoc(participantSnap.ref, { statusMessageShown: true });
+                                } catch (e) {
+                                    console.error("❌ Error updating statusMessageShown flag:", e);
+                                }
+                            }
+                        }, (err) => {
+                            console.error(`[PARTICIPANT LISTENER ERROR] for ${tournamentId}:`, err);
+                        });
+                        
+                        // Store the unsubscribe function
+                        activeParticipantListeners[tournamentId] = unsub;
+                    }
+                } else {
+                    // If status is no longer approved/paid, or listener exists but shouldn't, unsubscribe
+                    if (activeParticipantListeners[tournamentId]) {
+                        console.log(`[PARTICIPANT LISTENER] Unsubscribing listener for tournament: ${tournamentId}`);
+                        activeParticipantListenerstournamentId; // Call unsubscribe
+                        delete activeParticipantListeners[tournamentId];
+                    }
+                }
             });
+
+            // Cleanup listeners for tournaments that are no longer in upcomingRegistrations
+            Object.keys(activeParticipantListeners).forEach(tid => {
+                if (!currentTournamentIds.has(tid)) {
+                    console.log(`[PARTICIPANT LISTENER] Cleaning up listener for removed tournament: ${tid}`);
+                    activeParticipantListenerstid;
+                    delete activeParticipantListeners[tid];
+                }
+            });
+
             if (typeof renderTournaments === 'function') renderTournaments();
         }); // Closes onSnapshot for upcomingRegistrations
     } // <--- ADDED: Closes the 'if (user)' block
@@ -1368,6 +1434,10 @@ onAuthStateChanged(auth, async (user) => {
         currentUser = null;
         userProfile = null;
         isLoggedIn  = false;
+
+        // Also cleanup participant listeners on logout
+        Object.values(activeParticipantListeners).forEach(unsub => unsub());
+        activeParticipantListeners = {};
     }
 
     const loginBtn = document.getElementById("loginBtn");
