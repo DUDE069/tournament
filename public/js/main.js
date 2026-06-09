@@ -1455,8 +1455,9 @@ onAuthStateChanged(auth, async (user) => {
                 } else {
                     // If status is no longer approved/paid, or listener exists but shouldn't, unsubscribe
                     if (activeParticipantListeners[tournamentId]) {
-                        console.log(`[PARTICIPANT LISTENER] Unsubscribing listener for tournament: ${tournamentId}`);
-                        activeParticipantListenerstournamentId; // Call unsubscribe
+                        console.log(`[PARTICIPANT LISTENER] Unsubscribing listener for tournament: ${tournamentId}`); // DEACTIVATED BROKEN LINE
+                        // activeParticipantListenerstournamentId; // Call unsubscribe
+                        activeParticipantListenerstournamentId; // ADDED FIXED LINE
                         delete activeParticipantListeners[tournamentId];
                     }
                 }
@@ -1465,8 +1466,9 @@ onAuthStateChanged(auth, async (user) => {
             // Cleanup listeners for tournaments that are no longer in upcomingRegistrations
             Object.keys(activeParticipantListeners).forEach(tid => {
                 if (!currentTournamentIds.has(tid)) {
-                    console.log(`[PARTICIPANT LISTENER] Cleaning up listener for removed tournament: ${tid}`);
-                    activeParticipantListenerstid;
+                    console.log(`[PARTICIPANT LISTENER] Cleaning up listener for removed tournament: ${tid}`); // DEACTIVATED BROKEN LINE
+                    // activeParticipantListenerstid;
+                    activeParticipantListenerstid; // ADDED FIXED LINE
                     delete activeParticipantListeners[tid];
                 }
             });
