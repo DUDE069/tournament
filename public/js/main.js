@@ -5807,12 +5807,12 @@ window.requestPushPermissions = async function() {
     }
 };
 
+// WITH THIS
 window._registerServiceWorker = function() {
-    if (!("serviceWorker" in navigator)) return; // Ensure the function accepts the options
-    navigator.serviceWorker.register("/firebase-messaging-sw.js", { type: 'module' }).then(reg => { window._swRegistration = reg; })
-    .catch((err) => console.warn("Service Worker registration failed (fallback to /sw.js removed):", err));
+    if (!("serviceWorker" in navigator)) return; 
+    navigator.serviceWorker.register("/firebase-messaging-sw.js").then(reg => { window._swRegistration = reg; }) // FIXED: Removed module type
+    .catch((err) => console.warn("Service Worker registration failed:", err));
 };
-
 window.triggerPushNotification = function(title, body, options = {}) {
     if (Notification.permission !== "granted") return;
     const opt = { body, icon: "/logo.png", badge: "/logo.png", tag: "npc-notification", ...options };
