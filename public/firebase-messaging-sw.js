@@ -2,7 +2,7 @@
 // Place this file in your public/ folder (same level as index.html)
 
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import * as messagingModule from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js'; // Import as a module object
+import * as messagingModule from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-sw.js'; // Import as a module object
 
 // Your Firebase config - paste from Firebase Console → Project Settings
 const firebaseConfig = { // Define firebaseConfig
