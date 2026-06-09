@@ -1319,19 +1319,15 @@ onAuthStateChanged(auth, async (user) => {
         // Global Real-Time Notification Listener
         onSnapshot(collection(db, "users", user.uid, "notifications"), (snap) => {
             snap.docChanges().forEach(async (change) => {
-                if (change.type === "added") {
+                // Loosen the filter to include 'modified' events
+                if (change.type === "added" || change.type === "modified") {
                     const notif = change.doc.data();
                     const notifId = change.doc.id;
-                    const now = Date.now();
-                    const createdAtMillis = notif.createdAt?.toMillis ? notif.createdAt.toMillis() : 0;
                     
                     console.log("[NOTIF LISTENER] Caught notification:", notif);
 
-                    // Strict filtering:
-                    // 1. Must be newly added (change.type === "added")
-                    // 2. Must be unread (!notif.read)
-                    // 3. Must not have been shown as a popup yet (!notif.popupShown)
-                    // 4. Must be very recent (within the last 10 seconds)
+                    // Looser filtering:
+                    // Removed strict recency check
                     if (
                         !notif.read &&
                         !notif.popupShown &&
@@ -2834,7 +2830,7 @@ function initNotifications() {
 
         // 1. FIRE THE POPUP FIRST (So nothing else can block it)
         snapshot.docChanges().forEach(async (change) => {
-            if (change.type === "added") {
+                if (change.type === "added" || change.type === "modified") {
                 const notif = change.doc.data();
                 const notifId = change.doc.id;
                 console.log("📥 New Notification Data:", notif);
