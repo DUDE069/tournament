@@ -1331,7 +1331,7 @@ onAuthStateChanged(auth, async (user) => {
                     // ... (existing notification logic from previous fix) ...
                     if (!notif.read && !notif.popupShown) { 
                         // Safe audio playback fallback
-                        try { new Audio('/notification.mp3').play(); } catch(e) {} 
+                        if (typeof window.playCustomSound === 'function') window.playCustomSound(notif.type);
                         
                         showPopup("success", notif.message || notif.title || "New Notification", "View", async () => {
                             document.getElementById('customPopup')?.remove();
@@ -1374,8 +1374,7 @@ onAuthStateChanged(auth, async (user) => {
 
                             // Room ID Check
                             if (data.roomId && data.roomPassword && data.roomPopupShown !== true) {
-                                console.log("[PARTICIPANT LISTENER] Room details received, showing popup.");
-                                playNotificationSound('success'); // Play success sound
+                                if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
                                 showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
                                     document.getElementById('customPopup')?.remove();
                                     navigator.clipboard.writeText(`Room ID: ${data.roomId}\nPassword: ${data.roomPassword}`).then(() => {
@@ -1395,8 +1394,7 @@ onAuthStateChanged(auth, async (user) => {
 
                             // Status Message Check
                             if (data.statusMessage && data.statusMessageShown !== true) {
-                                console.log("[PARTICIPANT LISTENER] Status message received, showing popup.");
-                                playNotificationSound('default'); // Play default sound
+                                if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
                                 showPopup("success", data.statusMessage, "Got it", () => {
                                     document.getElementById('customPopup')?.remove();
                                 });
