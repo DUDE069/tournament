@@ -274,7 +274,7 @@ function renderTournaments() {
         if (typeof currentUser !== 'undefined' && currentUser && !activeParticipantListeners[t.id]) {
             const pRef = doc(db, "tournaments", t.id, "participants", currentUser.uid);
             activeParticipantListeners[t.id] = onSnapshot(pRef, async (snap) => {
-                if (!snap.exists()) return;
+                if (!snap.exists()) return; // Document deleted, no longer relevant
                 const data = snap.data();
                 if (data.roomId && data.roomPassword && data.roomPopupShown !== true) {
                     sessionStorage.setItem("room_seen_" + t.id, "true");
@@ -1411,7 +1411,7 @@ onAuthStateChanged(auth, async (user) => {
                             console.log(`[PARTICIPANT LISTENER] Real-time update for participant in ${tournamentId}:`, data);
 
                             // Room ID Check
-                            if (data.roomId && data.roomPassword && data.roomPopupShown !== true) {
+                            if (data.roomId && data.roomPassword && data.roomPopupShown !== true && !sessionStorage.getItem("room_seen_" + tournamentId)) {
                                 if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
                                 showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
                                     document.getElementById('customPopup')?.remove();
@@ -1431,7 +1431,7 @@ onAuthStateChanged(auth, async (user) => {
                             }
 
                             // Status Message Check
-                            if (data.statusMessage && data.statusMessageShown !== true) {
+                            if (data.statusMessage && data.statusMessageShown !== true && !sessionStorage.getItem("status_seen_" + tournamentId)) {
                                 if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
                                 showPopup("success", data.statusMessage, "Got it", () => {
                                     document.getElementById('customPopup')?.remove();
