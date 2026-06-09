@@ -181,19 +181,6 @@ async function handlePaymentSuccess(tournamentId, response) {
       return;
     }
 
-    // If backend verification is successful, update Firestore
-    await setDoc(
-      doc(db, 'tournaments', tournamentId, 'participants', _currentUserId), // Assuming this is the main participant record
-      {
-        paymentStatus: 'verified',
-        razorpayPaymentId: razorpay_payment_id,
-        razorpayOrderId: razorpay_order_id,
-        paidAt: serverTimestamp(),
-        userId: _currentUserId,
-      },
-      { merge: true }
-    );
-
     showToast("✅ Payment Verified!", "success");
 
     setTimeout(() => {
