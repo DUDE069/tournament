@@ -1330,8 +1330,7 @@ onAuthStateChanged(auth, async (user) => {
                     // Removed strict recency check
                     if (
                         !notif.read &&
-                        !notif.popupShown &&
-                        (now - createdAtMillis < 10000) // Recency check: 10 seconds
+                        !notif.popupShown
                     ) {
                         window.showPopup("success", notif.message || notif.title || "New Notification", "View", async () => {
                             document.getElementById('customPopup')?.remove();
@@ -1340,7 +1339,7 @@ onAuthStateChanged(auth, async (user) => {
 
                         // Mark the popup as shown in the database to prevent showing it again
                         try {
-                            await updateDoc(doc(db, "users", user.uid, "notifications", notifId), { popupShown: true });
+                            await updateDoc(change.doc.ref, { popupShown: true });
                         } catch (e) { 
                             console.error("❌ Error updating popupShown flag in onAuthStateChanged listener:", e); 
                         }
@@ -2830,7 +2829,8 @@ function initNotifications() {
 
         // 1. FIRE THE POPUP FIRST (So nothing else can block it)
         snapshot.docChanges().forEach(async (change) => {
-                if (change.type === "added" || change.type === "modified") {
+            // implementation of looser rules: accept both added and modified events
+            if (change.type === "added" || change.type === "modified") {
                 const notif = change.doc.data();
                 const notifId = change.doc.id;
                 console.log("📥 New Notification Data:", notif);
@@ -2866,7 +2866,7 @@ function initNotifications() {
 
                     // Mark the popup as shown in the database
                     try {
-                        await updateDoc(doc(db, "users", currentUser.uid, "notifications", notifId), { popupShown: true });
+                        await updateDoc(change.doc.ref, { popupShown: true });
                     } catch (e) { 
                         console.error("❌ Error updating popup flag:", e); 
                     }
