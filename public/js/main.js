@@ -1342,8 +1342,9 @@ onAuthStateChanged(auth, async (user) => {
                 window.userUpcomingRegs[docSnap.id] = docSnap.data();
             });
             if (typeof renderTournaments === 'function') renderTournaments();
-        });
-    } else {
+        }); // Closes onSnapshot for upcomingRegistrations
+    } // <--- ADDED: Closes the 'if (user)' block
+    else { // This 'else' is now correctly associated with the 'if (user)'
         // Cleanup
         if (unsubNotifications) { 
             unsubNotifications(); 
