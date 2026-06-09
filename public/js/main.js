@@ -1331,8 +1331,8 @@ onAuthStateChanged(auth, async (user) => {
                     if (
                         !notif.read &&
                         !notif.popupShown
-                    ) {
-                        window.showPopup("success", notif.message || notif.title || "New Notification", "View", async () => {
+                    ) { // This is the line that was causing the TypeError
+                        showPopup("success", notif.message || notif.title || "New Notification", "View", async () => {
                             document.getElementById('customPopup')?.remove();
                             if (notif.actionLink) window.handleNotificationClick(notifId, notif.actionLink, notif.type);
                         });
