@@ -1319,6 +1319,8 @@ onAuthStateChanged(auth, async (user) => {
         // NEW: Listen for approved upcoming registrations to change "Pay Now" button dynamically
         // Also check for real-time room ID/password updates
         onSnapshot(collection(db, "users", user.uid, "upcomingRegistrations"), (snap) => {
+        // Global Real-Time Notification Listener
+        onSnapshot(collection(db, "users", user.uid, "notifications"), (snap) => {
             snap.docChanges().forEach(change => {
                 if (change.type === "modified") { // Only react to changes in existing documents
                     const regData = change.doc.data();
@@ -1332,8 +1334,17 @@ onAuthStateChanged(auth, async (user) => {
                     if (regData.roomId && regData.roomPassword && !regData.roomDetailsPopupShown) {
                         console.log("[FCM] Room details updated for upcoming registration:", tournamentId);
                         window.showPopup("success", `Room details for ${regData.title || "your tournament"} are ready! ID: ${regData.roomId} | Pass: ${regData.roomPassword}`, "Open Match Room", () => {
+                if (change.type === "added") {
+                    const notif = change.doc.data();
+                    const now = Date.now();
+                    const createdAt = notif.createdAt?.toMillis ? notif.createdAt.toMillis() : now;
+                    
+                    // Only show popup for unread notifications received in the last 60 seconds (prevents old popups on refresh)
+                    if (!notif.read && (now - createdAt < 60000)) {
+                        window.showPopup("success", notif.message || notif.title || "New Notification", "View", () => {
                             document.getElementById('customPopup')?.remove();
                             if (typeof window.showMatchRoom === 'function') window.showMatchRoom(tournamentId);
+                            if (notif.actionLink) window.handleNotificationClick(change.doc.id, notif.actionLink, notif.type);
                         });
 
                         // Mark the popup as shown to prevent repeated popups
@@ -1343,6 +1354,10 @@ onAuthStateChanged(auth, async (user) => {
                     }
                 }
             });
+        });
+
+        // Sync local registration state for UI button states (Register vs Pay Now)
+        onSnapshot(collection(db, "users", user.uid, "upcomingRegistrations"), (snap) => {
             window.userUpcomingRegs = {};
             snap.forEach(docSnap => {
                 window.userUpcomingRegs[docSnap.id] = docSnap.data();
