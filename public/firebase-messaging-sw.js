@@ -1,24 +1,24 @@
-// firebase-messaging-sw.js
-// Place this file in your public/ folder (same level as index.html)
+// REPLACE ENTIRE firebase-messaging-sw.js WITH THIS
 
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import * as messagingModule from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-sw.js'; // Import as a module object
+// 1. Use importScripts for Service Workers (Safe across all browsers)
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
 
-// Your Firebase config - paste from Firebase Console → Project Settings
-const firebaseConfig = { // Define firebaseConfig
+// 2. Initialize the Firebase app
+firebase.initializeApp({
     apiKey: "AIzaSyAVmkZLnhoxR15k3OxK5ApcxzKz5zFm2SI",
     authDomain: "npc-esports-c3adb.firebaseapp.com",
     projectId: "npc-esports-c3adb",
     storageBucket: "npc-esports-c3adb.firebasestorage.app",
     messagingSenderId: "404452164488",
     appId: "1:404452164488:web:03179cbf527d28a3b6303d"
-};
+});
 
-const app = initializeApp(firebaseConfig); // Initialize modular app with the defined config
-const messaging = messagingModule.getMessaging(app); // Get modular messaging instance
+// 3. Get the messaging instance
+const messaging = firebase.messaging();
 
-// Handle background push notifications
-messagingModule.onBackgroundMessage(messaging, (payload) => { // Use modular onBackgroundMessage
+// 4. Handle background push notifications
+messaging.onBackgroundMessage((payload) => {
     console.log('[FCM SW] Background message received:', payload);
 
     const { title, body, icon } = payload.notification || payload.data || {};
@@ -37,7 +37,7 @@ messagingModule.onBackgroundMessage(messaging, (payload) => { // Use modular onB
     }
 });
 
-// Handle notification click
+// 5. Handle notification click (Keep your existing click logic!)
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
 
