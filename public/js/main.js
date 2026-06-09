@@ -56,6 +56,17 @@ let audioContext = null; // Don't initialize it immediately
 let currentStream = null;
 let activeParticipantListeners = {}; // Store unsubscribe functions for participant listeners
 
+window.playCustomSound = function(type) {
+    let soundFile = '/alert.mp3';
+    if (type === 'advertising' || type === 'promo' || type === 'global_alert') {
+        soundFile = '/promo.mp3';
+    } else if (type === 'room_id' || type === 'approval' || type === 'upcoming_approved' || type === 'match_started') {
+        soundFile = '/success.mp3';
+    }
+    const audio = new Audio(soundFile);
+    audio.play().catch(e => console.warn("Audio skipped by browser:", e.message));
+};
+
 // ===============================
 // PROFILE CLICK HANDLER
 // ===============================
@@ -257,6 +268,24 @@ function renderTournaments() {
 
     tournaments.forEach((t) => {
         if (!t.title) return;
+
+        // NEW: Bulletproof Room ID Watcher for all active tournaments
+        if (typeof currentUser !== 'undefined' && currentUser && !activeParticipantListeners[t.id]) {
+            const pRef = doc(db, "tournaments", t.id, "participants", currentUser.uid);
+            activeParticipantListeners[t.id] = onSnapshot(pRef, async (snap) => {
+                if (!snap.exists()) return;
+                const data = snap.data();
+                if (data.roomId && data.roomPassword && data.roomPopupShown !== true) {
+                    if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
+                    showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
+                        document.getElementById('customPopup')?.remove();
+                        navigator.clipboard.writeText(`Room ID: ${data.roomId} | Password: ${data.roomPassword}`);
+                        if (typeof showMessage === 'function') showMessage("Room details copied to clipboard!");
+                    });
+                    try { await updateDoc(snap.ref, { roomPopupShown: true }); } catch(e){}
+                }
+            });
+        }
 
         const isAdminUser = userProfile?.isAdmin === true;
         
@@ -1336,6 +1365,12 @@ onAuthStateChanged(auth, async (user) => {
                         showPopup("success", notif.message || notif.title || "New Notification", "View", async () => {
                             document.getElementById('customPopup')?.remove();
                             if (notif.actionLink) window.handleNotificationClick(notifId, notif.actionLink, notif.type);
+                            if (notif.actionLink) {
+                                window.handleNotificationClick(notifId, notif.actionLink, notif.type);
+                            } else {
+                                // Fallback: Open the notification panel if no specific action link exists
+                                if (typeof window.toggleNotifications === 'function') window.toggleNotifications();
+                            }
                         });
                         try {
                             await updateDoc(change.doc.ref, { popupShown: true });
