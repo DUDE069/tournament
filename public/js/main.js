@@ -1317,7 +1317,32 @@ onAuthStateChanged(auth, async (user) => {
         window.requestPushPermissions();
 
         // NEW: Listen for approved upcoming registrations to change "Pay Now" button dynamically
+        // Also check for real-time room ID/password updates
         onSnapshot(collection(db, "users", user.uid, "upcomingRegistrations"), (snap) => {
+            snap.docChanges().forEach(change => {
+                if (change.type === "modified") { // Only react to changes in existing documents
+                    const regData = change.doc.data();
+                    const tournamentId = change.doc.id; // The doc ID is the tournamentId
+
+                    // IMPORTANT: This assumes your admin panel also writes roomId and roomPassword
+                    // to the user's upcomingRegistrations document (users/{uid}/upcomingRegistrations/{tournamentId}).
+                    // Currently, admin.js writes these to tournaments/{tournamentId}/participants/{userId}
+                    // and sends a notification. If you want this listener to work, you'll need to
+                    // ensure the roomId/roomPassword are also mirrored here.
+                    if (regData.roomId && regData.roomPassword && !regData.roomDetailsPopupShown) {
+                        console.log("[FCM] Room details updated for upcoming registration:", tournamentId);
+                        window.showPopup("success", `Room details for ${regData.title || "your tournament"} are ready! ID: ${regData.roomId} | Pass: ${regData.roomPassword}`, "Open Match Room", () => {
+                            document.getElementById('customPopup')?.remove();
+                            if (typeof window.showMatchRoom === 'function') window.showMatchRoom(tournamentId);
+                        });
+
+                        // Mark the popup as shown to prevent repeated popups
+                        updateDoc(change.doc.ref, { roomDetailsPopupShown: true }).catch(err => {
+                            console.error("Error updating roomDetailsPopupShown flag:", err);
+                        });
+                    }
+                }
+            });
             window.userUpcomingRegs = {};
             snap.forEach(docSnap => {
                 window.userUpcomingRegs[docSnap.id] = docSnap.data();
