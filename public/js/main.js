@@ -276,7 +276,7 @@ function renderTournaments() {
             activeParticipantListeners[t.id] = onSnapshot(pRef, async (snap) => {
                 if (!snap.exists()) return; // Document deleted, no longer relevant
                 const data = snap.data();
-                if (data.roomId && data.roomPassword && data.roomPopupShown !== true) {
+                if (data.roomId && data.roomPassword && data.roomPopupShown !== true && !sessionStorage.getItem("room_seen_" + t.id)) {
                     sessionStorage.setItem("room_seen_" + t.id, "true");
                     if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
                     showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
@@ -1412,6 +1412,7 @@ onAuthStateChanged(auth, async (user) => {
 
                             // Room ID Check
                             if (data.roomId && data.roomPassword && data.roomPopupShown !== true && !sessionStorage.getItem("room_seen_" + tournamentId)) {
+                                sessionStorage.setItem("room_seen_" + tournamentId, "true");
                                 if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
                                 showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
                                     document.getElementById('customPopup')?.remove();
@@ -1432,6 +1433,7 @@ onAuthStateChanged(auth, async (user) => {
 
                             // Status Message Check
                             if (data.statusMessage && data.statusMessageShown !== true && !sessionStorage.getItem("status_seen_" + tournamentId)) {
+                                sessionStorage.setItem("status_seen_" + tournamentId, "true");
                                 if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
                                 showPopup("success", data.statusMessage, "Got it", () => {
                                     document.getElementById('customPopup')?.remove();
