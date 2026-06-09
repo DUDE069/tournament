@@ -8,7 +8,7 @@ import { db, auth } from "./firebase.js";
 import {
   collection, onSnapshot, doc, setDoc, getDoc, serverTimestamp,
   addDoc, updateDoc, query, where, getDocs, arrayUnion, orderBy, increment,
-  runTransaction, writeBatch
+  runTransaction, writeBatch, limit
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 import {
@@ -3598,7 +3598,7 @@ document.getElementById("loginBtn")?.addEventListener("click", handleProfileClic
 // ========================================
 const TUTORIAL_KEY = "npc_tutorial_done";
 
-window.handleJoinNowTutorial = function() {
+function handleJoinNowTutorial() {
     const done = localStorage.getItem(TUTORIAL_KEY);
     if (done) {
         // Returning user - skip to community
@@ -3606,7 +3606,7 @@ window.handleJoinNowTutorial = function() {
         return;
     }
     startTutorial();
-};
+}
 
 // ========================================
 // PROFESSIONAL TUTORIAL SYSTEM
