@@ -589,6 +589,7 @@ window.openNotifyModal = function(tournamentId, userId, memberIds, teamName) {
   overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
 };
 
+// WITH THIS
 window.sendTeamNotification = async function(tournamentId, userId, memberIds, teamName) {
   const message = document.getElementById("notifyMsgInput")?.value.trim();
   if (!message) { showToast("Please enter a message.", "warning"); return; }
@@ -596,9 +597,19 @@ window.sendTeamNotification = async function(tournamentId, userId, memberIds, te
   const ids = Array.isArray(memberIds) ? memberIds : [userId];
 
   try {
+    // 1. Write directly to the live Participant doc so the frontend pops up immediately
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+            statusMessage: message,
+            statusMessageShown: false,
+            statusMessageUpdatedAt: serverTimestamp()
+        });
+    } catch (ignore) { /* Document might not exist yet, this is fine */ }
+
+    // 2. Send dual notification so it lands perfectly in the Inbox!
     await Promise.all(ids.map(mid => sendDualNotification(mid, {
-      type:      "admin_notice",
-      title:     "📢 Message from Admin",
+      type:      "status_message", // FIXED: Matches frontend inbox icons/clicks
+      title:     "💬 Message from Admin",
       message,
       extra:     { tournamentId, teamName },
       actionLink: `tournament=${tournamentId}`,
@@ -984,14 +995,19 @@ function upcomingCard(d, type) {
     </div>`;
 }
 
+// WITH THIS
 window.approveUpcoming = async function(tournamentId, userId) {
     try {
+        // ✅ FIX: Fetch the actual registration document so we can copy the Player UIDs and Nicknames into the Slot
+        const regRef = doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId);
+        const regSnap = await getDoc(regRef);
+        const regData = regSnap.exists() ? regSnap.data() : {};
+
         // ✅ FIX: Use writeBatch to update BOTH the tournament doc AND the user's personal log
         // This ensures the user's dashboard card changes from "pending" to "accepted" immediately.
         const batch = writeBatch(db);
         
         // 1. Update the tournament's upcomingRegistrations sub-collection (admin view)
-        const regRef = doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId);
         batch.update(regRef, {
             status:      "approved",
             processedAt: serverTimestamp()
@@ -1031,18 +1047,25 @@ window.approveUpcoming = async function(tournamentId, userId) {
                     const tSnap = await getDoc(doc(db, "teams", uData.teamId));
                     if (tSnap.exists()) {
                         const tData = tSnap.data();
+                       // WITH THIS
                         // ✅ FIX: Deduplicate members before writing slot
                         const deduped = [...new Set([...(tData.members || []), userId])];
                         
                         await setDoc(doc(db, "tournaments", tournamentId, "slots", uData.teamId), {
                             teamId:        uData.teamId,
-                            teamName:      uData.teamName  || tData.teamName  || "Unknown Team",
-                            teamCode:      uData.teamCode  || tData.code      || "N/A",
+                            teamName:      regData.teamName || uData.teamName  || tData.teamName  || "Unknown Team",
+                            teamCode:      regData.teamCode || uData.teamCode  || tData.code      || "N/A",
                             members:       deduped,
                             memberCount:   deduped.length,
                             leaderId:      tData.leaderId  || userId,
                             leaderEmail:   uData.email     || "",
                             paymentStatus: "Pending Payment", // ✅ Explicit string — never "undefined"
+                            playersData:   regData.playersData || null, // Copies actual In-game UIDs/Nicknames
+                            uids:          regData.uids || null,
+                            nickPlayer1:   regData.nickPlayer1 || regData.player1Nickname || null,
+                            nickPlayer2:   regData.nickPlayer2 || regData.player2Nickname || null,
+                            nickPlayer3:   regData.nickPlayer3 || regData.player3Nickname || null,
+                            nickPlayer4:   regData.nickPlayer4 || regData.player4Nickname || null,
                             assignedAt:    serverTimestamp()
                         }, { merge: true });
                     }
@@ -1756,9 +1779,11 @@ window.manageTournamentSlots = async function(tournamentId) {
         const mode = tournament.mode?.toLowerCase() || "squad";
         const rowsPerTeam = mode === "squad" ? 4 : mode === "duo" ? 2 : 1;
         
+      // WITH THIS
         // ── Build the main table ────────────────────────────────────────────
+        // ✅ FIX: Added min-width: 800px so it scrolls horizontally on mobile instead of breaking layout!
         let html = `
-            <table class="admin-table" style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
+            <table class="admin-table" style="width:100%; min-width: 800px; border-collapse:collapse; text-align:left; font-size:13px;">
                 <thead style="background:#1a1a1a; position:sticky; top:0; z-index:1;">
                     <tr>
                         <th style="padding:10px; border-bottom:2px solid #333; white-space:nowrap;">Slot</th>
