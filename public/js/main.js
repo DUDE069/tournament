@@ -5671,6 +5671,7 @@ window.saveGhostProfile = async function() {
     if (!nick) { showMessage("Please enter a nickname"); return; }
     if (isNaN(age) || age < 12) { showMessage("Please enter a valid age"); return; }
     
+    // WITH THIS
     // ✅ FIX: Client-side validation stops the crash before Firestore rejects the transaction
     if (auth.currentUser && !auth.currentUser.emailVerified) {
         // Force reload state check just in case they verified in a separate tab
@@ -5679,6 +5680,12 @@ window.saveGhostProfile = async function() {
             showMessage("❌ Verification required! Click the link in your Gmail inbox before saving.");
             return;
         }
+    }
+    
+    // ✅ FIX: Force Firebase to instantly grab a fresh backend Security Token!
+    // This stops the Firestore Rules from crashing the Ghost Recovery process
+    if (auth.currentUser) {
+        await auth.currentUser.getIdToken(true);
     }
 
     btn.disabled = true;
