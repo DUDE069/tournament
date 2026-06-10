@@ -1581,30 +1581,86 @@ function showToast(message, type = "success") {
   document.body.appendChild(toast);
   setTimeout(() => toast.remove(), 3500);
 }
-
+// =============================================================================
+// UPGRADED GLOBAL SEARCH FUNCTION (Finds Team Codes, Tournaments, UIDs, & Nicknames)
+// =============================================================================
 window.executeGlobalSearch = async function() {
     const queryStr = document.getElementById("globalSearch").value.trim();
     if (!queryStr) return;
     
-    // Check if it's a Team Code (Assuming "NPC..." format)
-    if (queryStr.toUpperCase().startsWith("NPC")) {
+    try {
+        // 1. Try to search by Team Code (Checks global teams collection)
         const teamsQuery = query(collection(db, "teams"), where("code", "==", queryStr.toUpperCase()));
-        const snap = await getDocs(teamsQuery);
-        if (!snap.empty) {
-            const t = snap.docs[0].data();
-            alert(`TEAM FOUND:\nName: ${t.teamName}\nLeader: ${t.leaderName}\nMembers: ${t.members.length}/${t.maxMembers}`);
-        } else {
-            showToast("Team Code not found.", "error");
+        const teamSnap = await getDocs(teamsQuery);
+        if (!teamSnap.empty) {
+            const teamDoc = teamSnap.docs[0];
+            const t = teamDoc.data();
+            alert(`👥 TEAM FOUND!\n\n` +
+                  `• Team Name: ${t.teamName || "—"}\n` +
+                  `• Team Code: ${t.code || "—"}\n` +
+                  `• Team ID: ${teamDoc.id}\n` +
+                  `• Leader Name: ${t.leaderName || "—"}\n` +
+                  `• Leader ID: ${t.leaderId || "—"}\n` +
+                  `• Roster Size: ${t.members?.length || 0} / ${t.maxMembers || 5}\n` +
+                  `• Member UIDs: ${t.members ? t.members.join(", ") : "None"}`);
+            return;
         }
-    } else {
-        // Assume Tournament ID
+
+        // 2. Try to search by Tournament Document ID
         const tSnap = await getDoc(doc(db, "tournaments", queryStr));
         if (tSnap.exists()) {
             const t = tSnap.data();
-            alert(`TOURNAMENT FOUND:\nTitle: ${t.title}\nCategory: ${t.category}\nFee: ₹${t.entryFee}\nStatus: ${t.status}`);
-        } else {
-            showToast("Tournament ID not found.", "error");
+            alert(`🏆 TOURNAMENT FOUND!\n\n` +
+                  `• Tournament ID: ${tSnap.id}\n` +
+                  `• Title: ${t.title || "—"}\n` +
+                  `• Category: ${t.category || "—"}\n` +
+                  `• Mode: ${t.mode || "Solo"}\n` +
+                  `• Entry Fee: ₹${t.entryFee !== undefined ? t.entryFee : 0}\n` +
+                  `• Status: ${t.status || "open"}\n` +
+                  `• Event Details: ${t.eventDate || "No Date"} @ ${t.eventTime || "No Time"}`);
+            return;
         }
+
+        // 3. Try to search by exact Player Unique ID (UID)
+        const uSnap = await getDoc(doc(db, "users", queryStr));
+        if (uSnap.exists()) {
+            const u = uSnap.data();
+            alert(`👤 PLAYER FOUND BY UID!\n\n` +
+                  `• User UID: ${uSnap.id}\n` +
+                  `• In-Game Nickname: ${u.nickname || "Unnamed User"}\n` +
+                  `• Registered Email: ${u.email || "—"}\n` +
+                  `• System Role: ${u.role || "viewer"}\n` +
+                  `• Is Admin Account: ${u.isAdmin === true ? "YES 🛡️" : "No"}\n` +
+                  `• Assigned Team: ${u.teamName || "No Assigned Team (Solo)"}\n` +
+                  `• Assigned Team Code: ${u.teamCode || "N/A"}\n` +
+                  `• Assigned Team ID: ${u.teamId || "N/A"}\n` +
+                  `• Player Age: ${u.age || "—"}`);
+            return;
+        }
+
+        // 4. Try to search by Player Nickname (Fallback case)
+        const nicknameQuery = query(collection(db, "users"), where("nickname", "==", queryStr));
+        const nickSnap = await getDocs(nicknameQuery);
+        if (!nickSnap.empty) {
+            const userDoc = nickSnap.docs[0];
+            const u = userDoc.data();
+            alert(`👤 PLAYER FOUND BY NICKNAME!\n\n` +
+                  `• User UID: ${userDoc.id}\n` +
+                  `• In-Game Nickname: ${u.nickname || "—"}\n` +
+                  `• Registered Email: ${u.email || "—"}\n` +
+                  `• System Role: ${u.role || "viewer"}\n` +
+                  `• Assigned Team: ${u.teamName || "No Assigned Team (Solo)"}\n` +
+                  `• Assigned Team Code: ${u.teamCode || "N/A"}\n` +
+                  `• Player Age: ${u.age || "—"}`);
+            return;
+        }
+
+        // If the query completes execution through all loops without finding matching records
+        showToast("🔍 No matching Team Code, Tournament ID, or Player UID found.", "error");
+
+    } catch (err) {
+        console.error("Global search execution error:", err);
+        showToast("⚠️ Search failed: " + err.message, "error");
     }
 };
 
@@ -1712,7 +1768,6 @@ window.openTeamDetailsModal = async function(teamId) {
 // ==========================================
 // SLOT & WAITLIST MANAGEMENT
 // ==========================================
-// REPLACE THIS ENTIRE FUNCTION
 window.manageTournamentSlots = async function(tournamentId) {
     document.getElementById("statusModalOverlay")?.remove();
     const overlay = document.createElement("div");
@@ -1749,10 +1804,13 @@ window.manageTournamentSlots = async function(tournamentId) {
     document.body.appendChild(overlay);
 
     try {
-        const [tSnap, slotsSnap, participantsSnap] = await Promise.all([
+        // Fetch all contextual tournament sub-collections simultaneously to capture exact user form input states
+        const [tSnap, slotsSnap, participantsSnap, verificationsSnap, upcomingSnap] = await Promise.all([
             getDoc(doc(db, "tournaments", tournamentId)),
             getDocs(collection(db, "tournaments", tournamentId, "slots")),
-            getDocs(collection(db, "tournaments", tournamentId, "participants"))
+            getDocs(collection(db, "tournaments", tournamentId, "participants")),
+            getDocs(collection(db, "tournaments", tournamentId, "verifications")),
+            getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
         ]);
 
         const tournament = tSnap.exists() ? tSnap.data() : {};
@@ -1763,10 +1821,56 @@ window.manageTournamentSlots = async function(tournamentId) {
         slotsSnap.forEach(d => teamMap.set(d.id, { ...teamMap.get(d.id), id: d.id, _source: "slots", ...d.data() }));
         let allTeams = Array.from(teamMap.values());
 
-        // ✅ AUTO-SYNC BUG FIX: Fetch deep player data if it is missing or "Unnamed Team"
+        // Map manual inputs submitted via the joining / registration interface
+        const registrationDataMap = new Map();
+        verificationsSnap.forEach(d => {
+            const data = d.data();
+            if (data.teamId) registrationDataMap.set(data.teamId, data);
+            registrationDataMap.set(d.id, data);
+        });
+        upcomingSnap.forEach(d => {
+            const data = d.data();
+            if (data.teamId) registrationDataMap.set(data.teamId, data);
+            registrationDataMap.set(d.id, data);
+        });
+
+        const mode = tournament.mode?.toLowerCase() || "squad";
+        const rowsPerTeam = mode === "squad" ? 4 : mode === "duo" ? 2 : 1;
+
+        // Process teams and inject exact user manual registration details over global profiles
         for (let i = 0; i < allTeams.length; i++) {
             let t = allTeams[i];
-            if (!t.teamName || t.teamName === "Unnamed Team" || t.teamName === "Unknown Team" || !t.playersData || t.playersData.length === 0) {
+            const regData = registrationDataMap.get(t.teamId) || registrationDataMap.get(t.id);
+            
+            if (regData) {
+                t.teamName = regData.teamName || t.teamName;
+                t.teamCode = regData.teamCode || t.teamCode;
+                
+                // Prioritize the manual array data if available from the form submission
+                if (regData.playersData && regData.playersData.length > 0) {
+                    t.playersData = regData.playersData;
+                } else if (regData.uids && regData.uids.length > 0) {
+                    t.uids = regData.uids;
+                    for (let pi = 1; pi <= 4; pi++) {
+                        t[`nickPlayer${pi}`] = regData[`nickPlayer${pi}`] || regData[`player${pi}Nickname`] || t[`nickPlayer${pi}`];
+                    }
+                }
+            }
+
+            // Normalization: Reconstruct playersData array from direct manual registration fields if it doesn't exist
+            if (!t.playersData || t.playersData.length === 0) {
+                t.playersData = [];
+                const sourceUids = t.uids || [];
+                for (let pi = 0; pi < rowsPerTeam; pi++) {
+                    if (sourceUids[pi]) {
+                        const nick = t[`nickPlayer${pi+1}`] || t[`player${pi+1}Nickname`] || "—";
+                        t.playersData.push({ uid: sourceUids[pi], nickname: nick });
+                    }
+                }
+            }
+
+            // Tertiary Fallback: Look up global team profile ONLY if no registration form data could be traced
+            if (t.playersData.length === 0 && (!t.teamName || t.teamName === "Unnamed Team" || t.teamName === "Unknown Team")) {
                 try {
                     let teamIdToFetch = t.teamId;
                     if (!teamIdToFetch) {
@@ -1780,23 +1884,20 @@ window.manageTournamentSlots = async function(tournamentId) {
                             t.teamName = (t.teamName && t.teamName !== "Unnamed Team" && t.teamName !== "Unknown Team") ? t.teamName : teamData.teamName;
                             t.teamCode = t.teamCode || teamData.code;
                             
-                            if (!t.playersData || t.playersData.length === 0) {
-                                t.playersData = [];
-                                for (let memberUid of (teamData.members || [])) {
-                                    const mSnap = await getDoc(doc(db, "users", memberUid));
-                                    if (mSnap.exists()) {
-                                        t.playersData.push({
-                                            uid: mSnap.data().uid || mSnap.data().inGameUid || memberUid,
-                                            nickname: mSnap.data().nickname || mSnap.data().inGameName || mSnap.data().email?.split('@')[0] || "Unknown"
-                                        });
-                                    } else {
-                                        t.playersData.push({ uid: memberUid, nickname: "Unknown" });
-                                    }
+                            for (let memberUid of (teamData.members || [])) {
+                                const mSnap = await getDoc(doc(db, "users", memberUid));
+                                if (mSnap.exists()) {
+                                    t.playersData.push({
+                                        uid: mSnap.data().uid || mSnap.data().inGameUid || memberUid,
+                                        nickname: mSnap.data().nickname || mSnap.data().inGameName || mSnap.data().email?.split('@')[0] || "Unknown"
+                                    });
+                                } else {
+                                    t.playersData.push({ uid: memberUid, nickname: "Unknown" });
                                 }
                             }
                         }
                     }
-                } catch(e) { console.warn("Auto-sync failed for", t.id, e); }
+                } catch(e) { console.warn("Tertiary backup sync failed for team:", t.id, e); }
             }
         }
         
@@ -1808,9 +1909,6 @@ window.manageTournamentSlots = async function(tournamentId) {
 
         const confirmed  = allTeams.filter(t => t.paymentStatus !== "Waitlist").slice(0, 12);
         const waitlisted = allTeams.filter(t => t.paymentStatus === "Waitlist" || allTeams.indexOf(t) >= 12);
-        
-        const mode = tournament.mode?.toLowerCase() || "squad";
-        const rowsPerTeam = mode === "squad" ? 4 : mode === "duo" ? 2 : 1;
         
         // ✅ X-AXIS SCROLL FIX: min-width 1200px to stop columns from crushing together
         let html = `
@@ -1843,7 +1941,7 @@ window.manageTournamentSlots = async function(tournamentId) {
                         nickStr = team.playersData[pi].nickname || "—";
                     } else if (Array.isArray(team.uids) && team.uids[pi]) {
                         uidStr  = team.uids[pi];
-                        nickStr = team[`nickPlayer${pi+1}`] || "—";
+                        nickStr = team[`nickPlayer${pi+1}`] || team[`player${pi+1}Nickname`] || "—";
                     } else if (Array.isArray(team.members) && team.members[pi]) {
                         uidStr = team.members[pi];
                     }
@@ -1947,11 +2045,9 @@ window.manageTournamentSlots = async function(tournamentId) {
 window.kickTeamFromSlot = async function(tournamentId, teamId) {
     if (!confirm("Kick this team? This will delete their slot and notify them.")) return;
     try {
-        // Delete from slots (prefer) or participants
         await deleteDoc(doc(db, "tournaments", tournamentId, "slots", teamId)).catch(() => {});
         await deleteDoc(doc(db, "tournaments", tournamentId, "participants", teamId)).catch(() => {});
         
-        // Notify the kicked team
         await sendDualNotification(teamId, {
             type:       "admin_notice",
             title:      "❌ Removed from Tournament",
@@ -1960,7 +2056,7 @@ window.kickTeamFromSlot = async function(tournamentId, teamId) {
         });
         
         showToast("Team kicked & notified.", "success");
-        manageTournamentSlots(tournamentId); // Refresh
+        manageTournamentSlots(tournamentId);
         
     } catch (e) {
         showToast("Error: " + e.message, "error");
@@ -1982,31 +2078,26 @@ window.promoteFromWaitlist = async function(tournamentId, teamId) {
     try {
         const slotRef = doc(db, "tournaments", tournamentId, "slots", teamId);
         
-        // Actually update the database status
         await updateDoc(slotRef, {
             paymentStatus: "Pending Payment",
             assignedSlot: slotNumber,
             promotedAt: serverTimestamp()
         });
 
-        // Send the dual notification (In-app + Push)
         await sendDualNotification(teamId, {
             type: "admin_notice", 
             title: `🎉 Slot #${slotNumber} Opened!`, 
-            message: `Your team has been promoted from the waitlist to Slot #${slotNumber}. Please pay your entry fee now to secure your spot.`, 
+            message: `Your team has been promoted from the waitlist to Slot #${slotNumber}. Please pay your entry fee now to secure your spot.,`, 
             actionLink: `tournament=${tournamentId}`
         });
 
         showToast(`Team promoted to Slot #${slotNumber} & notified!`, "success");
-        
-        // Refresh the UI
         manageTournamentSlots(tournamentId);
     } catch (e) {
         showToast("Error promoting team: " + e.message, "error");
     }
 };
 
-// Global function to make the new Search Input work beautifully
 window.filterSlots = function() {
     const input = document.getElementById('slotSearch').value.toLowerCase();
     const rows = document.querySelectorAll('.slot-row');
@@ -2014,7 +2105,6 @@ window.filterSlots = function() {
     let currentBlockMatches = false;
     let blockRows = [];
     
-    // Group rows by team block (squad/duo rows) and hide the entire block if it doesn't match
     rows.forEach(row => {
         if (row.querySelector('td[rowspan]')) {
             if (blockRows.length > 0) {
@@ -2031,7 +2121,6 @@ window.filterSlots = function() {
         blockRows.forEach(r => r.style.display = currentBlockMatches ? '' : 'none');
     }
 };
-
 // ============================================================================
 // ULTIMATE REVIEW MODAL (Handles both Ongoing and Upcoming safely)
 // ============================================================================
