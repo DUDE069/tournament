@@ -2888,7 +2888,12 @@ function renderProfileTab(content) {
 
 
 function closeDashboard() {
-    document.getElementById("dashboardPopup")?.classList.remove("active");
+    const popup = document.getElementById("dashboardPopup");
+    if (popup) {
+        popup.classList.remove("active");
+    }
+    // Release the background scroll lock completely
+    document.body.style.overflow = ""; 
 }
 
 // ===============================
