@@ -5581,6 +5581,7 @@ window.handleUpcomingRegister = async function(tournamentId) {
     if(originalUpcoming) originalUpcoming(tournamentId);
 };
 
+// WITH THIS
 // 4. THE ULTIMATE GHOST ACCOUNT RECOVERY MODAL
 window.openTeamSetup = function() {
     const content = document.getElementById("customActionContent");
@@ -5589,12 +5590,23 @@ window.openTeamSetup = function() {
     
     modal.classList.add("active");
     
+    // ✅ FIX: Detect if the current auth session email is verified
+    const isVerified = auth.currentUser ? auth.currentUser.emailVerified : false;
+    
     content.innerHTML = `
         <div class="modal-header">
             <h2 style="color:#ff4444;">Finish Setup</h2>
             <button class="close-modal" onclick="closeCustomModal()">×</button>
         </div>
         <p style="color:#aaa;font-size:13px;margin-bottom:20px;">Your account creation was interrupted. Please finalize your profile to continue.</p>
+        
+        ${!isVerified ? `
+            <div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; padding:15px; margin-bottom:20px; text-align:center; font-size:13px;">
+                <p style="color:#ef4444; margin:0 0 10px 0; font-weight:bold;">⚠️ Email Verification Required</p>
+                <p style="color:#ccc; margin:0 0 12px 0; font-size:12px; line-height:1.4;">Firebase rules block unverified accounts. Please find the link in your inbox or spam folder.</p>
+                <span onclick="window.resendGhostVerificationLink(this)" style="color:#00ff88; text-decoration:underline; cursor:pointer; font-weight:bold;">📧 Resend Verification Email</span>
+            </div>
+        ` : ''}
         
         <label style="color:#888; font-size:12px;">In-Game Nickname</label>
         <input id="ghostNickname" type="text" placeholder="e.g. ProGamer" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:8px;margin-bottom:15px;box-sizing:border-box;">
@@ -5620,7 +5632,27 @@ window.openTeamSetup = function() {
         </div>
         
         <button id="ghostSaveBtn" onclick="saveGhostProfile()" style="background:#00ff88;color:#000;width:100%;padding:14px;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-size:16px;">Save & Complete Account</button>
+        
+        <button onclick="logout()" style="background:transparent; color:#666; border:1px solid #333; width:100%; padding:10px; border-radius:8px; margin-top:12px; cursor:pointer; font-size:13px;">🚪 Logout & Start Fresh</button>
     `;
+};
+
+// ✅ FIX: New helper function to resend authentication email link right inside the recovery card
+window.resendGhostVerificationLink = async function(element) {
+    if (!auth.currentUser) return;
+    const originalText = element.textContent;
+    element.textContent = "Sending Link...";
+    element.style.pointerEvents = "none";
+    try {
+        await sendEmailVerification(auth.currentUser);
+        showMessage("📧 Fresh verification link sent! Check your inbox or spam folder.");
+        element.textContent = "Link Sent! Check your mail.";
+    } catch (err) {
+        console.error(err);
+        showMessage("Error: " + err.message);
+        element.textContent = originalText;
+        element.style.pointerEvents = "auto";
+    }
 };
 
 window.saveGhostProfile = async function() {
@@ -5632,6 +5664,16 @@ window.saveGhostProfile = async function() {
     if (!nick) { showMessage("Please enter a nickname"); return; }
     if (isNaN(age) || age < 12) { showMessage("Please enter a valid age"); return; }
     
+    // ✅ FIX: Client-side validation stops the crash before Firestore rejects the transaction
+    if (auth.currentUser && !auth.currentUser.emailVerified) {
+        // Force reload state check just in case they verified in a separate tab
+        await auth.currentUser.reload();
+        if (!auth.currentUser.emailVerified) {
+            showMessage("❌ Verification required! Click the link in your Gmail inbox before saving.");
+            return;
+        }
+    }
+
     btn.disabled = true;
     btn.textContent = "Saving...";
     
@@ -5688,7 +5730,6 @@ window.saveGhostProfile = async function() {
         btn.textContent = "Save & Complete Account";
     }
 };
-
 
 
 // =============================================================================
