@@ -4318,17 +4318,27 @@ window.renderProfileContent = async function(content) {
 
         </div>`;
 
+   // WITH THIS
     // ── If user has no team ──────────────────────────────────────────────────
     if (!userProfile.teamId) {
         document.getElementById("teamRosterList").innerHTML = `
             <div style="text-align:center;padding:24px;background:#1a1a1a;border-radius:10px;border:1px solid #333;">
                 <div style="font-size:36px;margin-bottom:10px;">🚫</div>
                 <p style="color:#888;margin-bottom:14px;">You are not currently in a team.</p>
-                <button onclick="closeDashboard();openLogin();showCreate();"
+                
+                <button onclick="openInAppTeamSetup()"
                     style="background:#00ff88;color:#000;border:none;padding:10px 20px;
-                           border-radius:6px;cursor:pointer;font-weight:700;">
+                           border-radius:6px;cursor:pointer;font-weight:700; width:100%; max-width:250px;">
                     Create / Join a Team
                 </button>
+
+                <div style="margin-top:25px; padding-top:20px; border-top:1px solid #333;">
+                    <p style="color:#888; font-size:13px; margin-bottom:12px;">Looking for players? Join our Discord!</p>
+                    <button onclick="window.open('https://discord.gg/y9bTnNVh3S', '_blank')" style="background:#5865F2; color:#fff; border:none; padding:10px 20px; border-radius:6px; cursor:pointer; font-weight:700; display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; max-width:250px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189z"/></svg>
+                        Find a Team on Discord
+                    </button>
+                </div>
             </div>`;
         document.getElementById("teamWalletBalance").textContent = "—";
         document.getElementById("statWins").textContent = "0";
@@ -6129,5 +6139,98 @@ window.showPayLaterPopup       = window.showPayLaterPopup;
 window.requestPushPermissions  = window.requestPushPermissions;
 window.triggerPushNotification = window.triggerPushNotification;
 window.renderLeaderboard       = window.renderLeaderboard;
+// ==========================================
+// 5. IN-APP TEAM SETUP (FOR EXISTING USERS)
+// ==========================================
+window.openInAppTeamSetup = function() {
+    const content = document.getElementById("customActionContent");
+    const modal = document.getElementById("customActionModal");
+    if(!content || !modal) return;
+
+    modal.classList.add("active");
+
+    content.innerHTML = `
+        <div class="modal-header">
+            <h2>Team Setup</h2>
+            <button class="close-modal" onclick="closeCustomModal()">×</button>
+        </div>
+        <p style="color:#aaa;font-size:13px;margin-bottom:20px;">Choose a path to enter the tournament arena.</p>
+
+        <label style="color:#888; font-size:12px;">Select Your Path</label>
+        <select id="inAppRoleType" onchange="document.getElementById('inAppTeamBox').style.display = this.value === 'leader' ? 'block' : 'none'; document.getElementById('inAppJoinBox').style.display = this.value === 'join' ? 'block' : 'none';" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:8px;margin-bottom:15px;">
+            <option value="" disabled selected>Select an option...</option>
+            <option value="leader">👑 Create a New Team</option>
+            <option value="join">🔑 Join Existing Team</option>
+        </select>
+
+        <div id="inAppTeamBox" style="display:none;background:#0f0f0f;padding:15px;border-radius:8px;margin-bottom:15px;border:1px solid #333;">
+            <input id="inAppTeamName" type="text" placeholder="Enter Team Name" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:8px;margin-bottom:10px;box-sizing:border-box;">
+            <button onclick="document.getElementById('inAppCode').innerText = 'NPC' + Math.floor(100000 + Math.random() * 900000)" style="background:#333;color:#fff;font-size:12px;padding:8px 12px;border:none;border-radius:4px;cursor:pointer;">Generate Code</button>
+            <p id="inAppCode" style="color:#00ff88;font-weight:bold;margin-top:10px;"></p>
+        </div>
+
+        <div id="inAppJoinBox" style="display:none;background:#0f0f0f;padding:15px;border-radius:8px;margin-bottom:15px;border:1px solid #333;">
+            <input id="inAppJoinCode" type="text" placeholder="Enter Team Code" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:8px;box-sizing:border-box;">
+        </div>
+
+        <button id="inAppSaveBtn" onclick="saveInAppTeamSetup()" style="background:#00ff88;color:#000;width:100%;padding:14px;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-size:16px;">Confirm & Proceed</button>
+    `;
+};
+
+window.saveInAppTeamSetup = async function() {
+    const roleType = document.getElementById("inAppRoleType").value;
+    const btn = document.getElementById("inAppSaveBtn");
+
+    if (!roleType) { showMessage("Please select a path."); return; }
+
+    btn.disabled = true;
+    btn.textContent = "Processing...";
+
+    try {
+        const uid = auth.currentUser.uid;
+        let updates = {};
+
+        if (roleType === "leader") {
+            const tName = document.getElementById("inAppTeamName").value.trim();
+            const codeTxt = document.getElementById("inAppCode").innerText;
+            const tCode = codeTxt ? codeTxt.replace("NPC", "NPC").trim() : "";
+
+            if (!tName || !tCode) { showMessage("Enter team name and generate code"); btn.disabled=false; btn.textContent="Confirm & Proceed"; return; }
+
+            const tId = "team_" + Math.random().toString(36).substr(2, 9);
+            await setDoc(doc(db, "teams", tId), {
+                teamId: tId, teamName: tName, code: tCode,
+                leaderId: uid, leaderName: userProfile.nickname || auth.currentUser.email.split('@')[0], members: [uid], maxMembers: 5, createdAt: serverTimestamp()
+            });
+            updates = { isLeader: true, teamId: tId, teamName: tName, teamCode: tCode, role: "leader" };
+
+        } else if (roleType === "join") {
+            const jCode = document.getElementById("inAppJoinCode").value.trim().toUpperCase();
+            if (!jCode) { showMessage("Enter team code"); btn.disabled=false; btn.textContent="Confirm & Proceed"; return; }
+
+            const tSnap = await getDocs(query(collection(db, "teams"), where("code", "==", jCode)));
+            if (tSnap.empty) { showMessage("Invalid team code"); btn.disabled=false; btn.textContent="Confirm & Proceed"; return; }
+
+            const tData = tSnap.docs[0].data();
+            if ((tData.members || []).length >= (tData.maxMembers || 5)) { showMessage("Team is full."); btn.disabled=false; btn.textContent="Confirm & Proceed"; return; }
+
+            await updateDoc(doc(db, "teams", tData.teamId), { members: arrayUnion(uid) });
+            updates = { teamId: tData.teamId, teamName: tData.teamName, teamCode: jCode, role: "member" };
+        }
+
+        // Securely updates user document
+        await updateDoc(doc(db, "users", uid), updates);
+        closeCustomModal();
+        showMessage("Team setup complete!");
+        setTimeout(() => location.reload(), 1500);
+
+    } catch (err) {
+        console.error(err);
+        showMessage("Error: " + err.message);
+        btn.disabled = false;
+        btn.textContent = "Confirm & Proceed";
+    }
+};
+
 window.getDeduplicatedTeamMembers = window.getDeduplicatedTeamMembers;
 window.syncAcceptanceToUser    = window.syncAcceptanceToUser;
