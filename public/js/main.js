@@ -4985,6 +4985,7 @@ window.saveProfileUpdate = async function() {
 
 
 
+// WITH THIS
 window.openChangePassword = function() {
     const content = document.getElementById("customActionContent");
     document.getElementById("customActionModal").classList.add("active");
@@ -4995,8 +4996,14 @@ window.openChangePassword = function() {
             <button class="close-modal" onclick="closeCustomModal()">×</button>
         </div>
         <div id="passFlowContent">
-            <input id="currPass" type="password" placeholder="Current Password">
-            <input id="newPass" type="password" placeholder="New Password">
+            <div style="position: relative;">
+                <input id="currPass" type="password" placeholder="Current Password" style="padding-right: 40px;">
+                <span onclick="togglePasswordVisibility('currPass', this)" style="position: absolute; right: 12px; top: 12px; cursor: pointer; font-size: 16px; user-select: none;">👁️</span>
+            </div>
+            <div style="position: relative;">
+                <input id="newPass" type="password" placeholder="New Password" style="padding-right: 40px;">
+                <span onclick="togglePasswordVisibility('newPass', this)" style="position: absolute; right: 12px; top: 12px; cursor: pointer; font-size: 16px; user-select: none;">👁️</span>
+            </div>
             <button onclick="requestPasswordOTP()" style="background:#00ff88; color:#000;">Update Password</button>
             <p class="switch-text" onclick="forgotPasswordFlow()">Forgot Password?</p>
         </div>

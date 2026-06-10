@@ -648,10 +648,14 @@
       </div>
 
       <!-- LOGIN VIEW -->
+  
       <div id="loginView">
         <h2>NPC Arena Login</h2>
         <input id="loginEmail"    placeholder="Email"    type="email">
-        <input id="loginPassword" type="password"        placeholder="Password">
+        <div style="position: relative;">
+          <input id="loginPassword" type="password" placeholder="Password" style="width: 100%; padding-right: 40px; box-sizing: border-box;">
+          <span onclick="togglePasswordVisibility('loginPassword', this)" style="position: absolute; right: 12px; top: 12px; cursor: pointer; font-size: 16px; user-select: none; z-index: 10;">👁️</span>
+        </div>
         <button onclick="login()">Login</button>
         <p class="switch-text">
           Don't have an account?
@@ -659,13 +663,18 @@
         </p>
       </div>
 
-      <!-- CREATE ACCOUNT VIEW -->
       <div id="createView" style="display:none;">
         <h2>Create Account</h2>
        <div id="signupStep1">
           <input id="regEmail"   placeholder="Gmail ID"          type="email">
-          <input id="regPass"    type="password"                 placeholder="Password">
-          <input id="regConfirm" type="password"                 placeholder="Confirm Password">
+          <div style="position: relative;">
+            <input id="regPass" type="password" placeholder="Password" style="width: 100%; padding-right: 40px; box-sizing: border-box;">
+            <span onclick="togglePasswordVisibility('regPass', this)" style="position: absolute; right: 12px; top: 12px; cursor: pointer; font-size: 16px; user-select: none; z-index: 10;">👁️</span>
+          </div>
+          <div style="position: relative;">
+            <input id="regConfirm" type="password" placeholder="Confirm Password" style="width: 100%; padding-right: 40px; box-sizing: border-box;">
+            <span onclick="togglePasswordVisibility('regConfirm', this)" style="position: absolute; right: 12px; top: 12px; cursor: pointer; font-size: 16px; user-select: none; z-index: 10;">👁️</span>
+          </div>
           <input id="regNickname" type="text"                    placeholder="IN-Game Nickname (e.g. progamer)">
           <input type="number"   id="regAge"  placeholder="Your Age (12-60)" min="12" max="60">
           <select id="regGameRole" style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #2a2a2a;color:#fff;border-radius:8px;font-size:14px;font-family:inherit;margin-bottom:4px;">
@@ -1117,6 +1126,7 @@
       }
     }
 
+   // WITH THIS
     /** Small inline toast specifically for the banner response */
     function showBannerToast(msg, color) {
       const t = document.createElement('div');
@@ -1127,6 +1137,20 @@
       document.body.appendChild(t);
       setTimeout(() => t.remove(), 3000);
     }
+
+    /** Toggle Password Visibility Function */
+    window.togglePasswordVisibility = function(inputId, iconElement) {
+        const input = document.getElementById(inputId);
+        if (input) {
+            if (input.type === "password") {
+                input.type = "text";
+                iconElement.innerHTML = "🙈"; // Hide icon
+            } else {
+                input.type = "password";
+                iconElement.innerHTML = "👁️"; // Show icon
+            }
+        }
+    };
   </script>
 
   <!-- ══ MAIN JS (module) ══════════════════════════════════ -->
