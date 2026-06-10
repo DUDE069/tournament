@@ -3067,18 +3067,25 @@ function initNotifications() {
     const notifRef = collection(db, "users", currentUser.uid, "notifications");
     const q        = query(notifRef, orderBy("createdAt", "desc"));
 
+    // Initialize client-side tracking guard to intercept instant echo re-fires
+    if (!window.shownPopupIds) {
+        window.shownPopupIds = new Set();
+    }
+
     unsubNotifications = onSnapshot(q, (snapshot) => {
         console.log(`🔔 Received Notification Snapshot: ${snapshot.docs.length} docs`);
 
         // 1. FIRE THE POPUP FIRST (So nothing else can block it)
         snapshot.docChanges().forEach(async (change) => {
-            // implementation of looser rules: accept both added and modified events
             if (change.type === "added" || change.type === "modified") {
                 const notif = change.doc.data();
                 const notifId = change.doc.id;
                 console.log("📥 New Notification Data:", notif);
 
-                // --- NEW: SOUND TRIGGER ---
+                // Stop right here if this notification has already fired a popup on this page load
+                if (window.shownPopupIds.has(notifId)) return;
+
+                // --- SOUND TRIGGER ---
                 if (notif.type === "approval" || notif.type === "upcoming_approved") {
                     playNotificationSound('success');
                 } else if (notif.type === "payment_reminder") {
@@ -3087,14 +3094,22 @@ function initNotifications() {
                     playNotificationSound('default');
                 }
                 // --------------------------
-// Check if it's an approval/rejection/room details and hasn't been shown yet
-                if ((notif.type === "approval" || notif.type === "approved" || notif.type === "rejected" || notif.type === "room_details" || notif.type === "match_started") && !notif.popupShown) {
+
+                // Check if it's an approval/rejection/room details/payment confirmation and hasn't been shown yet
+                if ((notif.type === "approval" || notif.type === "approved" || notif.type === "rejected" || notif.type === "room_details" || notif.type === "match_started" || notif.type === "payment_confirmed") && !notif.popupShown) {
                     console.log("🚀 Firing Popup for:", notif.type);
                     
+                    // Shield the client instantly on the spot before making the async database update call
+                    window.shownPopupIds.add(notifId);
+
                     if (notif.type === "approval" || notif.type === "approved") {
                         showPopup("success", notif.message || "Your team has been approved!", "Continue →", () => {
                             document.getElementById('customPopup')?.remove();
                             showApprovedReviewInterface(notif.tournamentId, currentUser.uid);
+                        });
+                    } else if (notif.type === "payment_confirmed") {
+                        showPopup("success", notif.message || "✅ Payment Verified! You are fully registered. Room ID and password will be shared here 15 mins before the match.", "Got it", () => {
+                            document.getElementById('customPopup')?.remove();
                         });
                     } else if (notif.type === "rejected") {
                         showPopup("error", notif.message || "Your application was rejected.", "Close", () => {
@@ -3107,7 +3122,7 @@ function initNotifications() {
                         });
                     }
 
-                    // Mark the popup as shown in the database
+                    // Mark the popup as shown in the database securely
                     try {
                         await updateDoc(change.doc.ref, { popupShown: true });
                     } catch (e) { 
@@ -3116,6 +3131,7 @@ function initNotifications() {
                 }
             }
         });
+
         // 2. UPDATE THE UI (Wrapped safely so it can't crash the popup)
         try {
             const docs = snapshot.docs;
