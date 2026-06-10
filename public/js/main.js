@@ -2075,21 +2075,29 @@ window.openResultsEditor = function(tournamentId) {
 // ===============================
 // PHASE 3: WALLET SYSTEM
 // ===============================
+// WITH THIS
 async function loadUserWallet() {
     if (!currentUser) return;
     const walletRef = doc(db, "users", currentUser.uid, "wallet", "main");
-    const walletSnap = await getDoc(walletRef);
     
-    if (walletSnap.exists()) {
-        userWallet = walletSnap.data();
-    } else {
-        await setDoc(walletRef, {
-            balance: 0,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-        });
-        userWallet = { balance: 0 };
+    try {
+        const walletSnap = await getDoc(walletRef);
+        
+        if (walletSnap.exists()) {
+            userWallet = walletSnap.data();
+        } else {
+            await setDoc(walletRef, {
+                balance: 0,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            userWallet = { balance: 0 };
+        }
+    } catch (error) {
+        console.warn("[WALLET] Could not load or create wallet (Permission Denied). Defaulting to 0.");
+        userWallet = { balance: 0 }; // Fallback to prevent crashing the login sequence
     }
+    
     updateWalletUI();
 }
 
