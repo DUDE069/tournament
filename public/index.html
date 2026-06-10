@@ -380,6 +380,7 @@
       letter-spacing: .5px;
     }
 
+  
     /* ══════════════════════════════════════════════════════
        MOBILE FIXES
     ══════════════════════════════════════════════════════ */
@@ -390,6 +391,21 @@
       #pushPermBanner { flex-direction: column; text-align: center; }
       #pushPermBanner .banner-actions { justify-content: center; width: 100%; }
       .btn-allow-push, .btn-deny-push { flex: 1; }
+      
+      /* ✅ FIX: Enable absolute full-viewport scrolling for the modal box on mobile screens */
+      #loginModal.modal-overlay.active {
+        display: block !important;
+        overflow-y: auto !important;
+        padding: 30px 12px !important;
+        -webkit-overflow-scrolling: touch;
+      }
+      #loginModal .modal-card {
+        margin: 0 auto !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        max-height: none !important;
+        overflow: visible !important;
+      }
     }
   </style>
 </head>
