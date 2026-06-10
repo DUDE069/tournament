@@ -4837,6 +4837,7 @@ window.verifyAndCreate = async function() {
             return;
         }
 
+       // WITH THIS
         // Fetch fresh verification status
         await user.reload();
         
@@ -4846,6 +4847,12 @@ window.verifyAndCreate = async function() {
             btn.textContent = "✅ I've Verified My Email";
             return;
         }
+
+        // ✅ THE FIX: Force Firebase to instantly refresh the backend Security Token!
+        // Without this line, Firestore rules will permanently think the email is unverified.
+        await user.getIdToken(true);
+
+        // Email is verified! Unlock the final step (Roles/Teams)
 
         // Email is verified! Unlock the final step (Roles/Teams)
         document.getElementById("signupStep2").style.display = "none";
