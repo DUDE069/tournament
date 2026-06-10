@@ -1016,8 +1016,10 @@ section {
     }
     .dashboard-popup .popup-content {
         width: 95% !important;
-        max-height: 90vh;
-        overflow-y: auto;
+        /* max-height: 90vh; */
+        max-height: none !important;
+        /* overflow-y: auto; */
+        overflow-y: visible !important;
         margin: 0 auto;
     }
     .dash-card {
@@ -1515,7 +1517,8 @@ button, .dash-card, .role-card {
 
 .popup-body {
   padding: 24px;
-  overflow-y: auto;
+  /* overflow-y: auto; */
+  overflow-y: visible !important;
   flex: 1;
 }
 
@@ -1588,7 +1591,9 @@ button, .dash-card, .role-card {
 
   .popup-content {
     width: 95%;
-    max-height: 90vh;
+    /* max-height: 90vh; */
+    max-height: none !important;
+    overflow: visible !important;
     margin: 20px auto;
   }
 
@@ -2110,6 +2115,8 @@ button, .dash-card, .role-card {
 #dashboardContent {
     /* Do NOT set overflow:hidden here. The overlay itself scrolls. */
     width: 100%;
+    /* overflow-y: auto; */
+    overflow-y: visible !important;
 }
 
 /* ✅ FIX: Dash-table (Team Account table) must be visible without inner scrolling */

@@ -4185,6 +4185,7 @@ window.openDashboard = window._newOpenDashboard = async function(type) {
     popup.classList.add("active");
     document.body.style.overflow = "hidden";
     popup.style.overflowY = "auto";
+    popup.scrollTop = 0; // Reset scroll position to top when opening a dashboard tab
     // Set title
     title.innerHTML = popupTitles[type] || "Dashboard";
 
@@ -5513,6 +5514,7 @@ window.openDashboard = window._newOpenDashboard = async function(type) {
         if(popup && content) {
             popup.classList.add("active");
             document.body.style.overflow = "hidden";
+            popup.scrollTop = 0; // Reset scroll position to top when opening a dashboard tab
             content.innerHTML = `
                 <div style="text-align:center;padding:30px;">
                     <div style="font-size:50px;margin-bottom:15px;">⚠️</div>
