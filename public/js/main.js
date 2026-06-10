@@ -272,7 +272,7 @@ function renderTournaments() {
 
        // WITH THIS
         // NEW: Bulletproof Room ID & Message Watcher for all active tournaments
-        if (typeof currentUser !== 'undefined' && currentUser && !activeParticipantListeners[t.id]) {
+        if (typeof currentUser !== 'undefined' && currentUser && userProfile && !activeParticipantListeners[t.id]) {
             const pRef = doc(db, "tournaments", t.id, "participants", currentUser.uid);
             activeParticipantListeners[t.id] = onSnapshot(pRef, async (snap) => {
                 if (!snap.exists()) return; // Document deleted, no longer relevant
@@ -1369,11 +1369,14 @@ onAuthStateChanged(auth, async (user) => {
             // User is authenticated but has NO Firestore profile — ghost!
             const isFreshReg = sessionStorage.getItem("npc_fresh_registration") === user.uid;
             
+            // WITH THIS
             if (!isFreshReg) {
                 // This is a returning ghost — trigger recovery
                 console.warn("[GHOST] Ghost account detected for:", user.uid);
                 userProfile = null;
                 isLoggedIn  = true;
+                const loginBtn = document.getElementById("loginBtn");
+                if (loginBtn) loginBtn.innerText = "Profile";
                 // Recovery is triggered via handleProfileClick or openDashboard
                 return;
             }
@@ -1382,6 +1385,8 @@ onAuthStateChanged(auth, async (user) => {
             const retrySnap = await getDoc(userRef);
             if (!retrySnap.exists()) {
                 userProfile = null;
+                const loginBtn = document.getElementById("loginBtn");
+                if (loginBtn) loginBtn.innerText = "Profile";
                 return;
             }
             userProfile = retrySnap.data();
@@ -1613,8 +1618,9 @@ window.handleNotifyMe = async function(tournamentId, tournamentName) {
     }
 };
 
+// WITH THIS
 async function checkLimitedTournamentNotifications() {
-    if (!currentUser) return;
+    if (!currentUser || !userProfile) return;
     const now = Date.now();
 
     tournaments.forEach(async (t) => {
@@ -5224,13 +5230,19 @@ try {
     console.warn("[AUTH] Notification setup error (non-blocking):", notifErr.message);
 }
 
+           // WITH THIS
             // ✅ Mark as fresh registration for the Auth listener
             sessionStorage.setItem("npc_fresh_registration", uid);
         
             userProfile = verifySnap.data();
+            isLoggedIn = true;
+            
+            // ✅ FIX: Instantly change the Login button to Profile!
+            const loginBtn = document.getElementById("loginBtn");
+            if (loginBtn) loginBtn.innerText = "Profile";
+
             showMessage("Account created successfully!");
         closeModal();
-        
         if (selectedRole === "leader") {
             setTimeout(() => showMessage(`Team "${userData.teamName}" created! Share code: ${userData.teamCode}`), 1000);
         } else if (selectedRole === "join") {
