@@ -2440,3 +2440,179 @@ window.clearLeaderboard = async function(tournamentId) {
         showToast("Error clearing: " + err.message, "error");
     }
 };
+
+// =============================================================================
+//  NPC Esports — USER METRICS & ROSTER ANALYTICS DASHBOARD (NEW FEATURE)
+// =============================================================================
+
+window.showUserAnalyticsDashboard = async function() {
+    // 1. Setup UI Modal Elements
+    document.getElementById("analyticsModalOverlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "analyticsModalOverlay";
+    overlay.className = "status-modal-overlay";
+    
+    overlay.innerHTML = `
+        <div class="status-modal" style="max-width:1000px; width:100%; max-height:90vh; overflow-y:auto; padding:25px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:15px; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <h2 style="color:var(--gold); margin:0; font-size:22px; display:inline-flex; align-items:center; gap:8px;">📊 User Database & Roster Analytics</h2>
+                    <p style="color:#888; font-size:12px; margin:4px 0 0 0;">Complete organizational breakdown of registered platform users.</p>
+                </div>
+                <button onclick="document.getElementById('analyticsModalOverlay').remove()" 
+                        style="background:transparent; color:#666; border:none; font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            
+            <div id="analyticsStatsGrid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:15px; margin-bottom:25px;">
+                <div style="background:#111; border:1px solid #222; border-radius:10px; padding:15px; text-align:center;">
+                    <p style="color:#888; margin:0; font-size:12px; text-transform:uppercase;">Total Users</p>
+                    <h3 id="statTotalUsers" style="color:#fff; font-size:28px; margin:8px 0 0 0;">...</h3>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-left:4px solid #ffd700; border-radius:10px; padding:15px; text-align:center;">
+                    <p style="color:#ffd700; margin:0; font-size:12px; text-transform:uppercase;">Team Leaders 👑</p>
+                    <h3 id="statLeaders" style="color:#fff; font-size:28px; margin:8px 0 0 0;">...</h3>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-left:4px solid #3b82f6; border-radius:10px; padding:15px; text-align:center;">
+                    <p style="color:#3b82f6; margin:0; font-size:12px; text-transform:uppercase;">Team Members 🔑</p>
+                    <h3 id="statMembers" style="color:#fff; font-size:28px; margin:8px 0 0 0;">...</h3>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-left:4px solid #888; border-radius:10px; padding:15px; text-align:center;">
+                    <p style="color:#aaa; margin:0; font-size:12px; text-transform:uppercase;">Viewers 👁️</p>
+                    <h3 id="statViewers" style="color:#fff; font-size:28px; margin:8px 0 0 0;">...</h3>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-left:4px solid #ff4444; border-radius:10px; padding:15px; text-align:center;">
+                    <p style="color:#ff4444; margin:0; font-size:12px; text-transform:uppercase;">Admins 🛡️</p>
+                    <h3 id="statAdmins" style="color:#fff; font-size:28px; margin:8px 0 0 0;">...</h3>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:15px; margin-bottom:25px; background:rgba(255,215,0,0.03); border:1px solid #222; padding:12px 18px; border-radius:8px; flex-wrap:wrap;">
+                <span style="color:#888; font-size:13px;">Team Alignment Status:</span>
+                <span style="color:#00ff88; font-size:13px; font-weight:bold;">🟢 Organized (In a Team): <span id="statWithTeam">0</span></span>
+                <span style="color:#ff9f43; font-size:13px; font-weight:bold;">🟡 Free Agents (No Team): <span id="statNoTeam">0</span></span>
+            </div>
+
+            <div style="margin-bottom:15px;">
+                <input type="text" id="analyticsUserSearch" placeholder="🔍 Search by Nickname, Email, Role, or Team Name…"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid #333; background:#161616; color:#fff; font-family:inherit; font-size:14px;"
+                       onkeyup="filterAnalyticsUserTable()">
+            </div>
+
+            <div style="overflow-x:auto; border:1px solid #222; border-radius:8px; max-height:400px; overflow-y:auto;">
+                <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
+                    <thead style="background:#161616; position:sticky; top:0; z-index:2; border-bottom:2px solid #333;">
+                        <tr>
+                            <th style="padding:12px; color:#888;">Nickname</th>
+                            <th style="padding:12px; color:#888;">Email</th>
+                            <th style="padding:12px; color:#888;">System Role</th>
+                            <th style="padding:12px; color:#888;">Assigned Team</th>
+                            <th style="padding:12px; color:#888; text-align:center;">Age</th>
+                        </tr>
+                    </thead>
+                    <tbody id="analyticsUserTableBody">
+                        <tr>
+                            <td colspan="5" style="text-align:center; padding:30px; color:#666;">Querying Firestore user database…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <button onclick="document.getElementById('analyticsModalOverlay').remove()"
+                    style="width:100%; margin-top:20px; padding:12px; background:#222; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-family:inherit; transition:background 0.2s;">
+                Dismiss Dashboard
+            </button>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    try {
+        // 2. Fetch all user records from Firestore
+        const usersSnap = await getDocs(collection(db, "users"));
+        
+        let total = 0;
+        let leaders = 0;
+        let members = 0;
+        let viewers = 0;
+        let admins = 0;
+        let withTeam = 0;
+        let noTeam = 0;
+        
+        let tableRowsHtml = "";
+
+        usersSnap.forEach(docSnap => {
+            const u = docSnap.data();
+            total++;
+
+            // Extract role properties safely
+            const userRole = (u.role || "viewer").toLowerCase();
+            const isAdminUser = u.isAdmin === true;
+            const hasTeam = !!u.teamId;
+
+            // Increment specific categories
+            if (isAdminUser) admins++;
+            
+            if (userRole === "leader") leaders++;
+            else if (userRole === "member" || userRole === "player") members++;
+            else if (userRole === "viewer") viewers++;
+
+            if (hasTeam) withTeam++;
+            else noTeam++;
+
+            // Handle styling badges
+            let roleBadge = `<span style="background:rgba(136,136,136,0.1); color:#aaa; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold;">Viewer 👁️</span>`;
+            if (isAdminUser) {
+                roleBadge = `<span style="background:rgba(239,68,68,0.15); color:#ff4444; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold; border:1px solid rgba(239,68,68,0.3);">Admin 🛡️</span>`;
+            } else if (userRole === "leader") {
+                roleBadge = `<span style="background:rgba(255,215,0,0.15); color:#ffd700; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold; border:1px solid rgba(255,215,0,0.3);">Leader 👑</span>`;
+            } else if (userRole === "member" || userRole === "player") {
+                roleBadge = `<span style="background:rgba(59,130,246,0.15); color:#3b82f6; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold;">Member 🔑</span>`;
+            }
+
+            const teamDisplay = hasTeam 
+                ? `<b style="color:#fff;">${escHtml(u.teamName)}</b> <span style="color:#555; font-size:11px;">(${escHtml(u.teamCode || "")})</span>`
+                : `<i style="color:#555;">No Assigned Team (Solo)</i>`;
+
+            tableRowsHtml += `
+                <tr class="analytics-user-row" style="border-bottom:1px solid #1f1f1f; background:#0d0d0d;">
+                    <td style="padding:12px; font-weight:bold; color:#fff;">${escHtml(u.nickname || "Unnamed User")}</td>
+                    <td style="padding:12px; color:#aaa;">${escHtml(u.email || "—")}</td>
+                    <td style="padding:12px;">${roleBadge}</td>
+                    <td style="padding:12px;">${teamDisplay}</td>
+                    <td style="padding:12px; text-align:center; color:#888;">${u.age || "—"}</td>
+                </tr>
+            `;
+        });
+
+        // 3. Inject calculated stats dynamically into counters
+        document.getElementById("statTotalUsers").innerText = total;
+        document.getElementById("statLeaders").innerText = leaders;
+        document.getElementById("statMembers").innerText = members;
+        document.getElementById("statViewers").innerText = viewers;
+        document.getElementById("statAdmins").innerText = admins;
+        document.getElementById("statWithTeam").innerText = withTeam;
+        document.getElementById("statNoTeam").innerText = noTeam;
+
+        document.getElementById("analyticsUserTableBody").innerHTML = tableRowsHtml || `<tr><td colspan="5" style="text-align:center; padding:20px; color:#666;">No users found in database.</td></tr>`;
+
+    } catch (err) {
+        console.error("[ANALYTICS]", err);
+        document.getElementById("analyticsUserTableBody").innerHTML = `
+            <tr><td colspan="5" style="text-align:center; padding:20px; color:var(--red);">Error reading users: ${escHtml(err.message)}</td></tr>
+        `;
+    }
+};
+
+// 🔍 LIVE FILTER LOGIC FUNCTION
+window.filterAnalyticsUserTable = function() {
+    const q = document.getElementById("analyticsUserSearch").value.toLowerCase().trim();
+    const rows = document.querySelectorAll(".analytics-user-row");
+    
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        if (text.includes(q)) {
+            row.style.display = "";
+        } else {
+            row.style.display = "none";
+        }
+    });
+};
