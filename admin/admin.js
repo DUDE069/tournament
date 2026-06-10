@@ -1712,6 +1712,7 @@ window.openTeamDetailsModal = async function(teamId) {
 // ==========================================
 // SLOT & WAITLIST MANAGEMENT
 // ==========================================
+// REPLACE THIS ENTIRE FUNCTION
 window.manageTournamentSlots = async function(tournamentId) {
     document.getElementById("statusModalOverlay")?.remove();
     const overlay = document.createElement("div");
@@ -1730,7 +1731,7 @@ window.manageTournamentSlots = async function(tournamentId) {
             <div id="rg-tiebreaker-area"></div>
             <div id="rg-waitlist-bar-area"></div>
             
-            <div id="table-container" style="overflow-x:auto; max-height:55vh; margin-bottom:15px; border-radius:8px; border:1px solid #333;">
+            <div id="table-container" style="overflow-x:auto; overflow-y:auto; max-height:75vh; margin-bottom:15px; border-radius:8px; border:1px solid #333;">
                 <p style="color:#888; padding:15px; text-align:center;">Loading slots…</p>
             </div>
 
@@ -1748,8 +1749,6 @@ window.manageTournamentSlots = async function(tournamentId) {
     document.body.appendChild(overlay);
 
     try {
-        // ✅ FIX: Read from /slots sub-collection (auto-filled by approveUpcoming)
-        // Also fall back to /participants if /slots is empty (backward compat)
         const [tSnap, slotsSnap, participantsSnap] = await Promise.all([
             getDoc(doc(db, "tournaments", tournamentId)),
             getDocs(collection(db, "tournaments", tournamentId, "slots")),
@@ -1758,15 +1757,49 @@ window.manageTournamentSlots = async function(tournamentId) {
 
         const tournament = tSnap.exists() ? tSnap.data() : {};
         
-        // Prefer /slots, fall back to /participants for backward compat
-        let allTeams = [];
-        if (!slotsSnap.empty) {
-            allTeams = slotsSnap.docs.map(d => ({ id: d.id, _source: "slots", ...d.data() }));
-        } else {
-            allTeams = participantsSnap.docs.map(d => ({ id: d.id, _source: "participants", ...d.data() }));
+        // Merge participants and slots securely
+        const teamMap = new Map();
+        participantsSnap.forEach(d => teamMap.set(d.id, { id: d.id, _source: "participants", ...d.data() }));
+        slotsSnap.forEach(d => teamMap.set(d.id, { ...teamMap.get(d.id), id: d.id, _source: "slots", ...d.data() }));
+        let allTeams = Array.from(teamMap.values());
+
+        // ✅ AUTO-SYNC BUG FIX: Fetch deep player data if it is missing or "Unnamed Team"
+        for (let i = 0; i < allTeams.length; i++) {
+            let t = allTeams[i];
+            if (!t.teamName || t.teamName === "Unnamed Team" || t.teamName === "Unknown Team" || !t.playersData || t.playersData.length === 0) {
+                try {
+                    let teamIdToFetch = t.teamId;
+                    if (!teamIdToFetch) {
+                        const userSnap = await getDoc(doc(db, "users", t.id)); 
+                        if (userSnap.exists()) teamIdToFetch = userSnap.data().teamId;
+                    }
+                    if (teamIdToFetch) {
+                        const teamSnap = await getDoc(doc(db, "teams", teamIdToFetch));
+                        if (teamSnap.exists()) {
+                            const teamData = teamSnap.data();
+                            t.teamName = (t.teamName && t.teamName !== "Unnamed Team" && t.teamName !== "Unknown Team") ? t.teamName : teamData.teamName;
+                            t.teamCode = t.teamCode || teamData.code;
+                            
+                            if (!t.playersData || t.playersData.length === 0) {
+                                t.playersData = [];
+                                for (let memberUid of (teamData.members || [])) {
+                                    const mSnap = await getDoc(doc(db, "users", memberUid));
+                                    if (mSnap.exists()) {
+                                        t.playersData.push({
+                                            uid: mSnap.data().uid || mSnap.data().inGameUid || memberUid,
+                                            nickname: mSnap.data().nickname || mSnap.data().inGameName || mSnap.data().email?.split('@')[0] || "Unknown"
+                                        });
+                                    } else {
+                                        t.playersData.push({ uid: memberUid, nickname: "Unknown" });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch(e) { console.warn("Auto-sync failed for", t.id, e); }
+            }
         }
         
-        // Sort by assignment time
         allTeams.sort((a, b) => {
             const tA = a.assignedAt || a.joinedAt || a.createdAt || 0;
             const tB = b.assignedAt || b.joinedAt || b.createdAt || 0;
@@ -1779,11 +1812,9 @@ window.manageTournamentSlots = async function(tournamentId) {
         const mode = tournament.mode?.toLowerCase() || "squad";
         const rowsPerTeam = mode === "squad" ? 4 : mode === "duo" ? 2 : 1;
         
-      // WITH THIS
-        // ── Build the main table ────────────────────────────────────────────
-        // ✅ FIX: Added min-width: 800px so it scrolls horizontally on mobile instead of breaking layout!
+        // ✅ X-AXIS SCROLL FIX: min-width 1200px to stop columns from crushing together
         let html = `
-            <table class="admin-table" style="width:100%; min-width: 800px; border-collapse:collapse; text-align:left; font-size:13px;">
+            <table class="admin-table" style="width:100%; min-width: 1200px; border-collapse:collapse; text-align:left; font-size:13px;">
                 <thead style="background:#1a1a1a; position:sticky; top:0; z-index:1;">
                     <tr>
                         <th style="padding:10px; border-bottom:2px solid #333; white-space:nowrap;">Slot</th>
@@ -1803,23 +1834,17 @@ window.manageTournamentSlots = async function(tournamentId) {
                 const isFirst = pi === 0;
                 const isLast  = pi === rowsPerTeam - 1;
                 
-                // ✅ FIX: Multiple safe fallback paths for player data
                 let uidStr  = "—";
                 let nickStr = "—";
                 
                 if (team) {
-                    // Path 1: playersData array (richest)
                     if (Array.isArray(team.playersData) && team.playersData[pi]) {
                         uidStr  = team.playersData[pi].uid      || "—";
                         nickStr = team.playersData[pi].nickname || "—";
-                    }
-                    // Path 2: uids array (legacy)
-                    else if (Array.isArray(team.uids) && team.uids[pi]) {
+                    } else if (Array.isArray(team.uids) && team.uids[pi]) {
                         uidStr  = team.uids[pi];
                         nickStr = team[`nickPlayer${pi+1}`] || "—";
-                    }
-                    // Path 3: members array (simplest)
-                    else if (Array.isArray(team.members) && team.members[pi]) {
+                    } else if (Array.isArray(team.members) && team.members[pi]) {
                         uidStr = team.members[pi];
                     }
                 }
@@ -1828,28 +1853,17 @@ window.manageTournamentSlots = async function(tournamentId) {
                 html += `<tr class="slot-row" style="${rowBorder}">`;
                 
                 if (isFirst) {
-                    // ✅ FIX: team.teamName with multiple fallbacks — NEVER "undefined"
                     const teamDisplay = team
                         ? escHtml(team.teamName || team.name || "Unnamed Team")
                         : '<i>Empty Slot</i>';
-                    const codeDisplay = team
-                        ? `<span style="color:#555; font-size:10px;">(${escHtml(team.teamCode || team.code || "N/A")})</span>`
+                    const codeDisplay = team && team.teamCode && team.teamCode !== "N/A"
+                        ? `<span style="color:#555; font-size:10px;">(${escHtml(team.teamCode)})</span>`
                         : "";
                     
-                    // Payment status badge
                     const pStatus = team?.paymentStatus || "Empty";
-                    const pColor  = pStatus === "Paid" || pStatus === "verified"
-                        ? "#22c55e"
-                        : pStatus === "Pending Payment"
-                        ? "#fbbf24"
-                        : "#555";
-                    const pBg = pStatus === "Paid" || pStatus === "verified"
-                        ? "rgba(34,197,94,0.15)"
-                        : pStatus === "Pending Payment"
-                        ? "rgba(251,191,36,0.15)"
-                        : "transparent";
+                    const pColor  = pStatus === "Paid" || pStatus === "verified" ? "#22c55e" : pStatus === "Pending Payment" ? "#fbbf24" : "#555";
+                    const pBg = pStatus === "Paid" || pStatus === "verified" ? "rgba(34,197,94,0.15)" : pStatus === "Pending Payment" ? "rgba(251,191,36,0.15)" : "transparent";
                     
-                    // Action buttons
                     const actionBtns = team ? `
                         <div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:center;">
                             <button onclick="moveToWaitlist('${tournamentId}','${team.id}')"
@@ -1897,7 +1911,6 @@ window.manageTournamentSlots = async function(tournamentId) {
         html += `</tbody></table>`;
         document.getElementById("table-container").innerHTML = html;
 
-        // ── Waitlist Queue ──────────────────────────────────────────────────
         const wlGrid = document.getElementById("waitlistGrid");
         if (waitlisted.length === 0) {
             wlGrid.innerHTML = `<p style="color:#666; font-size:13px;">Queue is empty.</p>`;
