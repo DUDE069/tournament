@@ -5435,6 +5435,19 @@ window.editRejectedApplication = async function(tournamentId) {
     window.currentJoiningTournament = tournamentId;
     window.currentTournamentCategory = isUpcoming ? 'upcoming' : 'ongoing';
 
+    // ✅ FIX: Fetch tournament details to populate the entry fee and title
+    const tournament = tournaments.find(t => t.id === tournamentId);
+    if (tournament) {
+        document.getElementById("joinTournamentTitle").textContent = tournament.title;
+        document.getElementById("joinPrizeFirst").textContent = tournament.prize?.first || 0;
+        document.getElementById("prizeFirst").textContent = tournament.prize?.first || 0;
+        document.getElementById("prizeSecond").textContent = tournament.prize?.second || 0;
+        document.getElementById("prizeThird").textContent = tournament.prize?.third || 0;
+        document.getElementById("joinEntryFeeDisplay").textContent = tournament.entryFee || 0;
+        document.getElementById("paymentAmount").textContent = tournament.entryFee || 0;
+        document.getElementById("walletBalance").textContent = userWallet?.balance || 0;
+    }
+
     // Open Modal
     document.getElementById("viewerBlocker").style.display = "none";
     document.getElementById("registrationContainer").style.display = "block";
@@ -5454,15 +5467,16 @@ window.editRejectedApplication = async function(tournamentId) {
             document.getElementById("nickPlayer5").value = data.playersData[4].nickname || "";
         }
     }
-document.getElementById("joinBackupEmail").value = data.backupEmail || "";
+    document.getElementById("joinBackupEmail").value = data.backupEmail || "";
     
-    // --- ADDED: SYNC ADMIN REJECTIONS & HIGHLIGHT FIELDS ---
+    // --- SYNC ADMIN REJECTIONS & HIGHLIGHT FIELDS ---
     const rejectedFields = data.rejectedFields || []; 
 
-    // 1. Reset all fields first to clean up old red borders
+    // 1. ✅ FIX: Reset backgrounds to #1a1a1a instead of blank ("") so it doesn't turn white!
     document.querySelectorAll('#tournamentJoinForm input').forEach(input => {
         input.style.border = "1px solid #444";
-        input.style.backgroundColor = "";
+        input.style.backgroundColor = "#1a1a1a";
+        input.style.color = "#fff"; 
         const label = input.previousElementSibling;
         if (label && label.tagName === 'LABEL') {
             label.innerHTML = label.innerHTML.replace(/ <span style="color:#ff4444;font-size:12px;">❌ Action Required<\/span>/g, '');
@@ -5484,11 +5498,10 @@ document.getElementById("joinBackupEmail").value = data.backupEmail || "";
         });
         showMessage("Please correct the highlighted fields and resubmit.");
     } else if (data.status === "rejected") {
-        showMessage(`Rejected: ${data.rejectionNote || "Please check your details."}`);
+        showMessage(`Rejected: ${data.rejectionNote || data.rejectionReason || "Please check your details."}`);
     } else {
         showMessage("Please correct your details and resubmit.");
     }
-    // -------------------------------------------------------
     
     const btn = document.getElementById("joinSubmitBtn");
     if(btn) btn.textContent = "Resubmit Application →";
