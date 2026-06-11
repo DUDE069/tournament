@@ -1839,9 +1839,7 @@ window.openUpcomingPaymentInterface = async function(tournamentId) {
     `);
 };
 
-// WITH THIS
 window.processUpcomingPayment = async function(tournamentId) {
-    // Simulate payment processing
     const btn = document.querySelector('#upcomingPaymentModal button');
     if (btn) {
         btn.textContent = "Processing...";
@@ -1849,16 +1847,16 @@ window.processUpcomingPayment = async function(tournamentId) {
     }
     
     try {
-        // 1. Update user's personal registration status
+        // 1. Update user's personal dashboard
         await updateDoc(doc(db, "users", currentUser.uid, "upcomingRegistrations", tournamentId), {
-            paymentStatus: "paid",
+            paymentStatus: "verified", // Auto-verify pre-payments
             paidAt: serverTimestamp()
         });
 
-        // 2. ✅ FIX: Instantly trigger the Admin Panel Status Tracker!
+        // 2. Update Admin Panel Status Trackers
         try {
             await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid), {
-                paymentStatus: "paid",
+                paymentStatus: "verified",
                 confirmationReceived: true,
                 paidAt: serverTimestamp()
             });
@@ -1866,11 +1864,21 @@ window.processUpcomingPayment = async function(tournamentId) {
         
         try {
             await updateDoc(doc(db, "tournaments", tournamentId, "participants", currentUser.uid), {
-                paymentStatus: "paid",
+                paymentStatus: "verified",
                 confirmationReceived: true,
                 paidAt: serverTimestamp()
             });
         } catch(e) {}
+
+        // 3. ✅ NEW FIX: Instantly sync to Slot Management!
+        if (userProfile && userProfile.teamId) {
+            try {
+                await updateDoc(doc(db, "tournaments", tournamentId, "slots", userProfile.teamId), {
+                    paymentStatus: "Paid", 
+                    updatedAt: serverTimestamp()
+                });
+            } catch(e) {}
+        }
         
         document.getElementById('upcomingPaymentModal')?.remove();
         showPopup("success", "Payment successful! Your spot is confirmed.", "Great!", () => {
@@ -1885,7 +1893,6 @@ window.processUpcomingPayment = async function(tournamentId) {
         }
     }
 };
-
 
 
 // ===============================
@@ -5970,12 +5977,25 @@ window.getDeduplicatedTeamMembers = function(rawMembers, leaderId) {
 window.syncAcceptanceToUser = async function(tournamentId, userId, teamData = {}) {
     try {
         const batch = writeBatch(db);
+        
+        // 1. Update Upcoming Registration
         const regRef = doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId);
         batch.update(regRef, { status: "accepted", processedAt: serverTimestamp() });
         
+        // 2. Update User's Personal Dashboard
         const userRegRef = doc(db, "users", userId, "upcomingRegistrations", tournamentId);
         batch.update(userRegRef, { status: "accepted", paymentStatus: "pending", processedAt: serverTimestamp() });
         
+        // 3. ✅ NEW FIX: Create the Participant doc so the Admin Status Tracker works immediately!
+        const partRef = doc(db, "tournaments", tournamentId, "participants", userId);
+        batch.set(partRef, {
+            ...teamData,
+            status: "approved",
+            paymentStatus: "pending",
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 4. Create the Slot
         if (teamData && teamData.teamId) {
             const slotRef = doc(db, "tournaments", tournamentId, "slots", teamData.teamId);
             const members = window.getDeduplicatedTeamMembers(teamData.members, userId);

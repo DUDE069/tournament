@@ -993,6 +993,12 @@ function upcomingCard(d, type) {
         </button>
       </div>
     `;
+  } else if (type === "accepted") {
+    // ✅ FIX 1: Added the Status button so you can track pre-payments!
+    actions = `
+      <button class="btn-status" onclick="viewStatusModal('${d.tournamentId}','${d.id}')">📊 Status</button>
+      <button class="btn-remove" onclick="removeUpcoming('${d.tournamentId}','${d.id}','${d.id}')" id="regcard-${d.id}">Remove</button>
+    `;
   } else {
     actions = `<button class="btn-remove" onclick="removeUpcoming('${d.tournamentId}','${d.id}','${d.id}')" id="regcard-${d.id}">Remove</button>`;
   }
