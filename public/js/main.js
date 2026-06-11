@@ -32,7 +32,7 @@ const calendarRef    = collection(db, "calendarEvents");
 // ===============================
 // DEBUG MODE (MASTER SWITCH)
 // ===============================
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 if (!DEBUG_MODE) { console.log = () => {}; console.error = () => {}; console.warn = () => {}; console.info = () => {}; }
 
 // ===============================
