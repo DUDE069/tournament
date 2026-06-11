@@ -862,6 +862,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     eventDate:      tournament.eventDate || null,
                     teamName:       userProfile.teamName,
                     status:         "pending",
+                    entryFee:       tournament.entryFee || 0, // ✅ FIX: Save the entry fee here!
                     registeredAt:   serverTimestamp()
                 }, { merge: true });
 
@@ -6010,8 +6011,15 @@ window.listenForApprovals = function(uid) {
                 if (localStorage.getItem(popupKey)) return;
                 localStorage.setItem(popupKey, "1");
                 
+                // ✅ FIX: Grab the fee from the DB, or fallback to the global tournaments array if missing
+                let feeToShow = data.entryFee;
+                if (feeToShow === undefined || feeToShow === null) {
+                    const t = tournaments.find(t => t.id === docId);
+                    feeToShow = t ? (t.entryFee || 0) : 0;
+                }
+                
                 window.triggerPushNotification("Application Accepted! 🎉", `Your team was accepted for ${data.title || "a tournament"}.`);
-                window.showPayLaterPopup(docId, data.title || "Tournament", data.entryFee || 0);
+                window.showPayLaterPopup(docId, data.title || "Tournament", feeToShow);
             }
             
             if (data.roomId && data.roomPassword) {
@@ -6024,7 +6032,6 @@ window.listenForApprovals = function(uid) {
         });
     });
 };
-
 // =============================================================================
 // PART 4.2 — "PAY NOW OR PAY LATER" MODAL
 // =============================================================================
