@@ -8,7 +8,7 @@ import { db, auth } from "./firebase.js";
 import {
   collection, onSnapshot, doc, setDoc, getDoc, serverTimestamp,
   addDoc, updateDoc, query, where, getDocs, arrayUnion, orderBy, increment,
-  runTransaction, writeBatch, limit
+  runTransaction, writeBatch, limit, deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 import {
@@ -3201,6 +3201,7 @@ function renderNotificationList(docs, listEl) {
         status_message:    '#3b82f6',
         room_details:      '#ffd700'
     };
+
     listEl.innerHTML = docs.map(d => {
         const n     = d.data();
         const color = colorMap[n.type] || '#4a90e2';
@@ -3217,11 +3218,14 @@ function renderNotificationList(docs, listEl) {
                     ${icon}
                 </div>
                 <div style="flex:1;min-width:0;">
-                    <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:4px;align-items:center;">
                         <strong style="color:#fff;font-size:13px;">${n.title || ''}</strong>
-                        ${!n.read
-                            ? '<span style="width:7px;height:7px;background:#ff4444;border-radius:50%;flex-shrink:0;margin-top:4px;"></span>'
-                            : ''}
+                        
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            ${!n.read ? '<span style="width:7px;height:7px;background:#ff4444;border-radius:50%;flex-shrink:0;"></span>' : ''}
+                            <span onclick="deleteNotification(event, '${d.id}')" style="color:#666; font-size:14px; cursor:pointer; padding: 0 4px; border-radius:4px; transition: color 0.2s;" onmouseover="this.style.color='#ff4444'" onmouseout="this.style.color='#666'" title="Remove">✖</span>
+                        </div>
+
                     </div>
                     <p style="color:#aaa;font-size:12px;margin:0;line-height:1.4;">${n.message || ''}</p>
                     <p style="color:#666;font-size:11px;margin:6px 0 0;">${time}</p>
@@ -3246,7 +3250,6 @@ window.markAllRead = async function() {
     await batch.commit();
 };
 
-// WITH THIS
 window.handleNotificationClick = async function(notifId, actionLink, type) {
     // 1. Mark as read
     try {
@@ -3254,84 +3257,65 @@ window.handleNotificationClick = async function(notifId, actionLink, type) {
     } catch (err) { console.error("Update failed:", err); }
 
     if (window.toggleNotifications) window.toggleNotifications();
-    closeJoinModal(); // Ensure forms are closed
+    if (typeof closeJoinModal === 'function') closeJoinModal(); // Ensure forms are closed
 
-    // NEW FEATURE: Show full details popup when clicking Room IDs and Admin Messages
-    if (type === "status_message" || type === "room_details") {
-        try {
-            const snap = await getDoc(doc(db, "users", currentUser.uid, "notifications", notifId));
-            if (snap.exists()) {
-                const n = snap.data();
-                let btnText = type === "room_details" ? "Copy Details" : "Got it";
-                
-                showPopup("success", n.message || "No details available.", btnText, () => {
-                    document.getElementById('customPopup')?.remove();
-                    // If it's a room detail, let them copy it again
-                    if (type === "room_details" && n.message) {
-                        navigator.clipboard.writeText(n.message);
-                        if (typeof showMessage === 'function') showMessage("Details copied to clipboard!");
-                    }
-                });
+    try {
+        // Fetch the notification data ONCE for all types
+        const snap = await getDoc(doc(db, "users", currentUser.uid, "notifications", notifId));
+        if (!snap.exists()) return;
+        const n = snap.data();
+
+        // 2. Handle specific redirection paths if necessary
+        if (type === "pay_later_reminder") {
+            if (n.tournamentId && n.entryFee && window.openPaymentInterface) {
+                window.openPaymentInterface(n.tournamentId, n.entryFee);
             }
-        } catch (err) { console.error("Failed to load notification details:", err); }
-        return; // Stop execution here since the popup handles it
-    }
+            return;
+        }
 
-    // Handle Pay Later reminder
-    if (type === "pay_later_reminder") {
-        // Re-open the payment interface when user clicks the "pay later" reminder
-        try {
-            const snap = await getDoc(doc(db, "users", currentUser.uid, "notifications", notifId));
-            if (snap.exists()) {
-                const n = snap.data();
-                if (n.tournamentId && n.entryFee) {
-                    if (window.openPaymentInterface) window.openPaymentInterface(n.tournamentId, n.entryFee);
+        if (type === "rejected") {
+            showPopup("error", n.message, "✏️ Edit Application", () => {
+                document.getElementById('customPopup')?.remove();
+                window.editRejectedApplication(n.tournamentId);
+            });
+            return;
+        }
+
+        if (type === "verification" || type === "approval" || type === "upcoming_approved") {
+            showPopup("success", n.message || "Your application is approved! Press continue to review and pay.", "Continue →", () => {
+                document.getElementById('customPopup')?.remove();
+                if (n.tournamentId) showApprovedReviewInterface(n.tournamentId, currentUser.uid);
+            });
+            return;
+        }
+
+        // 3. UNIVERSAL POPUP FOR ALL OTHER NOTIFICATIONS (Blast, Admin Messages, Room IDs, etc.)
+        let btnText = "Got it";
+        if (type === "room_details") btnText = "Copy Details";
+        if (type === "match_started") btnText = "Open Match Room";
+
+        // Show the universal popup for everything else!
+        showPopup(
+            type === "error" ? "error" : "success", 
+            n.message || "No details available.", 
+            btnText, 
+            () => {
+                document.getElementById('customPopup')?.remove();
+                
+                // Extra actions tied to the "Got It" / "Copy" buttons
+                if (type === "room_details" && n.message) {
+                    navigator.clipboard.writeText(n.message).then(() => {
+                        if (typeof showMessage === 'function') showMessage("Details copied to clipboard!");
+                    });
+                }
+                if (type === "match_started" && n.tournamentId) {
+                    if (typeof showMatchRoom === 'function') showMatchRoom(n.tournamentId);
                 }
             }
-        } catch(e) {}
-        return;
-    }
-
-    // 🔴 FIX: IF PAYMENT IS CONFIRMED -> SHOW SUCCESS POPUP ONLY (NO MODAL)
-    if (type === "payment_confirmed") {
-        showPopup(
-            "success", 
-            "✅ Payment Verified! You are fully registered. Room ID and password will be shared here 15 mins before the match.", 
-            "Got it", 
-            () => document.getElementById('customPopup')?.remove()
         );
-        return; // STOP execution here
-    }
 
-    // 🟢 IF TEAM IS APPROVED -> SHOW REVIEW/PAYMENT INTERFACE
-    if (type === "verification" || type === "approval" || type === "upcoming_approved") {
-        let tournamentId = actionLink?.includes("tournament=") ? actionLink.split("tournament=")[1]?.trim() : null;
-        if (!tournamentId) return;
-
-        showPopup("success", "Your application is approved! Press continue to review and pay.", "Continue →", () => {
-            document.getElementById('customPopup')?.remove();
-            showApprovedReviewInterface(tournamentId, currentUser.uid);
-        });
-        return;
-    }
-
-    // 🔴 IF REJECTED
-    if (type === "rejected") {
-        try {
-            const snap = await getDoc(doc(db, "users", currentUser.uid, "notifications", notifId));
-            if (snap.exists()) {
-                showPopup("error", snap.data().message, "✏️ Edit Application", () => {
-                    document.getElementById('customPopup')?.remove();
-                    window.editRejectedApplication(snap.data().tournamentId);
-                });
-            }
-        } catch (err) {}
-        return;
-    }
-
-    // Handle other notification types
-    if (type === "team_stage_locked") {
-        showMessage("Your teammate is already handling this payment stage.");
+    } catch (err) { 
+        console.error("Failed to load notification details:", err); 
     }
 };
 // ===============================
@@ -5253,6 +5237,8 @@ window.createAccount = async function() {
             userData.teamCode = enteredCode;
             userData.role = "member";
             localStorage.setItem("welcomeTeam", teamData.teamName);
+            // ✅ ADD THIS NEW LINE: Sync past notifications from leader
+            await window.syncTeamNotifications(teamData.leaderId, uid);
         }
 
         // ✅ GHOST FIX: Use a transaction-style write with immediate verification
@@ -6099,6 +6085,57 @@ window.listenForSlotStatus = function(tournamentId, teamId) {
     });
 };
 
+// ==========================================
+// NOTIFICATION ENHANCEMENTS
+// ==========================================
+
+// Deletes a single notification
+window.deleteNotification = async function(e, notifId) {
+    e.stopPropagation(); // Prevents the click from triggering the main notification popup
+    if (!currentUser) return;
+    try {
+        await deleteDoc(doc(db, "users", currentUser.uid, "notifications", notifId));
+    } catch (err) {
+        console.error("Failed to delete notification:", err);
+    }
+};
+
+// Syncs past important notifications from the Leader to the newly joined Member
+window.syncTeamNotifications = async function(leaderId, newMemberUid) {
+    if (!leaderId || !newMemberUid) return;
+    try {
+        // Fetch recent notifications from the leader
+        const leaderNotifsSnap = await getDocs(query(collection(db, "users", leaderId, "notifications"), limit(20)));
+        const batch = writeBatch(db);
+        let count = 0;
+        
+        leaderNotifsSnap.forEach(docSnap => {
+            const data = docSnap.data();
+            // These are the types of notifications a late-joining member should also see
+            const syncableTypes = ['approval', 'upcoming_approved', 'room_details', 'match_started', 'global_alert', 'status_message', 'payment_confirmed'];
+            
+            if (syncableTypes.includes(data.type)) {
+                const newNotifRef = doc(collection(db, "users", newMemberUid, "notifications"));
+                batch.set(newNotifRef, {
+                    ...data,
+                    read: false,
+                    popupShown: false, // Ensures the new user gets the on-screen popup when they login
+                    createdAt: serverTimestamp()
+                });
+                count++;
+            }
+        });
+        
+        if (count > 0) {
+            await batch.commit();
+            console.log(`Synced ${count} past notifications to the new team member.`);
+        }
+    } catch (err) {
+        console.error("Failed to sync team notifications:", err);
+    }
+};
+
+
 
 // ===============================
 // GLOBAL EXPORTS
@@ -6237,6 +6274,8 @@ window.saveInAppTeamSetup = async function() {
 
             await updateDoc(doc(db, "teams", tData.teamId), { members: arrayUnion(uid) });
             updates = { teamId: tData.teamId, teamName: tData.teamName, teamCode: jCode, role: "member" };
+            // ✅ ADD THIS NEW LINE: Sync past notifications from leader
+            await window.syncTeamNotifications(tData.leaderId, uid);
         }
 
         // Securely updates user document
