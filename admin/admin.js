@@ -2125,9 +2125,22 @@ window.filterSlots = function() {
 // ULTIMATE REVIEW MODAL (Handles both Ongoing and Upcoming safely)
 // ============================================================================
 
-window.openAdminReviewModal = function(tournamentId, userId, dataString, stage = 'ongoing') {
+// ============================================================================
+// ULTIMATE REVIEW MODAL (Handles both Ongoing and Upcoming safely)
+// ============================================================================
+
+window.openAdminReviewModal = async function(tournamentId, userId, dataString, stage = 'ongoing') {
     const app = JSON.parse(decodeURIComponent(dataString));
     document.getElementById("reviewAppModal")?.remove();
+
+    // ✅ FIX: Fetch the actual Tournament Title
+    let tournamentTitle = tournamentId;
+    try {
+        const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+        if (tSnap.exists()) {
+            tournamentTitle = tSnap.data().title || tournamentId;
+        }
+    } catch(e) { console.warn("Could not fetch tournament title"); }
 
     // Generate Player UIDs with NPC Verified Badges
     const playersHtml = app.playersData && app.playersData.length > 0 ? app.playersData.map((p, i) => {
@@ -2153,6 +2166,13 @@ window.openAdminReviewModal = function(tournamentId, userId, dataString, stage =
                 </div>
 
                 <div style="padding:20px;overflow-y:auto;flex:1;">
+                    
+                    <div style="margin-bottom:20px; background:rgba(59,130,246,0.1); border:1px solid #3b82f6; padding:12px; border-radius:8px;">
+                        <label style="color:#3b82f6;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Tournament Details</label>
+                        <div style="color:#fff;font-size:16px;font-weight:bold;margin-top:4px;">${tournamentTitle}</div>
+                        <div style="color:#888;font-size:12px;margin-top:2px;font-family:monospace;">ID: ${tournamentId}</div>
+                    </div>
+
                     <div style="margin-bottom:20px;">
                         <label style="color:#666;font-size:12px;">Leader Email</label>
                         <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.leaderEmail}</div>

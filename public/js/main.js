@@ -162,6 +162,10 @@ window.handleUpcomingRegister = async function(tournamentId) {
     document.getElementById("prizeFirst").textContent           = tournament.prize?.first || 0;
     document.getElementById("prizeSecond").textContent          = tournament.prize?.second || 0;
     document.getElementById("prizeThird").textContent           = tournament.prize?.third || 0;
+    // ✅ FIX: Show Entry Fee on the UI
+    document.getElementById("joinEntryFeeDisplay").textContent  = tournament.entryFee || 0;
+    document.getElementById("paymentAmount").textContent        = tournament.entryFee || 0;
+    document.getElementById("walletBalance").textContent        = "0";
     // ✅ FIXED DYNAMIC TIMING (UPCOMING)
     const dateStr = tournament.eventDate ? new Date(tournament.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : "TBA";
     const timeStr = tournament.eventTime || "TBA";
@@ -816,71 +820,80 @@ document.addEventListener("DOMContentLoaded", function() {
         submitBtn.textContent = isUpcoming ? "Registering..." : "Sending...";
         if (processing) processing.style.display = "flex";
 
-        try {
+       try {
             const userId = currentUser.uid;
+            
+            // Determine if this is a brand new application or an edit of a rejected one
+            const isEditing = window.originalApplicationData !== undefined && window.originalApplicationData !== null;
 
             if (isUpcoming) {
                 // ========================================
                 // UPCOMING TOURNAMENT
                 // ========================================
-                
-                await setDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
-                    userId:       userId,
+                const regData = {
                     teamId:       userProfile.teamId,
                     teamName:     userProfile.teamName,
                     teamCode:     userProfile.teamCode,
                     leaderEmail:  userProfile.email,
                     leaderUid:    uids[0],
-                    uids:         uids,                // Kept for Admin Panel
-                    playersData:  playersData,         // NEW: Detailed team data
+                    uids:         uids,                
+                    playersData:  playersData,         
                     phone:        formattedPhone,
                     backupEmail:  backupEmail,
                     status:       "pending",
-                    registeredAt: serverTimestamp(),
+                    category:     "upcoming",
                     eventDate:    tournament.eventDate || null,
-                    category:     "upcoming"
-                });
+                };
+
+                if (isEditing) {
+                    // ✅ FIX: Update existing document safely
+                    regData.rejectedFields = []; // Clear old errors
+                    await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), regData);
+                } else {
+                    // Create new document
+                    regData.userId = userId;
+                    regData.registeredAt = serverTimestamp();
+                    await setDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), regData);
+                }
 
                 await setDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId), {
-                    tournamentId: tournamentId,
+                    tournamentId:   tournamentId,
                     title:          tournament.title,
-                   eventDate:    tournament.eventDate || null,
+                    eventDate:      tournament.eventDate || null,
                     teamName:       userProfile.teamName,
                     status:         "pending",
                     registeredAt:   serverTimestamp()
-                });
+                }, { merge: true });
 
                 listenToUpcomingApproval(tournamentId, userId);
-
-                if (processing) processing.style.display = "none";
-                closeJoinModal();
-                
-                showPopup(
-                    "success",
-                    `Successfully registered for "${tournament.title}"!\n\n📅 Date: ${new Date(tournament.eventDate).toLocaleDateString('en-IN')}\n\nYour application is under review. You will be notified once approved.`, 
-                    "Got it",
-                    () => document.getElementById('customPopup')?.remove()
-                );
 
             } else {
                 // ========================================
                 // ONGOING TOURNAMENT
                 // ========================================
-                
-                await setDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
-                    userId:      userId,
+                const verifData = {
                     teamId:      userProfile.teamId,
                     teamName:    userProfile.teamName,
                     teamCode:    userProfile.teamCode,
                     leaderEmail: userProfile.email,
                     leaderUid:   uids[0],
-                    uids:        uids,                // Kept for Admin Panel
-                    playersData: playersData,         // NEW: Detailed team data
+                    uids:        uids,                
+                    playersData: playersData,         
                     phone:       formattedPhone,
                     backupEmail: backupEmail,
                     status:      "pending",
-                    submittedAt: serverTimestamp()
-                });
+                };
+
+                if (isEditing) {
+                    // ✅ FIX: Update existing document safely
+                    verifData.rejectedFields = []; // Clear old errors
+                    await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), verifData);
+                } else {
+                    // Create new document
+                    verifData.userId = userId;
+                    verifData.submittedAt = serverTimestamp();
+                    await setDoc(doc(db, "tournaments", tournamentId, "verifications", userId), verifData);
+                }
 
                 await setDoc(doc(db, "users", userId, "pendingPayment", tournamentId), {
                     tournamentId: tournamentId,
@@ -890,7 +903,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     backupEmail:  backupEmail,
                     entryFee:     tournament?.entryFee || 0,
                     submittedAt:  serverTimestamp()
-                });
+                }, { merge: true });
 
                 await setDoc(
                     doc(db, "tournaments", tournamentId, "lockedRegistrations", userId),
@@ -899,17 +912,21 @@ document.addEventListener("DOMContentLoaded", function() {
                 );
 
                 listenToVerification(tournamentId, userId);
-
-                if (processing) processing.style.display = "none";
-                closeJoinModal();
-                
-                showPopup(
-                    "success", 
-                    `Application Submitted! Your team "${userProfile.teamName}" is now under review. Check your notifications (🔔) for updates.`, 
-                    "Got it", 
-                    () => document.getElementById('customPopup')?.remove()
-                );
             }
+
+            // Cleanup and UI Feedback
+            if (processing) processing.style.display = "none";
+            window.originalApplicationData = null; // Clear edit tracking
+            closeJoinModal();
+            
+            showPopup(
+                "success", 
+                isUpcoming 
+                    ? `Successfully registered for "${tournament.title}"!\n\nYour application is under review.` 
+                    : `Application Submitted! Your team "${userProfile.teamName}" is now under review.`, 
+                "Got it", 
+                () => document.getElementById('customPopup')?.remove()
+            );
 
             // Reset button
             submitBtn.disabled = false;
