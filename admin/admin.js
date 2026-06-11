@@ -273,6 +273,13 @@ function applicationCard(d, type) {
   const pillClass = type === "new" ? "pill-new" : type === "accepted" ? "pill-accepted" : "pill-rejected";
   const pillLabel = type === "new" ? "PENDING"  : type === "accepted" ? "APPROVED"     : "REJECTED";
 
+  // ✅ FIX: Detect if it is a resubmission by checking for leftover rejection notes
+  const isResubmitted = type === "new" && (d.rejectionNote || d.rejectionReason);
+  
+  const badgeHtml = isResubmitted
+    ? `<span style="background:var(--orange, #ff9800); color:#000; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">⚠️ Resubmitted</span>`
+    : (type === "new" ? `<span style="background:var(--blue, #4a90e2); color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">🆕 New</span>` : "");
+
   let actions = "";
   if (type === "new") {
     const appData = {
@@ -306,11 +313,13 @@ function applicationCard(d, type) {
   }
 
   return `
-    <div class="app-card ${type}" id="appcard-${d.id}">
+    <div class="app-card ${type}" id="appcard-${d.id}" style="${isResubmitted ? 'border-left: 4px solid #ff9800;' : ''}">
       <div class="app-card-info">
-        <strong>${escHtml(d.teamName ?? "—")}</strong>
+        <div style="font-size:11px; color:var(--muted); margin-bottom:4px; font-family:monospace; text-transform:uppercase; letter-spacing:1px;">
+            🏆 TOURN ID: <span style="color:var(--blue); font-weight:bold;">${d.tournamentId}</span>
+        </div>
+        <strong style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">${escHtml(d.teamName ?? "—")} ${badgeHtml}</strong>
         <small>Leader: ${escHtml(d.leaderEmail ?? "—")}</small>
-        <small style="color:var(--muted);font-size:11px;">Tournament: ${escHtml(d.tournamentId)}</small>
         ${d.rejectionNote ? `<small style="color:var(--red);">Reason: ${escHtml(d.rejectionNote)}</small>` : ""}
       </div>
       <div class="app-card-actions">
@@ -954,6 +963,14 @@ function upcomingCard(d, type) {
     ? new Date(d.eventDate).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })
     : "TBA";
 
+  // ✅ FIX: Detect if it is a resubmission
+  const isResubmitted = type === "new" && (d.rejectionNote || d.rejectionReason);
+  
+  const badgeHtml = isResubmitted
+    ? `<span style="background:var(--orange, #ff9800); color:#000; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">⚠️ Resubmitted</span>`
+    : (type === "new" ? `<span style="background:var(--blue, #4a90e2); color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">🆕 New</span>` : "");
+
+
   let actions = "";
   if (type === "new") {
     const appData = {
@@ -981,9 +998,12 @@ function upcomingCard(d, type) {
   }
 
   return `
-    <div class="app-card ${type}" id="regcard-${d.id}">
+    <div class="app-card ${type}" id="regcard-${d.id}" style="${isResubmitted ? 'border-left: 4px solid #ff9800;' : ''}">
       <div class="app-card-info">
-        <strong>${escHtml(d.teamName ?? "—")}</strong>
+        <div style="font-size:11px; color:var(--muted); margin-bottom:4px; font-family:monospace; text-transform:uppercase; letter-spacing:1px;">
+            📅 TOURN ID: <span style="color:var(--green); font-weight:bold;">${d.tournamentId}</span>
+        </div>
+        <strong style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">${escHtml(d.teamName ?? "—")} ${badgeHtml}</strong>
         <small>Leader: ${escHtml(d.leaderEmail ?? "—")}</small>
         <small>📅 Event Date: ${eventDate}</small>
         ${d.rejectionReason ? `<small style="color:var(--red);">Reason: ${escHtml(d.rejectionReason)}</small>` : ""}
@@ -994,7 +1014,6 @@ function upcomingCard(d, type) {
       </div>
     </div>`;
 }
-
 // WITH THIS
 window.approveUpcoming = async function(tournamentId, userId) {
     try {
