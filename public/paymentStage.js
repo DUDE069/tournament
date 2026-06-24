@@ -183,9 +183,8 @@ async function handlePaymentSuccess(tournamentId, response) {
 
     showToast("✅ Payment Verified!", "success");
 
-    setTimeout(() => {
-      closePaymentOverlay();
-    }, 2000);
+    // We do NOT call closePaymentOverlay() here because the onSnapshot will trigger
+    // renderSuccessScreen which requires the user to click "Confirm & Continue".
 
   } catch (error) {
     console.error("[PAYMENT] Verification error:", error);
@@ -373,7 +372,18 @@ function renderSuccessScreen(tournamentName, roomId, roomPassword, paymentId) {
       width: 100%;
       text-align: center;
       font-family: 'Rajdhani', sans-serif;
+      position: relative;
     ">
+      <button onclick="handleUserDismissal()" style="
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        background: transparent;
+        border: none;
+        color: #888;
+        font-size: 20px;
+        cursor: pointer;
+      ">✖</button>
       <div style="
         width: 64px;
         height: 64px;
@@ -388,7 +398,7 @@ function renderSuccessScreen(tournamentName, roomId, roomPassword, paymentId) {
       ">✓</div>
       
       <h2 style="color: #00ff88; margin: 0 0 8px; font-size: 24px;">Payment Verified!</h2>
-      <p style="color: #fff; margin-bottom: 10px;">Your spot in <strong>${escapeHtml(tournamentName)}</strong> is confirmed.</p>
+      <p style="color: #fff; margin-bottom: 10px;">Your payment was verified. Please press Confirm and Continue so your status updates.</p>
       
       ${paymentId ? `
       <div style="background: #0f0f0f; padding: 10px; border-radius: 8px; margin: 10px 0;">
@@ -439,10 +449,34 @@ window.handleUserConfirmation = async function() {
 };
 
 // ============================================
+// USER DISMISSAL
+// ============================================
+window.handleUserDismissal = async function() {
+  try {
+    if (_currentUserId && _currentTournamentId) {
+      const { addDoc, collection } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+      await addDoc(collection(db, "users", _currentUserId, "notifications"), {
+        type: "payment_confirmed",
+        title: "✅ Confirm Your Status",
+        message: "Your payment was verified. Please press Confirm and Continue so your status updates.",
+        actionLink: `tournament=${_currentTournamentId}`,
+        read: false,
+        popupShown: false,
+        createdAt: serverTimestamp()
+      });
+    }
+  } catch (error) {
+    console.warn('[PAYMENT] Notification error:', error);
+  }
+  closePaymentOverlay();
+};
+
+// ============================================
 // CLOSE OVERLAY
 // ============================================
 window.closePaymentOverlay = function() {
   document.getElementById('paymentOverlay')?.remove();
+  document.body.style.overflow = "auto";
   if (unsubPayment) {
     unsubPayment();
     unsubPayment = null;

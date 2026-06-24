@@ -120,13 +120,17 @@ function startBadgeListener() {
   if (_listeners.badge) return;
 
   // BUG FIX: filter out archived docs in badge count
+  let isInitialVLoad = true;
   const vQuery = query(
     collectionGroup(db, "verifications"),
     where("status",   "==", "pending"),
     where("archived", "==", false)
   );
   _listeners.badge = onSnapshot(vQuery, (snap) => {
-    snap.docChanges().forEach(c => { if (c.type === "added") playAdminAlert(); });
+    if (!isInitialVLoad) {
+      snap.docChanges().forEach(c => { if (c.type === "added") playAdminAlert(); });
+    }
+    isInitialVLoad = false;
     updateTabBadge("verificationBadge", snap.size);
   }, err => {
     // Fallback if composite index not yet created — query without archived filter
@@ -140,18 +144,31 @@ function startBadgeListener() {
     });
   });
 
+  let isInitialRLoad = true;
   const rQuery = query(
     collectionGroup(db, "upcomingRegistrations"),
     where("status",   "==", "pending"),
     where("archived", "==", false)
   );
   onSnapshot(rQuery, (snap) => {
-    updateTabBadge("registrationBadge", snap.size);
+    let newCount = 0;
+    if (!isInitialRLoad) {
+      snap.docChanges().forEach(c => {
+          if (c.type === "added" && c.doc.ref.path.startsWith("tournaments/")) playAdminAlert();
+      });
+    }
+    isInitialRLoad = false;
+    snap.forEach(d => { if (d.ref.path.startsWith("tournaments/")) newCount++; });
+    updateTabBadge("registrationBadge", newCount);
   }, () => {
     // Fallback
     onSnapshot(
       query(collectionGroup(db, "upcomingRegistrations"), where("status", "==", "pending")),
-      (snap) => updateTabBadge("registrationBadge", snap.size)
+      (snap) => {
+        let newCount = 0;
+        snap.forEach(d => { if (d.ref.path.startsWith("tournaments/")) newCount++; });
+        updateTabBadge("registrationBadge", newCount);
+      }
     );
   });
 }
@@ -213,10 +230,14 @@ function loadVerifications() {
     orderBy("submittedAt", "desc")
   );
 
+  let isInitialVListLoad = true;
   _listeners.verifications = onSnapshot(q, (snapshot) => {
-    snapshot.docChanges().forEach(c => {
-      if (c.type === "added" && c.doc.data().status === "pending") playAdminAlert();
-    });
+    if (!isInitialVListLoad) {
+      snapshot.docChanges().forEach(c => {
+        if (c.type === "added" && c.doc.ref.path.startsWith("tournaments/") && c.doc.data().status === "pending") playAdminAlert();
+      });
+    }
+    isInitialVListLoad = false;
     renderVerificationList(snapshot);
   }, err => {
     container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: Permission Denied or Invalid Data</p>`;
@@ -232,6 +253,7 @@ function renderVerificationList(snapshot) {
   const rejected = [];
 
   snapshot.forEach(vDoc => {
+    if (!vDoc.ref.path.startsWith("tournaments/")) return; // Task 2 filtering
     const d = { id: vDoc.id, tournamentId: vDoc.ref.parent.parent.id, ...vDoc.data() };
     if (d.archived === true) return; // CLIENT-SIDE: skip archived docs
     if      (d.status === "pending")  pending.push(d);
@@ -320,6 +342,8 @@ function applicationCard(d, type) {
         </div>
         <strong style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">${escHtml(d.teamName ?? "—")} ${badgeHtml}</strong>
         <small>Leader: ${escHtml(d.leaderEmail ?? "—")}</small>
+        <small>Backup Email: ${escHtml(d.backupEmail ?? "—")}</small>
+        <small>Phone: ${escHtml(d.phone ?? "—")}</small>
         ${d.rejectionNote ? `<small style="color:var(--red);">Reason: ${escHtml(d.rejectionNote)}</small>` : ""}
       </div>
       <div class="app-card-actions">
@@ -644,6 +668,7 @@ window.sendTeamNotification = async function(tournamentId, userId, memberIds, te
 async function sendDualNotification(userId, { type, title, message, extra = {}, actionLink = "" }) {
   // A. In-app (MANDATORY — never skip)
   try {
+      const isPriority = type === "room_details" || type === "match_started";
       await addDoc(collection(db, "users", userId, "notifications"), {
         type,
         title,
@@ -652,6 +677,7 @@ async function sendDualNotification(userId, { type, title, message, extra = {}, 
         actionLink,
         read:       false,
         popupShown: false,
+        priority:   isPriority ? "high" : "normal",
         createdAt:  serverTimestamp(),
       });
   } catch (err) {
@@ -924,12 +950,23 @@ function loadUpcomingRegistrations() {
     orderBy("registeredAt", "desc")
   );
 
+  let isInitialRListLoad = true;
   _listeners.registrations = onSnapshot(q, (snapshot) => {
     const pending  = [];
     const approved = [];
     const rejected = [];
 
+    if (!isInitialRListLoad) {
+      snapshot.docChanges().forEach(c => {
+        if (c.type === "added" && c.doc.ref.path.startsWith("tournaments/") && c.doc.data().status === "pending") {
+          playAdminAlert();
+        }
+      });
+    }
+    isInitialRListLoad = false;
+
     snapshot.forEach(d => {
+      if (!d.ref.path.startsWith("tournaments/")) return; // Prevent duplicate registration bug (Task 2)
       const data = { id: d.id, tournamentId: d.ref.parent.parent.id, ...d.data() };
       if (data.archived === true) return; // CLIENT-SIDE filter
       if      (data.status === "pending")  pending.push(data);
@@ -1011,6 +1048,8 @@ function upcomingCard(d, type) {
         </div>
         <strong style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">${escHtml(d.teamName ?? "—")} ${badgeHtml}</strong>
         <small>Leader: ${escHtml(d.leaderEmail ?? "—")}</small>
+        <small>Backup Email: ${escHtml(d.backupEmail ?? "—")}</small>
+        <small>Phone: ${escHtml(d.phone ?? "—")}</small>
         <small>📅 Event Date: ${eventDate}</small>
         ${d.rejectionReason ? `<small style="color:var(--red);">Reason: ${escHtml(d.rejectionReason)}</small>` : ""}
       </div>
@@ -1870,6 +1909,7 @@ window.manageTournamentSlots = async function(tournamentId) {
             if (regData) {
                 t.teamName = regData.teamName || t.teamName;
                 t.teamCode = regData.teamCode || t.teamCode;
+                t.paymentStatus = regData.paymentStatus || t.paymentStatus;
                 
                 // Prioritize the manual array data if available from the form submission
                 if (regData.playersData && regData.playersData.length > 0) {
@@ -1983,9 +2023,13 @@ window.manageTournamentSlots = async function(tournamentId) {
                         ? `<span style="color:#555; font-size:10px;">(${escHtml(team.teamCode)})</span>`
                         : "";
                     
-                    const pStatus = team?.paymentStatus || "Empty";
-                    const pColor  = pStatus === "Paid" || pStatus === "verified" ? "#22c55e" : pStatus === "Pending Payment" ? "#fbbf24" : "#555";
-                    const pBg = pStatus === "Paid" || pStatus === "verified" ? "rgba(34,197,94,0.15)" : pStatus === "Pending Payment" ? "rgba(251,191,36,0.15)" : "transparent";
+                    let pStatus = team?.paymentStatus || "Empty";
+                    if (pStatus === "Paid" || pStatus === "verified" || pStatus === "completed") {
+                        pStatus = "Payment Verified / Completed";
+                    }
+                    const isPaid = pStatus === "Payment Verified / Completed";
+                    const pColor  = isPaid ? "#22c55e" : pStatus === "Pending Payment" ? "#fbbf24" : "#555";
+                    const pBg = isPaid ? "rgba(34,197,94,0.15)" : pStatus === "Pending Payment" ? "rgba(251,191,36,0.15)" : "transparent";
                     
                     const actionBtns = team ? `
                         <div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:center;">

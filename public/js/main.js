@@ -758,6 +758,7 @@ document.addEventListener("DOMContentLoaded", function() {
         // 2. NEW: Collect Detailed Player Data (UID + Nickname + Type)
         const p1Uid = document.getElementById("uidPlayer1")?.value.trim();
         const p1Nick = document.getElementById("nickPlayer1")?.value.trim();
+        const p1Type = document.getElementById("typePlayer1")?.value;
         const p2Uid = document.getElementById("uidPlayer2")?.value.trim();
         const p2Nick = document.getElementById("nickPlayer2")?.value.trim();
         const p2Type = document.getElementById("typePlayer2")?.value;
@@ -777,7 +778,7 @@ document.addEventListener("DOMContentLoaded", function() {
         // Structure the new detailed data
         // Structure the new detailed data
         const playersData = [
-            { uid: p1Uid, nickname: p1Nick, type: "leader" },
+            { uid: p1Uid, nickname: p1Nick, type: p1Type || "friend" },
             { uid: p2Uid, nickname: p2Nick, type: p2Type },
             { uid: p3Uid, nickname: p3Nick, type: p3Type },
             { uid: p4Uid, nickname: p4Nick, type: p4Type }
@@ -3178,7 +3179,25 @@ function initNotifications() {
         // 2. UPDATE THE UI (Wrapped safely so it can't crash the popup)
         try {
             const docs = snapshot.docs;
-            const unreadCount = docs.filter(d => !d.data().read).length;
+            let validDocs = [];
+            docs.forEach(d => {
+                const n = d.data();
+                const isPriority = n.priority === 'high' || n.type === 'room_details' || n.type === 'match_started';
+                if (isPriority && n.createdAt) {
+                    const ageMs = Date.now() - n.createdAt.toMillis();
+                    if (ageMs > 24 * 60 * 60 * 1000) return; // Expire exactly 24 hours after creation
+                }
+                validDocs.push({ id: d.id, ...n, isPriority });
+            });
+
+            // Pin priority notifications to the top
+            validDocs.sort((a, b) => {
+                if (a.isPriority && !b.isPriority) return -1;
+                if (!a.isPriority && b.isPriority) return 1;
+                return 0; // maintain original chronological order
+            });
+
+            const unreadCount = validDocs.filter(n => !n.read).length;
 
             // Update badge numbers
             ["notifBadge", "notificationCount"].forEach(badgeId => {
@@ -3194,7 +3213,7 @@ function initNotifications() {
 
             // Render list
             const listEl = document.getElementById('notifList') || document.getElementById('notificationList');
-            if (listEl) renderNotificationList(docs, listEl);
+            if (listEl) renderNotificationList(validDocs, listEl);
 
         } catch (err) {
             console.error("❌ Error updating Notification UI:", err);
@@ -3204,10 +3223,10 @@ function initNotifications() {
         if (err.code !== 'permission-denied') console.error("❌ Notification listener error:", err);
     });
 }
-function renderNotificationList(docs, listEl) {
+function renderNotificationList(validDocs, listEl) {
     if (!listEl) return;
 
-    if (docs.length === 0) {
+    if (validDocs.length === 0) {
         listEl.innerHTML = `
             <p style="color:#666;text-align:center;padding:20px;font-size:13px;">
                 No notifications yet.
@@ -3245,28 +3264,31 @@ function renderNotificationList(docs, listEl) {
         room_details:      '#ffd700'
     };
 
-    listEl.innerHTML = docs.map(d => {
-        const n     = d.data();
+    listEl.innerHTML = validDocs.map(n => {
         const color = colorMap[n.type] || '#4a90e2';
-        const icon  = iconMap[n.type]  || '!';
+        const isPriority = n.isPriority;
+        const icon  = isPriority ? '⭐' : (iconMap[n.type] || '!');
         const time  = n.createdAt?.toDate ? timeAgo(n.createdAt.toDate()) : '';
         const bg    = n.read ? '#1a1a1a' : '#2a2a2a';
 
         return `
             <div style="background:${bg};padding:14px 16px;margin-bottom:8px;border-radius:8px;
                 border-left:3px solid ${color};cursor:pointer;display:flex;gap:12px;align-items:flex-start;"
-                onclick="handleNotificationClick('${d.id}','${n.actionLink || ''}','${n.type || ''}')">
+                onclick="handleNotificationClick('${n.id}','${n.actionLink || ''}','${n.type || ''}')">
                 <div style="width:28px;height:28px;border-radius:50%;background:${color}22;color:${color};
                     display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">
                     ${icon}
                 </div>
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;justify-content:space-between;margin-bottom:4px;align-items:center;">
-                        <strong style="color:#fff;font-size:13px;">${n.title || ''}</strong>
+                        <strong style="color:#fff;font-size:13px;display:flex;align-items:center;gap:4px;">
+                            ${n.title || ''}
+                            ${isPriority ? '<span style="color:#ffd700;font-size:11px;">(Priority)</span>' : ''}
+                        </strong>
                         
                         <div style="display:flex; gap:8px; align-items:center;">
                             ${!n.read ? '<span style="width:7px;height:7px;background:#ff4444;border-radius:50%;flex-shrink:0;"></span>' : ''}
-                            <span onclick="deleteNotification(event, '${d.id}')" style="color:#666; font-size:14px; cursor:pointer; padding: 0 4px; border-radius:4px; transition: color 0.2s;" onmouseover="this.style.color='#ff4444'" onmouseout="this.style.color='#666'" title="Remove">✖</span>
+                            ${!isPriority ? `<span onclick="deleteNotification(event, '${n.id}')" style="color:#666; font-size:14px; cursor:pointer; padding: 0 4px; border-radius:4px; transition: color 0.2s;" onmouseover="this.style.color='#ff4444'" onmouseout="this.style.color='#666'" title="Remove">✖</span>` : ''}
                         </div>
 
                     </div>
@@ -3735,7 +3757,7 @@ if (submitBtn) {
             // Trigger Pay Now or Pay Later Flow
             document.getElementById('joinTournamentModal').style.display = 'none';
             showPopup("warning", 
-                "You can pay now to secure your slot immediately, or Pay Later. WARNING: If you do not pay before the tournament goes 'Ongoing', you will be kicked.", 
+                "Your slot is confirmed. Please pay the amount before the match starts to secure your slot permanently. You can pay right now to secure it, but if you choose to pay later and forget, your slot will be given to others.",
                 "Pay Now", 
                 () => { document.getElementById('customPopup').remove(); showPaymentInterface(tournamentId); }
             );
@@ -3765,16 +3787,21 @@ if (submitBtn) {
         if (form) {
             const notice = document.createElement("div");
             notice.id = "reviewNotice";
+            const isPaid = regData.paymentStatus === 'verified' || regData.paymentStatus === 'Paid' || regData.paymentStatus === 'completed';
             notice.innerHTML = `
                 <div style="background:#1a2a1a; border:1px solid #00ff88; border-radius:8px; padding:15px; margin-bottom:20px;">
-                    <h4 style="color:#00ff88; margin:0 0 8px 0;">✅ Team Verified</h4>
+                    <h4 style="color:#00ff88; margin:0 0 8px 0;">${isPaid ? '✅ Payment Completed / Verified' : '✅ Team Verified'}</h4>
                     <p style="color:#aaa; margin:0; font-size:13px; line-height:1.5;">
-                        Your team details have been verified by admin. Please review your information below. 
-                        Once you proceed to payment, these details cannot be changed.
+                        ${isPaid ? 'Your slot is fully confirmed! Please wait for match details.' : 'Your team details have been verified by admin. Please review your information below. Once you proceed to payment, these details cannot be changed.'}
                     </p>
                 </div>
             `;
             form.insertBefore(notice, form.firstChild);
+
+            if (isPaid) {
+                const submitBtn = document.getElementById("joinSubmitBtn");
+                if (submitBtn) submitBtn.style.display = "none";
+            }
         }
         
     } catch (err) {
@@ -3840,21 +3867,27 @@ window.closeJoinModal = function() {
 function showPopup(type, message, buttonText = null, action = null) {
     document.getElementById("customPopup")?.remove();
 
+    const isSuccess = type === 'success';
+    const isWarning = type === 'warning';
+    const color = isSuccess ? '#00ff88' : isWarning ? '#ffd700' : '#ff4444';
+    const icon = isSuccess ? '✅' : isWarning ? '⚠️' : '❌';
+    const title = isSuccess ? 'Success' : isWarning ? 'Notice' : 'Error';
+
     document.body.insertAdjacentHTML("beforeend", `
         <div id="customPopup" style="position:fixed;top:0;left:0;width:100%;height:100%;
             background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;">
             <div style="background:#1a1a1a;padding:30px;border-radius:12px;text-align:center;
-                max-width:340px;width:90%;position:relative;border:1px solid ${type === 'success' ? '#00ff88' : '#ff4444'};">
+                max-width:340px;width:90%;position:relative;border:1px solid ${color};">
 
                 <span id="popupClose" style="position:absolute;top:12px;right:16px;cursor:pointer;
                     color:#aaa;font-size:18px;">✖</span>
 
                 <div style="font-size:48px;margin-bottom:12px;">
-                    ${type === 'success' ? '✅' : '❌'}
+                    ${icon}
                 </div>
 
-                <h2 style="color:${type === 'success' ? '#00ff88' : '#ff4444'};margin:0 0 12px;">
-                    ${type === 'success' ? 'submitted!' : 'Error'}
+                <h2 style="color:${color};margin:0 0 12px;">
+                    ${title}
                 </h2>
 
                 <p style="color:#aaa;line-height:1.5;margin:0 0 ${buttonText ? '20px' : '0'};">
@@ -3862,7 +3895,7 @@ function showPopup(type, message, buttonText = null, action = null) {
                 </p>
 
                 ${buttonText
-                    ? `<button id="popupBtn" style="padding:12px 24px;background:#00ff88;color:#000;
+                    ? `<button id="popupBtn" style="padding:12px 24px;background:${color};color:#000;
                             border:none;border-radius:8px;cursor:pointer;font-weight:bold;font-size:15px;">
                            ${buttonText}
                        </button>`
@@ -5419,8 +5452,14 @@ window.checkUpcomingAlreadyApplied = async function(tournamentId, tournament) {
 };
 
 function showAlreadyAppliedModal(data, tournamentId, tournament, category) {
-    const statusColor = data.status === "approved" ? "#00ff88" : data.status === "rejected" ? "#ff4444" : "#ffd700";
-    const statusLabel = data.status === "approved" ? "✅ Approved — Awaiting Payment" : data.status === "rejected" ? `❌ Rejected — Reason: ${data.rejectionNote || "Check details"}` : "⏳ Under Review";
+    let statusColor = data.status === "approved" ? "#00ff88" : data.status === "rejected" ? "#ff4444" : "#ffd700";
+    let statusLabel = data.status === "approved" ? "✅ Approved — Awaiting Payment" : data.status === "rejected" ? `❌ Rejected — Reason: ${data.rejectionNote || "Check details"}` : "⏳ Under Review";
+
+    if (data.paymentStatus === 'verified' || data.paymentStatus === 'Paid' || data.paymentStatus === 'completed') {
+        statusLabel = "✅ Payment Completed / Verified";
+        statusColor = "#00ff88";
+    }
+
     const uids = Array.isArray(data.uids) ? data.uids.join(", ") : "—";
 
     document.getElementById("alreadyAppliedModal")?.remove();
@@ -5486,6 +5525,7 @@ window.editRejectedApplication = async function(tournamentId) {
         for(let i=1; i<=4; i++) {
             if(document.getElementById(`uidPlayer${i}`)) document.getElementById(`uidPlayer${i}`).value = data.playersData[i-1]?.uid || "";
             if(document.getElementById(`nickPlayer${i}`)) document.getElementById(`nickPlayer${i}`).value = data.playersData[i-1]?.nickname || "";
+            if(document.getElementById(`typePlayer${i}`)) document.getElementById(`typePlayer${i}`).value = data.playersData[i-1]?.type || "friend";
         }
         if (data.playersData[4]) {
             document.getElementById("enablePlayer5").checked = true;

@@ -91,9 +91,11 @@ function listenForForegroundMessages(messaging, onMessage) {
         console.log("[FCM] Foreground message received:", payload);
 
         const { title, body } = payload.notification || payload.data || {};
+        const priority = payload.data?.priority || payload.notification?.priority || 'normal';
+        const displayTitle = priority === 'high' ? `⭐ ${title || "NPC Esports"}` : (title || "NPC Esports");
 
         if (Notification.permission === "granted") {
-            new Notification(title || "NPC Esports", {
+            new Notification(displayTitle, {
                 body: body || "New notification",
                 icon: "/logo.png"
             });
