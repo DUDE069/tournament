@@ -2138,40 +2138,51 @@ async function deductFunds(amount, description = 'Tournament entry') {
         return false;
     }
     
-    const walletRef = doc(db, "users", currentUser.uid, "wallet", "main");
-    await updateDoc(walletRef, {
-        balance: increment(-amount),
-        updatedAt: serverTimestamp()
-    });
-    
-    await addDoc(collection(db, "users", currentUser.uid, "transactions"), {
-        type: 'debit',
-        amount: amount,
-        description: description,
-        status: 'completed',
-        createdAt: serverTimestamp()
-    });
-    
-    userWallet.balance = (userWallet.balance || 0) - amount;
-    updateWalletUI();
-    return true;
+    try {
+        const walletRef = doc(db, "users", currentUser.uid, "wallet", "main");
+        await updateDoc(walletRef, {
+            balance: increment(-amount),
+            updatedAt: serverTimestamp()
+        });
+
+        await addDoc(collection(db, "users", currentUser.uid, "transactions"), {
+            type: 'debit',
+            amount: amount,
+            description: description,
+            status: 'completed',
+            createdAt: serverTimestamp()
+        });
+
+        userWallet.balance = (userWallet.balance || 0) - amount;
+        updateWalletUI();
+        return true;
+    } catch (error) {
+        console.error("[WALLET] Error deducting funds:", error);
+        showMessage("Transaction failed. Please try again or contact support.");
+        return false;
+    }
 }
 
 window.addFunds = async function(amount) {
     if (!currentUser || amount <= 0) return;
     
-    await addDoc(collection(db, "users", currentUser.uid, "transactions"), {
-        type: 'credit',
-        amount: amount,
-        method: 'upi',
-        status: 'pending',
-        createdAt: serverTimestamp(),
-        description: 'Wallet recharge'
-    });
-    
-    showPopup("success", `₹${amount} added (pending verification)`, "OK", () => {
-        document.getElementById('customPopup')?.remove();
-    });
+    try {
+        await addDoc(collection(db, "users", currentUser.uid, "transactions"), {
+            type: 'credit',
+            amount: amount,
+            method: 'upi',
+            status: 'pending',
+            createdAt: serverTimestamp(),
+            description: 'Wallet recharge'
+        });
+
+        showPopup("success", `₹${amount} added (pending verification)`, "OK", () => {
+            document.getElementById('customPopup')?.remove();
+        });
+    } catch (error) {
+        console.error("[WALLET] Error adding funds:", error);
+        showMessage("Failed to initiate recharge. Please try again later.");
+    }
 };
 
 window.openWalletModal = function() {
@@ -2331,23 +2342,30 @@ window.showReferralModal = async function() {
 
 window.applyReferral = async function(code) {
     if (!currentUser) return;
-    const referrerQuery = query(collection(db, "users"), where("referralCode", "==", code.toUpperCase()));
-    const referrerSnap = await getDocs(referrerQuery);
-    
-    if (!referrerSnap.empty && referrerSnap.docs[0].id !== currentUser.uid) {
-        await updateDoc(doc(db, "users", currentUser.uid), {
-            referredBy: referrerSnap.docs[0].id,
-            bonusCredits: increment(50),
-            'wallet.balance': increment(50)
-        });
-        await updateDoc(doc(db, "users", referrerSnap.docs[0].id), {
-            referralCount: increment(1),
-            bonusCredits: increment(50),
-            'wallet.balance': increment(50)
-        });
-        showMessage("Referral applied! ₹50 added to wallet.");
-    } else {
-        showMessage("Invalid referral code.");
+    try {
+        const referrerQuery = query(collection(db, "users"), where("referralCode", "==", code.toUpperCase()));
+        const referrerSnap = await getDocs(referrerQuery);
+
+        if (!referrerSnap.empty && referrerSnap.docs[0].id !== currentUser.uid) {
+            const batch = writeBatch(db);
+            batch.update(doc(db, "users", currentUser.uid), {
+                referredBy: referrerSnap.docs[0].id,
+                bonusCredits: increment(50),
+                'wallet.balance': increment(50)
+            });
+            batch.update(doc(db, "users", referrerSnap.docs[0].id), {
+                referralCount: increment(1),
+                bonusCredits: increment(50),
+                'wallet.balance': increment(50)
+            });
+            await batch.commit();
+            showMessage("Referral applied! ₹50 added to wallet.");
+        } else {
+            showMessage("Invalid referral code.");
+        }
+    } catch (error) {
+        console.error("Referral application error:", error);
+        showMessage("Failed to apply referral code. Only first-time referrals are allowed.");
     }
 };
 
@@ -5036,7 +5054,8 @@ window.saveProfileUpdate = async function() {
         showMessage("Profile updated successfully!");
         setTimeout(() => location.reload(), 1000);
     } catch (err) {
-        showMessage("Error updating profile: " + err.message);
+        console.error("Profile update error:", err);
+        showMessage("Error updating profile. Permission Denied or Invalid Input.");
     } finally {
         btn.disabled = false; btn.textContent = originalText;
     }
