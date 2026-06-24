@@ -130,7 +130,7 @@ function startBadgeListener() {
     updateTabBadge("verificationBadge", snap.size);
   }, err => {
     // Fallback if composite index not yet created — query without archived filter
-    console.warn("Badge listener (archived filter) failed, falling back:", err.message);
+    console.warn("Badge listener (archived filter) failed, falling back:", "Permission Denied or Invalid Data");
     const fallback = query(
       collectionGroup(db, "verifications"),
       where("status", "==", "pending")
@@ -219,7 +219,7 @@ function loadVerifications() {
     });
     renderVerificationList(snapshot);
   }, err => {
-    container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: ${err.message}</p>`;
+    container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: Permission Denied or Invalid Data</p>`;
   });
 }
 
@@ -344,7 +344,7 @@ window.removeApplication = async function(tournamentId, userId) {
     document.getElementById(`appcard-${userId}`)?.remove();
     showToast("Application removed.", "success");
   } catch (e) {
-    showToast("Error removing: " + e.message, "error");
+    showToast("Error removing: Permission Denied.", "error");
   }
 };
 
@@ -476,7 +476,7 @@ window.viewStatusModal = async function(tournamentId, userId) {
     });
 
   } catch (e) {
-    showToast("Error loading status: " + e.message, "error");
+    showToast("Error loading status: Permission Denied.", "error");
   }
 };
 
@@ -541,7 +541,7 @@ window.saveRoomDetails = async function(tournamentId, userId, memberIds) {
     showToast(`Room details saved & ${ids.length} member(s) notified!`, "success");
     document.getElementById("statusModalOverlay")?.remove();
   } catch (e) {
-    showToast("Error: " + e.message, "error");
+    showToast("Action failed: Permission Denied.", "error");
   }
 };
 
@@ -627,7 +627,7 @@ window.sendTeamNotification = async function(tournamentId, userId, memberIds, te
     document.getElementById("notifyModalOverlay")?.remove();
     showToast(`Notification sent to ${ids.length} member(s)!`, "success");
   } catch (e) {
-    showToast("Error: " + e.message, "error");
+    showToast("Action failed: Permission Denied.", "error");
   }
 };
 
@@ -790,7 +790,7 @@ window.viewApplicationDetails = async function(tournamentId, userId) {
     modal.querySelector("#approveBtn").addEventListener("click", () => processDecision(tournamentId, userId, "approved"));
     modal.querySelector("#rejectBtn").addEventListener("click",  () => processDecision(tournamentId, userId, "rejected"));
   } catch (e) {
-    showToast("Error: " + e.message, "error");
+    showToast("Action failed: Permission Denied.", "error");
   }
 };
 
@@ -831,7 +831,7 @@ async function processDecision(tournamentId, userId, status) {
         }
       }
     } catch (lookupErr) {
-      console.warn("Team lookup failed:", lookupErr.message);
+      console.warn("Team lookup failed:", "Permission Denied or Invalid Data");
     }
 
     const msgApproved = "Your team has been verified! ✅ Proceed to the payment stage.";
@@ -856,7 +856,7 @@ async function processDecision(tournamentId, userId, status) {
     );
   } catch (e) {
     console.error("Decision Error:", e);
-    showToast("Error: " + e.message, "error");
+    showToast("Action failed: Permission Denied.", "error");
   }
 }
 
@@ -904,7 +904,7 @@ window.viewRejectedDetails = async function(tournamentId, userId) {
       </div>`;
     document.body.appendChild(modal);
   } catch (e) {
-    showToast("Error: " + e.message, "error");
+    showToast("Action failed: Permission Denied.", "error");
   }
 };
 
@@ -952,7 +952,7 @@ function loadUpcomingRegistrations() {
 
     container.innerHTML = html;
   }, err => {
-    container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: ${err.message}</p>`;
+    container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: Permission Denied or Invalid Data</p>`;
   });
 }
 
@@ -1098,7 +1098,7 @@ window.approveUpcoming = async function(tournamentId, userId) {
             }
         } catch (slotErr) {
             // Slot write failure must not block the approval
-            console.warn("[SLOT AUTO-FILL] Failed:", slotErr.message);
+            console.warn("[SLOT AUTO-FILL] Failed:", "Permission Denied or Invalid Data");
         }
 
         // 5. Send dual notifications to all members
@@ -1113,7 +1113,7 @@ window.approveUpcoming = async function(tournamentId, userId) {
         showToast(`Registration approved! Notified ${allMemberIds.length} member(s).`, "success");
         
     } catch (e) {
-        showToast("Error approving: " + e.message, "error");
+        showToast("Error approving: Permission Denied.", "error");
     }
 };
 
@@ -1172,7 +1172,7 @@ window.confirmRejectUpcoming = async function(tournamentId, userId) {
     document.getElementById("rejectUpcomingModal")?.remove();
     showToast("Registration rejected & team notified.", "error");
   } catch (e) {
-    showToast("Error: " + e.message, "error");
+    showToast("Action failed: Permission Denied.", "error");
   }
 };
 
@@ -1186,7 +1186,7 @@ window.removeUpcoming = async function(tournamentId, userId, cardId) {
     document.getElementById(`regcard-${cardId}`)?.remove();
     showToast("Removed from list.", "success");
   } catch (e) {
-    showToast("Error: " + e.message, "error");
+    showToast("Action failed: Permission Denied.", "error");
   }
 };
 
@@ -1200,7 +1200,7 @@ window.adminLogin = async function() {
   try {
     await signInWithEmailAndPassword(auth, email, pass);
   } catch (e) {
-    showToast("Login failed: " + e.message, "error");
+    showToast("Login failed: Invalid credentials or Permission Denied.", "error");
   }
 };
 
@@ -1364,7 +1364,7 @@ window.deleteTournament = async function(id) {
     await deleteDoc(doc(db, "tournaments", id));
     showToast("Tournament deleted.", "success");
   } catch (e) {
-    showToast("Error deleting: " + e.message, "error");
+    showToast("Error deleting: Permission Denied.", "error");
   }
 };
 
@@ -1481,7 +1481,7 @@ window.addCalendarEvent = async function() {
     ["eventDate","eventTitle","eventPrize","eventDesc"].forEach(id => document.getElementById(id).value = "");
     showToast("Calendar event saved!", "success");
   } catch (e) {
-    showToast("Error: " + e.message, "error");
+    showToast("Action failed: Permission Denied.", "error");
   }
 };
 
@@ -1491,7 +1491,7 @@ window.deleteCalendarEvent = async function(id) {
     await deleteDoc(doc(db, "calendarEvents", id));
     showToast("Event deleted.", "success");
   } catch (e) {
-    showToast("Error: " + e.message, "error");
+    showToast("Action failed: Permission Denied.", "error");
   }
 };
 
@@ -1526,7 +1526,7 @@ window.updateCalendarEvent = async function(id) {
     btn.onclick = window.addCalendarEvent;
     showToast("Event updated!", "success");
   } catch (e) {
-    showToast("Error: " + e.message, "error");
+    showToast("Action failed: Permission Denied.", "error");
   }
 };
 
@@ -1685,7 +1685,7 @@ window.executeGlobalSearch = async function() {
 
     } catch (err) {
         console.error("Global search execution error:", err);
-        showToast("⚠️ Search failed: " + err.message, "error");
+        showToast("⚠️ Search failed: Permission Denied.", "error");
     }
 };
 
@@ -1713,7 +1713,7 @@ window.searchTeamByCode = async function() {
 
     } catch (e) {
         console.error("Error searching team by code:", e);
-        showToast("Error searching team: " + e.message, "error");
+        showToast("Error searching team: Permission Denied.", "error");
     }
 };
 
@@ -1779,7 +1779,7 @@ window.openTeamDetailsModal = async function(teamId) {
 
     } catch (e) {
         console.error("Error loading team details:", e);
-        document.getElementById("teamDetailsContent").innerHTML = `<p style="color:var(--red); text-align:center;">Error loading team details: ${escHtml(e.message)}</p>`;
+        document.getElementById("teamDetailsContent").innerHTML = `<p style="color:var(--red); text-align:center;">Error loading team details: Permission Denied or Invalid Data</p>`;
     }
 };
 
@@ -2062,7 +2062,7 @@ window.manageTournamentSlots = async function(tournamentId) {
     } catch (e) {
         console.error("[SLOTS]", e);
         document.getElementById("table-container").innerHTML = `
-            <p style="color:var(--red); padding:15px; text-align:center;">Error loading slots: ${escHtml(e.message)}</p>
+            <p style="color:var(--red); padding:15px; text-align:center;">Error loading slots: Permission Denied or Invalid Data</p>
         `;
     }
 };
@@ -2084,7 +2084,7 @@ window.kickTeamFromSlot = async function(tournamentId, teamId) {
         manageTournamentSlots(tournamentId);
         
     } catch (e) {
-        showToast("Error: " + e.message, "error");
+        showToast("Action failed: Permission Denied.", "error");
     }
 };
 
@@ -2119,7 +2119,7 @@ window.promoteFromWaitlist = async function(tournamentId, teamId) {
         showToast(`Team promoted to Slot #${slotNumber} & notified!`, "success");
         manageTournamentSlots(tournamentId);
     } catch (e) {
-        showToast("Error promoting team: " + e.message, "error");
+        showToast("Error promoting team: Permission Denied.", "error");
     }
 };
 
@@ -2299,7 +2299,7 @@ window.handleReviewDecision = async function(tournamentId, userId, status, stage
         document.getElementById('reviewAppModal')?.remove();
 
     } catch (e) {
-        showToast("Error processing decision: " + e.message, "error");
+        showToast("Error processing decision: Permission Denied.", "error");
     }
 };
 
@@ -2360,7 +2360,7 @@ window.moveToWaitlist = async function(tournamentId, teamId) {
         manageTournamentSlots(tournamentId); // Refresh
         
     } catch (e) {
-        showToast("Error: " + e.message, "error");
+        showToast("Action failed: Permission Denied.", "error");
     }
 };
 
@@ -2378,7 +2378,7 @@ window.deleteSlot = async function(tournamentId, teamId) {
         manageTournamentSlots(tournamentId); // Refresh
         
     } catch (e) {
-        showToast("Error deleting: " + e.message, "error");
+        showToast("Error deleting: Permission Denied.", "error");
     }
 };
 
@@ -2495,7 +2495,7 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
         console.error("[LEADERBOARD]", err);
         container.innerHTML = `
             <div style="color:var(--red); text-align:center; padding:20px;">
-                ⚠️ Failed to load grid: ${escHtml(err.message)}
+                ⚠️ Failed to load grid: Permission Denied or Invalid Data
             </div>
         `;
     }
@@ -2525,7 +2525,7 @@ window.saveLeaderboardRow = async function(tournamentId, rank) {
         );
         showToast(`✅ Rank #${rank} — ${tName} saved!`, "success");
     } catch (err) {
-        showToast(`Error saving Rank #${rank}: ${err.message}`, "error");
+        showToast("Error saving Rank #${rank}: Permission Denied.", "error");
     }
 };
 
@@ -2556,7 +2556,7 @@ window.saveAllLeaderboardRows = async function(tournamentId) {
         await batch.commit();
         showToast(`✅ ${count} leaderboard rows saved!`, "success");
     } catch (err) {
-        showToast("Error saving batch: " + err.message, "error");
+        showToast("Error saving batch: Permission Denied.", "error");
     }
 };
 
@@ -2571,7 +2571,7 @@ window.clearLeaderboard = async function(tournamentId) {
         // Re-render empty grid
         window.renderAdminLeaderboardGrid(tournamentId);
     } catch (err) {
-        showToast("Error clearing: " + err.message, "error");
+        showToast("Error clearing: Permission Denied.", "error");
     }
 };
 
@@ -2731,7 +2731,7 @@ window.showUserAnalyticsDashboard = async function() {
     } catch (err) {
         console.error("[ANALYTICS]", err);
         document.getElementById("analyticsUserTableBody").innerHTML = `
-            <tr><td colspan="5" style="text-align:center; padding:20px; color:var(--red);">Error reading users: ${escHtml(err.message)}</td></tr>
+            <tr><td colspan="5" style="text-align:center; padding:20px; color:var(--red);">Error reading users: Permission Denied or Invalid Data</td></tr>
         `;
     }
 };
