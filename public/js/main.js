@@ -3271,7 +3271,10 @@ function renderNotificationList(docs, listEl) {
 
         return `
             <div style="background:${bg};padding:14px 16px;margin-bottom:8px;border-radius:8px;
-                ${topPriorityBorder}cursor:pointer;display:flex;gap:12px;align-items:flex-start;"
+                ${topPriorityBorder}cursor:pointer;display:flex;gap:12px;align-items:flex-start;
+                transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;"
+                onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.3)';"
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';"
                 onclick="handleNotificationClick('${d.id}','${n.actionLink || ''}','${n.type || ''}')">
                 <div style="width:28px;height:28px;border-radius:50%;background:${color}22;color:${color};
                     display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">
@@ -3766,41 +3769,53 @@ if (guidelinesLabel) {
 // Modify the submit button based on Upcoming vs Ongoing
 const submitBtn = document.getElementById("joinSubmitBtn");
 if (submitBtn) {
-    submitBtn.textContent = "Continue to Payment →";
-    submitBtn.onclick = function(e) {
-        e.preventDefault();
-        if (!agreeCheckbox || !agreeCheckbox.checked) {
-            showMessage("You must agree to the Payment Guidelines to proceed.");
-            return;
-        }
-        if (isUpcoming) {
-            // Trigger Pay Now or Pay Later Flow
+    const isPaid = (regData.paymentStatus === 'paid' || regData.paymentStatus === 'verified');
+    
+    if (isPaid) {
+        submitBtn.textContent = "Payment Verified - View Status →";
+        submitBtn.onclick = function(e) {
+            e.preventDefault();
             document.getElementById('joinTournamentModal').style.display = 'none';
-            showPopup("success", 
-                "🎉 Congratulations! Your registration has been verified.\n\nYou can pay now to secure your slot, or choose to pay later. Please note that payment must be completed before the tournament starts to keep your spot confirmed. We'd love to see you compete!", 
-                "💳 Pay Now & Secure Slot", 
-                () => { document.getElementById('customPopup').remove(); showPaymentInterface(tournamentId); }
-            );
-            // Append Pay Later button dynamically to the popup
-            const popupBody = document.querySelector('#customPopup > div');
-            if(popupBody) {
-                const laterBtn = document.createElement('button');
-                laterBtn.textContent = "Pay Later";
-                laterBtn.style.cssText = "margin-top:10px; width:100%; padding:12px; background:#333; color:#fff; border-radius:8px; cursor:pointer;";
-                laterBtn.onclick = async () => {
-                    document.getElementById('customPopup').remove();
-                    await addDoc(collection(db, "users", userId, "notifications"), {
-                        type: "payment_reminder", title: "Payment Deadline Warning", message: "Pay your entry fee before the tournament starts to avoid getting kicked.", tournamentId: tournamentId, read: false, createdAt: serverTimestamp()
-                    });
-                    showMessage("Payment deferred. Check your notifications.");
-                };
-                popupBody.appendChild(laterBtn);
+            showPaymentInterface(tournamentId); // This will render the success screen directly
+        };
+    } else {
+        submitBtn.textContent = "Continue to Payment →";
+        submitBtn.onclick = function(e) {
+            e.preventDefault();
+            if (!agreeCheckbox || !agreeCheckbox.checked) {
+                showMessage("You must agree to the Payment Guidelines to proceed.");
+                return;
             }
-        } else {
-           showPaymentInterface(tournamentId);
-        }
-    };
+            if (isUpcoming) {
+                // Trigger Pay Now or Pay Later Flow
+                document.getElementById('joinTournamentModal').style.display = 'none';
+                showPopup("success", 
+                    "🎉 Congratulations! Your registration has been verified.\n\nYou can pay now to secure your slot, or choose to pay later. Please note that payment must be completed before the tournament starts to keep your spot confirmed. We'd love to see you compete!", 
+                    "💳 Pay Now & Secure Slot", 
+                    () => { document.getElementById('customPopup').remove(); showPaymentInterface(tournamentId); }
+                );
+                // Append Pay Later button dynamically to the popup
+                const popupBody = document.querySelector('#customPopup > div');
+                if(popupBody) {
+                    const laterBtn = document.createElement('button');
+                    laterBtn.textContent = "Pay Later";
+                    laterBtn.style.cssText = "margin-top:10px; width:100%; padding:12px; background:#333; color:#fff; border-radius:8px; cursor:pointer;";
+                    laterBtn.onclick = async () => {
+                        document.getElementById('customPopup').remove();
+                        await addDoc(collection(db, "users", userId, "notifications"), {
+                            type: "payment_reminder", title: "Payment Deadline Warning", message: "Pay your entry fee before the tournament starts to avoid getting kicked.", tournamentId: tournamentId, read: false, createdAt: serverTimestamp()
+                        });
+                        showMessage("Payment deferred. Check your notifications.");
+                    };
+                    popupBody.appendChild(laterBtn);
+                }
+            } else {
+               showPaymentInterface(tournamentId);
+            }
+        };
+    }
 }
+
         
         // Add notice banner
         const form = document.getElementById("tournamentJoinForm");
@@ -6099,8 +6114,9 @@ window.listenForApprovals = function(uid) {
                     feeToShow = t ? (t.entryFee || 0) : 0;
                 }
                 
-                window.triggerPushNotification("Application Accepted! 🎉", `Your team was accepted for ${data.title || "a tournament"}.`);
-                window.showPayLaterPopup(docId, data.title || "Tournament", feeToShow);
+                // We intentionally DO NOT show the aggressive Pay Later popup here
+                // because admin.js already sends an Inbox Notification.
+                // The user will click the Inbox Notification when they are ready.
             }
             
             if (data.roomId && data.roomPassword) {
