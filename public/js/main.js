@@ -775,9 +775,9 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         // Structure the new detailed data
-        // Structure the new detailed data
+        const p1Type = document.getElementById("typePlayer1")?.value || "npc_verified";
         const playersData = [
-            { uid: p1Uid, nickname: p1Nick, type: "leader" },
+            { uid: p1Uid, nickname: p1Nick, type: p1Type },
             { uid: p2Uid, nickname: p2Nick, type: p2Type },
             { uid: p3Uid, nickname: p3Nick, type: p3Type },
             { uid: p4Uid, nickname: p4Nick, type: p4Type }
@@ -3189,16 +3189,22 @@ function initNotifications() {
 function renderNotificationList(docs, listEl) {
     if (!listEl) return;
 
-    if (docs.length === 0) {
-        listEl.innerHTML = `
-            <p style="color:#666;text-align:center;padding:20px;font-size:13px;">
-                No notifications yet.
-            </p>`;
+    // ✅ FIX: Filter out expired room_details notifications (24h auto-expire client-side)
+    const now = Date.now();
+    const activeDocs = docs.filter(d => {
+        const n = d.data();
+        if (n.type === 'room_details') {
+            const created = n.createdAt?.toDate?.()?.getTime?.() || 0;
+            if (created && (now - created) > 24 * 60 * 60 * 1000) return false; // expired after 24h
+        }
+        return true;
+    });
+
+    if (activeDocs.length === 0) {
+        listEl.innerHTML = `<p style="color:#666;text-align:center;padding:20px;font-size:13px;">No notifications yet.</p>`;
         return;
     }
 
-   // WITH THIS
-    // FIXED: Changed 'approved' to 'approval' to match the Admin panel
     const iconMap = {
         approval:          '✓', 
         rejected:          '✕',
@@ -3227,16 +3233,27 @@ function renderNotificationList(docs, listEl) {
         room_details:      '#ffd700'
     };
 
-    listEl.innerHTML = docs.map(d => {
+    listEl.innerHTML = activeDocs.map(d => {
         const n     = d.data();
         const color = colorMap[n.type] || '#4a90e2';
         const icon  = iconMap[n.type]  || '!';
         const time  = n.createdAt?.toDate ? timeAgo(n.createdAt.toDate()) : '';
         const bg    = n.read ? '#1a1a1a' : '#2a2a2a';
 
+        // ✅ FIX: room_details = Top Priority — gold border, star badge, NO delete button
+        const isTopPriority = (n.type === 'room_details');
+        const topPriorityBorder = isTopPriority ? 'border-left:4px solid #ffd700; background:rgba(255,215,0,0.05);' : `border-left:3px solid ${color};`;
+        const starBadge = isTopPriority
+            ? `<span style="color:#ffd700; font-size:16px; margin-left:4px;" title="Priority — Room Details">⭐</span>`
+            : '';
+        // Only show delete button for non-priority notifications
+        const deleteBtn = isTopPriority
+            ? `<span style="color:#ffd700; font-size:11px; padding:2px 6px; background:rgba(255,215,0,.15); border-radius:4px; font-weight:bold;">🔑 Room</span>`
+            : `<span onclick="deleteNotification(event, '${d.id}')" style="color:#666; font-size:14px; cursor:pointer; padding: 0 4px; border-radius:4px; transition: color 0.2s;" onmouseover="this.style.color='#ff4444'" onmouseout="this.style.color='#666'" title="Remove">✖</span>`;
+
         return `
             <div style="background:${bg};padding:14px 16px;margin-bottom:8px;border-radius:8px;
-                border-left:3px solid ${color};cursor:pointer;display:flex;gap:12px;align-items:flex-start;"
+                ${topPriorityBorder}cursor:pointer;display:flex;gap:12px;align-items:flex-start;"
                 onclick="handleNotificationClick('${d.id}','${n.actionLink || ''}','${n.type || ''}')">
                 <div style="width:28px;height:28px;border-radius:50%;background:${color}22;color:${color};
                     display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">
@@ -3244,11 +3261,11 @@ function renderNotificationList(docs, listEl) {
                 </div>
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;justify-content:space-between;margin-bottom:4px;align-items:center;">
-                        <strong style="color:#fff;font-size:13px;">${n.title || ''}</strong>
+                        <strong style="color:#fff;font-size:13px;">${n.title || ''}${starBadge}</strong>
                         
                         <div style="display:flex; gap:8px; align-items:center;">
                             ${!n.read ? '<span style="width:7px;height:7px;background:#ff4444;border-radius:50%;flex-shrink:0;"></span>' : ''}
-                            <span onclick="deleteNotification(event, '${d.id}')" style="color:#666; font-size:14px; cursor:pointer; padding: 0 4px; border-radius:4px; transition: color 0.2s;" onmouseover="this.style.color='#ff4444'" onmouseout="this.style.color='#666'" title="Remove">✖</span>
+                            ${deleteBtn}
                         </div>
 
                     </div>
@@ -3294,6 +3311,31 @@ window.handleNotificationClick = async function(notifId, actionLink, type) {
         if (type === "pay_later_reminder") {
             if (n.tournamentId && n.entryFee && window.openPaymentInterface) {
                 window.openPaymentInterface(n.tournamentId, n.entryFee);
+            }
+            return;
+        }
+
+        // ✅ FIX: 'confirm_and_continue' — reopen the Confirm & Continue payment success screen
+        if (type === "confirm_and_continue") {
+            if (n.tournamentId) {
+                const tournament = tournaments.find(t => t.id === n.tournamentId);
+                import('../paymentStage.js').then(module => {
+                    module.enterPaymentStage(
+                        currentUser.uid,
+                        n.tournamentId,
+                        tournament?.title || "Tournament",
+                        tournament?.entryFee || 0,
+                        false
+                    );
+                });
+            }
+            return;
+        }
+
+        // ✅ FIX: 'payment_reminder' (upcoming pay-later) — open payment interface directly
+        if (type === "payment_reminder") {
+            if (n.tournamentId && window.showPaymentInterface) {
+                window.showPaymentInterface(n.tournamentId);
             }
             return;
         }
@@ -3716,9 +3758,9 @@ if (submitBtn) {
         if (isUpcoming) {
             // Trigger Pay Now or Pay Later Flow
             document.getElementById('joinTournamentModal').style.display = 'none';
-            showPopup("warning", 
-                "You can pay now to secure your slot immediately, or Pay Later. WARNING: If you do not pay before the tournament goes 'Ongoing', you will be kicked.", 
-                "Pay Now", 
+            showPopup("success", 
+                "🎉 Congratulations! Your registration has been verified.\n\nYou can pay now to secure your slot, or choose to pay later. Please note that payment must be completed before the tournament starts to keep your spot confirmed. We'd love to see you compete!", 
+                "💳 Pay Now & Secure Slot", 
                 () => { document.getElementById('customPopup').remove(); showPaymentInterface(tournamentId); }
             );
             // Append Pay Later button dynamically to the popup

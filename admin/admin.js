@@ -146,12 +146,22 @@ function startBadgeListener() {
     where("archived", "==", false)
   );
   onSnapshot(rQuery, (snap) => {
-    updateTabBadge("registrationBadge", snap.size);
+    // ✅ FIX: Sound alert for new upcoming registrations (badge listener)
+    snap.docChanges().forEach(c => {
+      const grandparentColId = c.doc.ref.parent.parent?.parent?.id;
+      if (c.type === "added" && grandparentColId === "tournaments") playAdminAlert();
+    });
+    // ✅ FIX: Only count tournament-side docs (not user mirror docs)
+    const tournamentSideCount = snap.docs.filter(d => d.ref.parent.parent?.parent?.id === "tournaments").length;
+    updateTabBadge("registrationBadge", tournamentSideCount);
   }, () => {
     // Fallback
     onSnapshot(
       query(collectionGroup(db, "upcomingRegistrations"), where("status", "==", "pending")),
-      (snap) => updateTabBadge("registrationBadge", snap.size)
+      (snap) => {
+        const tournamentSideCount = snap.docs.filter(d => d.ref.parent.parent?.parent?.id === "tournaments").length;
+        updateTabBadge("registrationBadge", tournamentSideCount);
+      }
     );
   });
 }
@@ -286,6 +296,7 @@ function applicationCard(d, type) {
       teamName: d.teamName || "—",
       leaderEmail: d.leaderEmail || "—",
       phone: d.phone || "—",
+      backupEmail: d.backupEmail || "—",   // ✅ FIX: Include backup Gmail
       uids: d.uids || [],
       playersData: d.playersData || d.uids?.map((uid, i) => ({
         uid: uid,
@@ -925,11 +936,26 @@ function loadUpcomingRegistrations() {
   );
 
   _listeners.registrations = onSnapshot(q, (snapshot) => {
+    // ✅ FIX: Trigger sound alert for new pending registrations
+    snapshot.docChanges().forEach(c => {
+      // Only fire alert for documents in tournaments/.../upcomingRegistrations (not users/...)
+      // The parent of the subcollection is the tournament doc; its collection is "tournaments"
+      const grandparentColId = c.doc.ref.parent.parent?.parent?.id;
+      if (c.type === "added" && c.doc.data().status === "pending" && grandparentColId === "tournaments") {
+        playAdminAlert();
+      }
+    });
+
     const pending  = [];
     const approved = [];
     const rejected = [];
 
     snapshot.forEach(d => {
+      // ✅ FIX: Only process documents from tournaments/.../upcomingRegistrations (not users/...)
+      // d.ref.parent.parent is the tournament doc; d.ref.parent.parent.parent is "tournaments" collection
+      const grandparentColId = d.ref.parent.parent?.parent?.id;
+      if (grandparentColId !== "tournaments") return; // SKIP user-side mirror documents
+
       const data = { id: d.id, tournamentId: d.ref.parent.parent.id, ...d.data() };
       if (data.archived === true) return; // CLIENT-SIDE filter
       if      (data.status === "pending")  pending.push(data);
@@ -977,6 +1003,7 @@ function upcomingCard(d, type) {
       teamName: d.teamName || "—",
       leaderEmail: d.leaderEmail || "—",
       phone: d.phone || "—",
+      backupEmail: d.backupEmail || "—",   // ✅ FIX: Include backup Gmail
       uids: d.uids || [],
       playersData: d.playersData || d.uids?.map((uid, i) => ({
         uid: uid,
@@ -2167,15 +2194,21 @@ window.openAdminReviewModal = async function(tournamentId, userId, dataString, s
         }
     } catch(e) { console.warn("Could not fetch tournament title"); }
 
-    // Generate Player UIDs with NPC Verified Badges
+    // ✅ FIX: Generate Player UIDs with NPC Verified Badges (Player 1 shows Leader + NPC/Friend)
     const playersHtml = app.playersData && app.playersData.length > 0 ? app.playersData.map((p, i) => {
-        let badge = p.type === 'npc_verified' || p.type === 'NPC User'
+        // ✅ FIX: Player 1 always shows "Team Leader" label, plus their NPC/Friend badge
+        const isLeader = i === 0;
+        const leaderBadge = isLeader
+            ? `<span style="background:#ffd700;color:#000;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">👑 Leader</span>`
+            : '';
+        // ✅ FIX: Show NPC User or Friend badge for ALL players including Player 1
+        let typeBadge = (p.type === 'npc_verified' || p.type === 'NPC User' || p.type === 'npc')
             ? `<span style="background:var(--green);color:#000;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">NPC User</span>`
-            : `<span style="background:#444;color:#aaa;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;">Friend</span>`;
+            : (p.type === 'leader' ? '' : `<span style="background:#444;color:#aaa;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;">Friend</span>`);
             
         return `
             <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #222;padding-bottom:8px;">
-                <span style="color:#888;">Player ${i+1} ${badge}</span>
+                <span style="color:#888;">Player ${i+1} ${leaderBadge}${typeBadge}</span>
                 <span style="color:#fff;font-weight:bold;">${p.uid} <span style="color:var(--blue);font-weight:normal;font-size:12px;margin-left:6px;">${p.nickname}</span></span>
             </div>
         `;
@@ -2205,6 +2238,10 @@ window.openAdminReviewModal = async function(tournamentId, userId, dataString, s
                     <div style="margin-bottom:20px;">
                         <label style="color:#666;font-size:12px;">Phone Number</label>
                         <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.phone}</div>
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <label style="color:#666;font-size:12px;">Backup Gmail ✉️</label>
+                        <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.backupEmail || '—'}</div>
                     </div>
                     <div style="margin-bottom:10px;">
                         <label style="color:#666;font-size:12px;">Squad Members</label>

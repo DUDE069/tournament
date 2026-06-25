@@ -411,12 +411,54 @@ function renderSuccessScreen(tournamentName, roomId, roomPassword, paymentId) {
         cursor: pointer;
         font-family: 'Rajdhani', sans-serif;
         margin-top: 10px;
-      ">✅ Confirm & Continue</button>
+      ">✅ Confirm &amp; Continue</button>
+      <button onclick="handleDismissWithoutConfirm()" style="
+        width: 100%;
+        padding: 10px;
+        background: transparent;
+        color: #666;
+        border: 1px solid #333;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        font-family: 'Rajdhani', sans-serif;
+        margin-top: 8px;
+      ">⏰ Remind Me Later (Save to Notifications)</button>
     </div>
   `;
 
   document.body.appendChild(overlay);
+  // ✅ FIX: Lock body scroll while overlay is visible (matches closePaymentOverlay unlock)
+  document.body.style.overflow = 'hidden';
 }
+
+// ============================================
+// DISMISS WITHOUT CONFIRMING — Sends fallback notification
+// ============================================
+window.handleDismissWithoutConfirm = async function() {
+  closePaymentOverlay();
+
+  // Write a reminder notification to the user's inbox so they can come back
+  try {
+    if (_currentUserId && _currentTournamentId) {
+      const { doc: firestoreDoc, addDoc: firestoreAddDoc, collection, serverTimestamp: sTs } =
+        await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+      const { db: firestoreDb } = await import('./js/firebase.js');
+      await firestoreAddDoc(collection(firestoreDb, 'users', _currentUserId, 'notifications'), {
+        type: 'confirm_and_continue',
+        title: '✅ Payment Verified — Confirm Your Slot!',
+        message: 'Your payment was verified! Tap here to confirm your participation and complete registration.',
+        tournamentId: _currentTournamentId,
+        read: false,
+        popupShown: false,
+        createdAt: sTs()
+      });
+    }
+  } catch (e) {
+    console.warn('[PAYMENT] Could not save reminder notification:', e);
+  }
+};
 
 // ============================================
 // USER CONFIRMATION
@@ -443,6 +485,8 @@ window.handleUserConfirmation = async function() {
 // ============================================
 window.closePaymentOverlay = function() {
   document.getElementById('paymentOverlay')?.remove();
+  // ✅ FIX: Restore scroll after payment overlay is closed
+  document.body.style.overflow = 'auto';
   if (unsubPayment) {
     unsubPayment();
     unsubPayment = null;
