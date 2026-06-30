@@ -12,6 +12,7 @@ let unsubPayment = null;
 let _currentTournamentId = null;
 let _currentUserId = null;
 let _isUpcomingTournament = false;
+let _successScreenShowing = false; // ✅ FIX: guard against re-render loop
 
 // ⚠️ YOUR RAZORPAY KEY ID (Frontend uses public Key ID)
 const RAZORPAY_KEY_ID = "rzp_test_SygE6AqBXyl5LI"; 
@@ -22,6 +23,7 @@ const RAZORPAY_KEY_ID = "rzp_test_SygE6AqBXyl5LI";
 export function enterPaymentStage(userId, tournamentId, tournamentName, entryFee, isUpcoming = false) {
   _currentUserId = userId;
   _currentTournamentId = tournamentId;
+  _successScreenShowing = false; // ✅ FIX: reset guard on each new entry
 
   if (unsubPayment) unsubPayment();
 
@@ -31,6 +33,8 @@ export function enterPaymentStage(userId, tournamentId, tournamentName, entryFee
     const data = snap.data();
     _isUpcomingTournament = isUpcoming; // Assign the passed flag
     if (!data) return;
+    // ✅ FIX: Don't re-render if success screen is already showing — prevents scroll re-lock
+    if (_successScreenShowing) return;
     renderPaymentUI(data, tournamentName, tournamentId, entryFee); 
   });
 
@@ -167,7 +171,7 @@ async function handlePaymentSuccess(tournamentId, response) {
         razorpay_payment_id: razorpay_payment_id,
         razorpay_order_id: razorpay_order_id,
         razorpay_signature: razorpay_signature,
-        isUpcoming: _isUpcomingTournament // Pass the isUpcoming flag
+        isUpcoming: _isUpcomingTournament
       })
     });
 
@@ -177,19 +181,67 @@ async function handlePaymentSuccess(tournamentId, response) {
     if (!verificationResponse.ok || !verificationResult.success) {
       console.error("[PAYMENT] Backend verification failed:", verificationResult.message || "Unknown error");
       showToast(`Payment verification failed: ${verificationResult.message || "Please contact support."}`, "error");
-      // Optionally, update Firestore with a 'failed' status here if needed
       return;
     }
 
     showToast("✅ Payment Verified!", "success");
 
-    setTimeout(() => {
-      closePaymentOverlay();
-    }, 2000);
+    // ✅ FIX: Write verified status client-side immediately after backend confirms.
+    // This ensures admin panel (participants doc), slot management (slots doc),
+    // and user dashboard (upcomingRegistrations) ALL update instantly without
+    // waiting for the Firestore snapshot to propagate back.
+    if (_currentUserId && tournamentId) {
+      try {
+        // 1. Participants doc → admin status tracker reads this
+        await updateDoc(
+          doc(db, 'tournaments', tournamentId, 'participants', _currentUserId),
+          {
+            paymentStatus:        'verified',
+            razorpayPaymentId:    razorpay_payment_id,
+            paidAt:               serverTimestamp(),
+          }
+        );
+      } catch (e) { console.warn('[PAYMENT] participants sync:', e); }
+
+      try {
+        // 2. User's personal upcoming registrations doc → user dashboard reads this
+        await updateDoc(
+          doc(db, 'users', _currentUserId, 'upcomingRegistrations', tournamentId),
+          { paymentStatus: 'verified', paidAt: serverTimestamp() }
+        );
+      } catch (e) { /* doc may not exist for ongoing tournaments, that's fine */ }
+
+      try {
+        // 3. Slots doc → admin slot management reads this
+        // We need the teamId from the participant doc to find the slot doc
+        const partSnap = await getDoc(doc(db, 'tournaments', tournamentId, 'participants', _currentUserId));
+        const teamId = partSnap.exists() ? (partSnap.data().teamId || null) : null;
+        if (teamId) {
+          await updateDoc(
+            doc(db, 'tournaments', tournamentId, 'slots', teamId),
+            { paymentStatus: 'Payment Verified', updatedAt: serverTimestamp() }
+          );
+        }
+      } catch (e) { console.warn('[PAYMENT] slots sync:', e); }
+    }
+
+    // ✅ FIX: Stop the snapshot listener BEFORE showing the success screen.
+    // This prevents the Firestore update above from triggering onSnapshot →
+    // renderPaymentUI → renderSuccessScreen again, which would re-lock scroll.
+    if (unsubPayment) { unsubPayment(); unsubPayment = null; }
+
+    // Show success screen directly (not via closePaymentOverlay which removes the overlay)
+    document.getElementById('paymentOverlay')?.remove();
+    renderSuccessScreen(
+      verificationResult.tournamentName || 'Tournament',
+      verificationResult.roomId || null,
+      verificationResult.roomPassword || null,
+      razorpay_payment_id
+    );
 
   } catch (error) {
     console.error("[PAYMENT] Verification error:", error);
-    showToast("Payment recorded but verification pending", "warning");
+    showToast("Payment recorded but verification pending. Contact support if issues persist.", "warning");
   }
 }
 
@@ -197,6 +249,8 @@ async function handlePaymentSuccess(tournamentId, response) {
 // RENDER PAYMENT UI
 // ============================================
 function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
+  // ✅ FIX: Don't re-render if success screen is already showing
+  if (_successScreenShowing) return;
   document.getElementById('paymentOverlay')?.remove();
 
   const { paymentStatus, roomId, roomPassword, razorpayPaymentId } = data;
@@ -314,6 +368,9 @@ async function loadPaymentDetails(tournamentId) {
 // SUCCESS SCREEN
 // ============================================
 function renderSuccessScreen(tournamentName, roomId, roomPassword, paymentId) {
+  // ✅ FIX: Set guard flag so snapshot can't re-render on top of this screen
+  _successScreenShowing = true;
+
   if (unsubPayment) {
     unsubPayment();
     unsubPayment = null;
@@ -484,9 +541,10 @@ window.handleUserConfirmation = async function() {
 // CLOSE OVERLAY
 // ============================================
 window.closePaymentOverlay = function() {
+  _successScreenShowing = false; // ✅ FIX: Reset guard so next payment works normally
   document.getElementById('paymentOverlay')?.remove();
   // ✅ FIX: Restore scroll after payment overlay is closed
-  document.body.style.overflow = 'auto';
+  document.body.style.overflow = '';
   if (unsubPayment) {
     unsubPayment();
     unsubPayment = null;

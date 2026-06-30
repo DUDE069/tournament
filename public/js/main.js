@@ -3207,11 +3207,13 @@ function initNotifications() {
 function renderNotificationList(docs, listEl) {
     if (!listEl) return;
 
-    // ✅ FIX: Filter out expired room_details notifications (24h auto-expire client-side)
+    // ✅ FIX: Filter out expired priority notifications (24h auto-expire client-side)
+    // Applies to room_details, confirm_and_continue, and payment_confirmed
     const now = Date.now();
     const activeDocs = docs.filter(d => {
         const n = d.data();
-        if (n.type === 'room_details') {
+        const isPriorityType = (n.type === 'room_details' || n.type === 'confirm_and_continue' || n.type === 'payment_confirmed');
+        if (isPriorityType) {
             const created = n.createdAt?.toDate?.()?.getTime?.() || 0;
             if (created && (now - created) > 24 * 60 * 60 * 1000) return false; // expired after 24h
         }
@@ -3258,15 +3260,18 @@ function renderNotificationList(docs, listEl) {
         const time  = n.createdAt?.toDate ? timeAgo(n.createdAt.toDate()) : '';
         const bg    = n.read ? '#1a1a1a' : '#2a2a2a';
 
-        // ✅ FIX: room_details = Top Priority — gold border, star badge, NO delete button
-        const isTopPriority = (n.type === 'room_details');
+        // ✅ FIX: Extended top-priority types:
+        // room_details — Room ID & Password (already existed)
+        // confirm_and_continue — Payment verified, needs confirmation tap
+        // payment_confirmed — Admin manually confirmed payment
+        const isTopPriority = (n.type === 'room_details' || n.type === 'confirm_and_continue' || n.type === 'payment_confirmed');
         const topPriorityBorder = isTopPriority ? 'border-left:4px solid #ffd700; background:rgba(255,215,0,0.05);' : `border-left:3px solid ${color};`;
         const starBadge = isTopPriority
-            ? `<span style="color:#ffd700; font-size:16px; margin-left:4px;" title="Priority — Room Details">⭐</span>`
+            ? `<span style="color:#ffd700; font-size:16px; margin-left:4px;" title="Priority — Action Required">⭐</span>`
             : '';
         // Only show delete button for non-priority notifications
         const deleteBtn = isTopPriority
-            ? `<span style="color:#ffd700; font-size:11px; padding:2px 6px; background:rgba(255,215,0,.15); border-radius:4px; font-weight:bold;">🔑 Room</span>`
+            ? `<span style="color:#ffd700; font-size:11px; padding:2px 6px; background:rgba(255,215,0,.15); border-radius:4px; font-weight:bold;">🔔 Priority</span>`
             : `<span onclick="deleteNotification(event, '${d.id}')" style="color:#666; font-size:14px; cursor:pointer; padding: 0 4px; border-radius:4px; transition: color 0.2s;" onmouseover="this.style.color='#ff4444'" onmouseout="this.style.color='#666'" title="Remove">✖</span>`;
 
         return `
@@ -3790,7 +3795,7 @@ if (submitBtn) {
                 // Trigger Pay Now or Pay Later Flow
                 document.getElementById('joinTournamentModal').style.display = 'none';
                 showPopup("success", 
-                    "🎉 Congratulations! Your registration has been verified.\n\nYou can pay now to secure your slot, or choose to pay later. Please note that payment must be completed before the tournament starts to keep your spot confirmed. We'd love to see you compete!", 
+                    "🎉 Congratulations! Your registration has been verified.\n\nYou can pay now to secure your slot, or choose to pay later. Remember — your slot is confirmed, but payment must be completed before the match starts. If payment is not received in time, your slot will be given to another team.", 
                     "💳 Pay Now & Secure Slot", 
                     () => { document.getElementById('customPopup').remove(); showPaymentInterface(tournamentId); }
                 );
@@ -3798,14 +3803,19 @@ if (submitBtn) {
                 const popupBody = document.querySelector('#customPopup > div');
                 if(popupBody) {
                     const laterBtn = document.createElement('button');
-                    laterBtn.textContent = "Pay Later";
-                    laterBtn.style.cssText = "margin-top:10px; width:100%; padding:12px; background:#333; color:#fff; border-radius:8px; cursor:pointer;";
+                    laterBtn.textContent = "⏰ Pay Later — Remind Me";
+                    laterBtn.style.cssText = "margin-top:10px; width:100%; padding:12px; background:#1a1a1a; color:#9ca3af; border:1px solid #374151; border-radius:8px; cursor:pointer; font-size:13px;";
                     laterBtn.onclick = async () => {
                         document.getElementById('customPopup').remove();
                         await addDoc(collection(db, "users", userId, "notifications"), {
-                            type: "payment_reminder", title: "Payment Deadline Warning", message: "Pay your entry fee before the tournament starts to avoid getting kicked.", tournamentId: tournamentId, read: false, createdAt: serverTimestamp()
+                            type: "pay_later_reminder",
+                            title: "💳 Complete Your Payment",
+                            message: `Your slot for this tournament is confirmed! Pay your entry fee before the match starts to keep it secured. If unpaid, your slot will be reassigned to other players.`,
+                            tournamentId: tournamentId,
+                            read: false,
+                            createdAt: serverTimestamp()
                         });
-                        showMessage("Payment deferred. Check your notifications.");
+                        showMessage("Reminder saved to your notifications!");
                     };
                     popupBody.appendChild(laterBtn);
                 }

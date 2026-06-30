@@ -126,7 +126,8 @@ function startBadgeListener() {
     where("archived", "==", false)
   );
   _listeners.badge = onSnapshot(vQuery, (snap) => {
-    snap.docChanges().forEach(c => { if (c.type === "added") playAdminAlert(); });
+    // Pass docId to debounce — same new verification doc won't double-beep
+    snap.docChanges().forEach(c => { if (c.type === "added") playAdminAlert(c.doc.id); });
     updateTabBadge("verificationBadge", snap.size);
   }, err => {
     // Fallback if composite index not yet created — query without archived filter
@@ -147,9 +148,10 @@ function startBadgeListener() {
   );
   onSnapshot(rQuery, (snap) => {
     // ✅ FIX: Sound alert for new upcoming registrations (badge listener)
+    // Pass docId to debounce — prevents double-beep if registrations tab is also open
     snap.docChanges().forEach(c => {
       const grandparentColId = c.doc.ref.parent.parent?.parent?.id;
-      if (c.type === "added" && grandparentColId === "tournaments") playAdminAlert();
+      if (c.type === "added" && grandparentColId === "tournaments") playAdminAlert(c.doc.id);
     });
     // ✅ FIX: Only count tournament-side docs (not user mirror docs)
     const tournamentSideCount = snap.docs.filter(d => d.ref.parent.parent?.parent?.id === "tournaments").length;
@@ -225,7 +227,7 @@ function loadVerifications() {
 
   _listeners.verifications = onSnapshot(q, (snapshot) => {
     snapshot.docChanges().forEach(c => {
-      if (c.type === "added" && c.doc.data().status === "pending") playAdminAlert();
+      if (c.type === "added" && c.doc.data().status === "pending") playAdminAlert(c.doc.id);
     });
     renderVerificationList(snapshot);
   }, err => {
@@ -937,12 +939,13 @@ function loadUpcomingRegistrations() {
 
   _listeners.registrations = onSnapshot(q, (snapshot) => {
     // ✅ FIX: Trigger sound alert for new pending registrations
+    // Pass docId to debounce — badge listener may have already played for this doc
     snapshot.docChanges().forEach(c => {
       // Only fire alert for documents in tournaments/.../upcomingRegistrations (not users/...)
       // The parent of the subcollection is the tournament doc; its collection is "tournaments"
       const grandparentColId = c.doc.ref.parent.parent?.parent?.id;
       if (c.type === "added" && c.doc.data().status === "pending" && grandparentColId === "tournaments") {
-        playAdminAlert();
+        playAdminAlert(c.doc.id);
       }
     });
 
@@ -1386,6 +1389,36 @@ window.addTournament = async function() {
     }
 };
 window.deleteTournament = async function(id) {
+  // ✅ FIX: Protect deletion — check for any pending/approved registrations first
+  try {
+    const tSnap = await getDoc(doc(db, "tournaments", id));
+    const tData = tSnap.exists() ? tSnap.data() : {};
+
+    // Block if tournament is in registration or ongoing stage with active participants
+    if (tData.category === "ongoing" || tData.status === "live") {
+      showToast("❌ Cannot delete: This tournament is live/ongoing. Participants have registered and may have paid.", "error");
+      return;
+    }
+
+    // Also check for any pending or approved upcoming registrations
+    const regsSnap = await getDocs(collection(db, "tournaments", id, "upcomingRegistrations"));
+    const activeRegs = regsSnap.docs.filter(d => d.data().status === "pending" || d.data().status === "approved");
+    if (activeRegs.length > 0) {
+      showToast(`❌ Cannot delete: ${activeRegs.length} team(s) have registered. Reject all registrations first before deleting.`, "error");
+      return;
+    }
+
+    // Also check participant docs (paid users)
+    const partSnap = await getDocs(collection(db, "tournaments", id, "participants"));
+    if (!partSnap.empty) {
+      showToast(`❌ Cannot delete: ${partSnap.size} team(s) have paid and are confirmed. This data cannot be lost.`, "error");
+      return;
+    }
+  } catch (checkErr) {
+    // If we can't check, still ask for confirmation to be safe
+    console.warn("[DELETE CHECK]", checkErr);
+  }
+
   if (!confirm("Delete this tournament? This cannot be undone.")) return;
   try {
     await deleteDoc(doc(db, "tournaments", id));
@@ -1412,6 +1445,12 @@ function loadTournaments() {
       
       const div = document.createElement("div");
       div.className = "item-card";
+
+      // ✅ FIX: Visually disable Delete button for active/ongoing tournaments
+      const isActive = (t.category === "ongoing" || t.status === "live");
+      const deleteBtn = isActive
+        ? `<button class="btn-delete" disabled title="Cannot delete: tournament is active or ongoing" style="opacity:0.35;cursor:not-allowed;" onclick="event.preventDefault();">🔒 Delete</button>`
+        : `<button class="btn-delete" onclick="deleteTournament('${d.id}')">Delete</button>`;
       
       div.innerHTML = `
         <div>
@@ -1422,7 +1461,7 @@ function loadTournaments() {
           <button class="btn-status" onclick="manageTournamentSlots('${d.id}')" style="background:var(--gold);color:#000;border:none;">
             🎯 Manage Slots
           </button>
-          <button class="btn-delete" onclick="deleteTournament('${d.id}')">Delete</button>
+          ${deleteBtn}
         </div>`;
       box.appendChild(div);
     });
@@ -1592,20 +1631,42 @@ function loadCalendarEvents() {
 
 // ============================================================================
 //  16. SOUND ALERT
+//  FIX: Use .mp3 file instead of AudioContext oscillator.
+//  AudioContext gets suspended in background tabs by browsers and never
+//  resumes reliably. new Audio() with a real file works even when the tab
+//  is in the background.
+//  FIX: Debounce — prevent dual listeners (badge + registrations tab) from
+//  firing the same sound twice for the exact same new document.
 // ============================================================================
-const adminAudio = new (window.AudioContext || window.webkitAudioContext)();
-function playAdminAlert() {
-  if (adminAudio.state === "suspended") adminAudio.resume();
-  const osc  = adminAudio.createOscillator();
-  const gain = adminAudio.createGain();
-  osc.connect(gain);
-  gain.connect(adminAudio.destination);
-  osc.frequency.setValueAtTime(1200, adminAudio.currentTime);
-  osc.frequency.exponentialRampToValueAtTime(600, adminAudio.currentTime + 0.3);
-  gain.gain.setValueAtTime(0.5, adminAudio.currentTime);
-  gain.gain.exponentialRampToValueAtTime(0.01, adminAudio.currentTime + 0.5);
-  osc.start(adminAudio.currentTime);
-  osc.stop(adminAudio.currentTime + 0.5);
+const _alertedDocIds = new Set(); // tracks doc IDs already alerted this session
+
+function playAdminAlert(docId) {
+  // If a docId is given, only play once per unique doc per session
+  if (docId) {
+    if (_alertedDocIds.has(docId)) return;
+    _alertedDocIds.add(docId);
+  }
+  try {
+    const audio = new Audio('/alert.mp3');
+    audio.volume = 0.8;
+    audio.play().catch(() => {
+      // Fallback to AudioContext beep if .mp3 is blocked
+      try {
+        const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+        if (ctx.state === 'suspended') ctx.resume();
+        const osc  = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(1200, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.5, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.5);
+      } catch (_) {}
+    });
+  } catch (_) {}
 }
 
 // ============================================================================
