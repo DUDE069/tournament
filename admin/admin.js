@@ -343,23 +343,50 @@ function applicationCard(d, type) {
 }
 
 // ============================================================================
-//  5. REMOVE APPLICATION
-//  BUG FIX: now sets archived:true AND immediately removes card from DOM
+//  5. REMOVE APPLICATION (Ongoing tab)
+//  Notifies team BEFORE archiving so they know what happened
 // ============================================================================
 window.removeApplication = async function(tournamentId, userId) {
-  if (!confirm("Remove this application from the list?")) return;
+  if (!confirm("Remove this application from the list? The team will be notified.")) return;
   try {
+    // Fetch team name and tournament name before archiving so we can notify properly
+    let teamName = "Your team";
+    let tournamentName = tournamentId;
+    let memberIds = [userId];
+    try {
+      const vSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
+      if (vSnap.exists()) teamName = vSnap.data().teamName || teamName;
+      const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+      if (tSnap.exists()) tournamentName = tSnap.data().title || tournamentName;
+      const uSnap = await getDoc(doc(db, "users", userId));
+      if (uSnap.exists() && uSnap.data().teamId) {
+        const tmSnap = await getDoc(doc(db, "teams", uSnap.data().teamId));
+        if (tmSnap.exists()) memberIds = [...new Set([...(tmSnap.data().members || []), userId])];
+      }
+    } catch (_) {}
+
     await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
       archived:   true,
       archivedAt: serverTimestamp(),
     });
-    // Immediate UI removal — don't wait for snapshot
+
+    // Notify every team member
+    await Promise.all(memberIds.map(mid => sendDualNotification(mid, {
+      type:       "application_removed",
+      title:      "⚠️ Application Removed",
+      message:    `Your application for "${tournamentName}" was removed from the Verification stage. If this was a mistake, tap to re-submit.`,
+      extra:      { tournamentId, tournamentName, stage: "ongoing", teamName },
+      actionLink: `resubmit=ongoing&tournament=${tournamentId}`,
+    })));
+
+    // Immediate UI removal — don’t wait for snapshot
     document.getElementById(`appcard-${userId}`)?.remove();
-    showToast("Application removed.", "success");
+    showToast("Application removed & team notified.", "success");
   } catch (e) {
     showToast("Error removing: Permission Denied.", "error");
   }
 };
+
 
 // ============================================================================
 //  6. STATUS MODAL  (Accepted applications)
@@ -1206,19 +1233,43 @@ window.confirmRejectUpcoming = async function(tournamentId, userId) {
   }
 };
 
-// BUG FIX: immediate DOM removal on removeUpcoming
+// BUG FIX: immediate DOM removal on removeUpcoming + team notification
 window.removeUpcoming = async function(tournamentId, userId, cardId) {
-  if (!confirm("Remove this registration from the list?")) return;
+  if (!confirm("Remove this registration? The team will be notified.")) return;
   try {
+    // Gather info before archiving
+    let tournamentName = tournamentId;
+    let memberIds = [userId];
+    try {
+      const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+      if (tSnap.exists()) tournamentName = tSnap.data().title || tournamentName;
+      const uSnap = await getDoc(doc(db, "users", userId));
+      if (uSnap.exists() && uSnap.data().teamId) {
+        const tmSnap = await getDoc(doc(db, "teams", uSnap.data().teamId));
+        if (tmSnap.exists()) memberIds = [...new Set([...(tmSnap.data().members || []), userId])];
+      }
+    } catch (_) {}
+
     await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
       archived: true, archivedAt: serverTimestamp(),
     });
+
+    // Notify every team member
+    await Promise.all(memberIds.map(mid => sendDualNotification(mid, {
+      type:       "application_removed",
+      title:      "⚠️ Registration Removed",
+      message:    `Your registration for "${tournamentName}" was removed from the Registration stage. If this was a mistake, tap to re-submit.`,
+      extra:      { tournamentId, tournamentName, stage: "upcoming" },
+      actionLink: `resubmit=upcoming&tournament=${tournamentId}`,
+    })));
+
     document.getElementById(`regcard-${cardId}`)?.remove();
-    showToast("Removed from list.", "success");
+    showToast("Removed & team notified.", "success");
   } catch (e) {
     showToast("Action failed: Permission Denied.", "error");
   }
 };
+
 
 // ============================================================================
 //  13. AUTH ACTIONS
@@ -1889,11 +1940,21 @@ window.manageTournamentSlots = async function(tournamentId) {
     
     overlay.innerHTML = `
         <div class="status-modal" style="max-width:900px; width:100%;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
                 <h3 style="color:var(--gold); margin:0;">🎯 Slot Management</h3>
-                <input type="text" id="slotSearch" placeholder="🔍 Search team or code…"
-                       style="padding:8px 12px; border-radius:6px; border:1px solid #444; background:#1a1a1a; color:#fff; width:200px;"
-                       onkeyup="filterSlots()">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                    <input type="text" id="slotSearch" placeholder="🔍 Search team or code…"
+                           style="padding:8px 12px; border-radius:6px; border:1px solid #444; background:#1a1a1a; color:#fff; width:180px;"
+                           onkeyup="filterSlots()">
+                    <button onclick="openGlobalMessageModal('${tournamentId}')"
+                        style="padding:8px 14px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;font-family:inherit;">
+                        📢 Global Message
+                    </button>
+                    <button onclick="openGlobalRoomBlast('${tournamentId}')"
+                        style="padding:8px 14px;background:var(--green);color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;font-family:inherit;">
+                        🔑 Send Room ID
+                    </button>
+                </div>
             </div>
             
             <div id="rg-tiebreaker-area"></div>
@@ -1914,6 +1975,7 @@ window.manageTournamentSlots = async function(tournamentId) {
             </button>
         </div>
     `;
+
     document.body.appendChild(overlay);
 
     try {
@@ -2075,6 +2137,7 @@ window.manageTournamentSlots = async function(tournamentId) {
                     const pColor  = pStatus === "Paid" || pStatus === "verified" ? "#22c55e" : pStatus === "Pending Payment" ? "#fbbf24" : "#555";
                     const pBg = pStatus === "Paid" || pStatus === "verified" ? "rgba(34,197,94,0.15)" : pStatus === "Pending Payment" ? "rgba(251,191,36,0.15)" : "transparent";
                     
+                    const isPaid = (team?.paymentStatus === 'Payment Verified' || team?.paymentStatus === 'verified' || team?.paymentStatus === 'Paid');
                     const actionBtns = team ? `
                         <div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:center;">
                             <button onclick="moveToWaitlist('${tournamentId}','${team.id}')"
@@ -2085,12 +2148,16 @@ window.manageTournamentSlots = async function(tournamentId) {
                                 style="background:#ef4444;color:#fff;border:none;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
                                 🚫 Kick
                             </button>
-                            <button onclick="deleteSlot('${tournamentId}','${team.id}')"
+                            ${isPaid
+                              ? `<span title="Payment verified — cannot delete" style="background:transparent;color:#555;border:1px solid #333;padding:4px 7px;border-radius:4px;font-size:10px;white-space:nowrap;cursor:not-allowed;opacity:0.5;">🔒 Delete</span>`
+                              : `<button onclick="deleteSlot('${tournamentId}','${team.id}')"
                                 style="background:transparent;color:#ef4444;border:1px solid #ef4444;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
                                 🗑 Delete
-                            </button>
+                              </button>`
+                            }
                         </div>
                     ` : `<span style="color:#444; font-size:11px;">—</span>`;
+
                     
                     html += `
                         <td rowspan="${rowsPerTeam}" style="border-right:1px solid #222; text-align:center; padding:8px; font-weight:bold; color:${team ? "#aaa" : "#333"};">#${slot}</td>
@@ -2155,6 +2222,227 @@ window.manageTournamentSlots = async function(tournamentId) {
     }
 };
 
+// ============================================================================
+//  GLOBAL MESSAGE BLAST — sends announcement to all confirmed + waitlist members
+// ============================================================================
+window.openGlobalMessageModal = async function(tournamentId) {
+    document.getElementById("globalMsgModal")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "globalMsgModal";
+    overlay.className = "status-modal-overlay";
+    overlay.innerHTML = `
+        <div class="status-modal" style="max-width:480px;width:100%;">
+            <h3>📢 Global Message — All Tournament Members</h3>
+            <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">This message will be sent to all confirmed AND waitlist teams in this tournament.</p>
+            <textarea id="globalMsgText" placeholder="Type your announcement here…"
+                style="width:100%;min-height:100px;background:#1a1a1a;border:1px solid #333;color:#fff;padding:10px;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;box-sizing:border-box;"></textarea>
+            <button onclick="sendGlobalTournamentMessage('${tournamentId}')"
+                style="width:100%;margin-top:12px;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;font-size:14px;">
+                📤 Send to All Members
+            </button>
+            <button onclick="document.getElementById('globalMsgModal').remove()"
+                style="width:100%;margin-top:8px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">Cancel</button>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+};
+
+window.sendGlobalTournamentMessage = async function(tournamentId) {
+    const msg = document.getElementById("globalMsgText")?.value.trim();
+    if (!msg) { showToast("Please type a message.", "warning"); return; }
+    try {
+        const [slotsSnap] = await Promise.all([
+            getDocs(collection(db, "tournaments", tournamentId, "slots")),
+        ]);
+        const allIds = new Set();
+        slotsSnap.forEach(d => {
+            (d.data().members || [d.id]).forEach(uid => allIds.add(uid));
+        });
+        if (allIds.size === 0) { showToast("No members found in this tournament.", "warning"); return; }
+        await Promise.all([...allIds].map(uid => sendDualNotification(uid, {
+            type:       "tournament_announcement",
+            title:      "📢 Tournament Announcement",
+            message:    msg,
+            extra:      { tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        })));
+        document.getElementById("globalMsgModal")?.remove();
+        showToast(`✅ Announcement sent to ${allIds.size} member(s)!`, "success");
+    } catch (e) {
+        showToast("Failed: Permission Denied.", "error");
+    }
+};
+
+// ============================================================================
+//  GLOBAL ROOM ID & PASSWORD BLAST
+//  Sends to ALL members. Unpaid users see a blurred/locked version on their end.
+// ============================================================================
+window.openGlobalRoomBlast = async function(tournamentId) {
+    document.getElementById("globalRoomModal")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "globalRoomModal";
+    overlay.className = "status-modal-overlay";
+    overlay.innerHTML = `
+        <div class="status-modal" style="max-width:480px;width:100%;">
+            <h3>🔑 Send Room ID & Password — All Members</h3>
+            <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">
+                Paid members will see the room details clearly.
+                Unpaid/waitlist members will see a locked screen with a Pay Now button.
+            </p>
+            <div style="display:flex;gap:10px;margin-bottom:12px;">
+                <div style="flex:1;">
+                    <label style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Room ID</label>
+                    <input id="blastRoomId" placeholder="e.g. 1234567" style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;box-sizing:border-box;">
+                </div>
+                <div style="flex:1;">
+                    <label style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Password</label>
+                    <input id="blastRoomPass" placeholder="e.g. abc123" style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;box-sizing:border-box;">
+                </div>
+            </div>
+            <button onclick="sendGlobalRoomBlast('${tournamentId}')"
+                style="width:100%;padding:12px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;font-size:14px;">
+                📤 Send to All Members
+            </button>
+            <button onclick="document.getElementById('globalRoomModal').remove()"
+                style="width:100%;margin-top:8px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">Cancel</button>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+};
+
+window.sendGlobalRoomBlast = async function(tournamentId) {
+    const roomId   = document.getElementById("blastRoomId")?.value.trim();
+    const roomPass = document.getElementById("blastRoomPass")?.value.trim();
+    if (!roomId || !roomPass) { showToast("Enter both Room ID and Password.", "warning"); return; }
+    try {
+        const slotsSnap = await getDocs(collection(db, "tournaments", tournamentId, "slots"));
+        const allIds = new Set();
+        slotsSnap.forEach(d => {
+            (d.data().members || [d.id]).forEach(uid => allIds.add(uid));
+        });
+        if (allIds.size === 0) { showToast("No members found.", "warning"); return; }
+        await Promise.all([...allIds].map(uid => sendDualNotification(uid, {
+            type:       "room_blast",
+            title:      "🔑 Room Details Available!",
+            message:    "The Room ID and Password for your tournament have been shared. Tap to view.",
+            extra:      { roomId, roomPassword: roomPass, tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        })));
+        document.getElementById("globalRoomModal")?.remove();
+        showToast(`✅ Room details sent to ${allIds.size} member(s)!`, "success");
+    } catch (e) {
+        showToast("Failed: Permission Denied.", "error");
+    }
+};
+
+// ============================================================================
+//  CHANGE REQUEST REVIEW (Admin sees user’s requested edits)
+// ============================================================================
+window.openChangeRequestReview = async function(tournamentId, userId, stage) {
+    document.getElementById("changeReqModal")?.remove();
+    try {
+        const crSnap = await getDoc(doc(db, "tournaments", tournamentId, "changeRequests", userId));
+        if (!crSnap.exists()) { showToast("No change request found.", "warning"); return; }
+        const cr = crSnap.data();
+        const changesHtml = Object.entries(cr.requestedChanges || {}).map(([field, change]) => `
+            <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+                <div style="color:var(--muted);font-size:11px;text-transform:uppercase;margin-bottom:4px;">${escHtml(field)}</div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <span style="color:#ef4444;text-decoration:line-through;font-size:13px;">${escHtml(String(change.from || '—'))}</span>
+                    <span style="color:#888;">→</span>
+                    <span style="color:#22c55e;font-weight:bold;font-size:13px;">${escHtml(String(change.to || ''))}</span>
+                </div>
+            </div>`).join("");
+        const overlay = document.createElement("div");
+        overlay.id = "changeReqModal";
+        overlay.className = "status-modal-overlay";
+        overlay.innerHTML = `
+            <div class="status-modal" style="max-width:500px;width:100%;">
+                <h3 style="color:#ffd700;">✏️ Change Request — ${escHtml(cr.teamName || userId)}</h3>
+                <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">User wants to change the following details:</p>
+                <div style="display:grid;gap:8px;margin-bottom:16px;">${changesHtml}</div>
+                ${cr.reason ? `<div style="background:#1a1a1a;padding:10px;border-radius:8px;margin-bottom:16px;"><span style="color:var(--muted);font-size:12px;">Reason:</span><p style="color:#fff;margin:4px 0 0;font-size:13px;">${escHtml(cr.reason)}</p></div>` : ''}
+                <div style="display:flex;gap:10px;">
+                    <button onclick="allowChangeRequest('${tournamentId}','${userId}','${stage}')"
+                        style="flex:1;padding:12px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;">
+                        ✅ Allow Changes
+                    </button>
+                    <button onclick="rejectChangeRequest('${tournamentId}','${userId}')"
+                        style="flex:1;padding:12px;background:#111;color:var(--red);border:1px solid var(--red);border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;">
+                        ❌ Reject Request
+                    </button>
+                </div>
+                <button onclick="document.getElementById('changeReqModal').remove()"
+                    style="width:100%;margin-top:8px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">Cancel</button>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+    } catch (e) {
+        showToast("Failed to load change request.", "error");
+    }
+};
+
+window.allowChangeRequest = async function(tournamentId, userId, stage) {
+    try {
+        const crRef  = doc(db, "tournaments", tournamentId, "changeRequests", userId);
+        const crSnap = await getDoc(crRef);
+        if (!crSnap.exists()) { showToast("Change request not found.", "error"); return; }
+        const cr = crSnap.data();
+
+        // Build the field updates from requestedChanges
+        const updates = {};
+        Object.entries(cr.requestedChanges || {}).forEach(([field, change]) => {
+            updates[field] = change.to;
+        });
+
+        // Apply to the correct Firestore document
+        const regCollectionName = stage === "upcoming" ? "upcomingRegistrations" : "verifications";
+        await updateDoc(doc(db, "tournaments", tournamentId, regCollectionName, userId), updates);
+
+        // Mark change request as approved
+        await updateDoc(crRef, { status: "approved", processedAt: serverTimestamp() });
+
+        // Notify the user
+        await sendDualNotification(userId, {
+            type:       "change_request_approved",
+            title:      "✅ Change Request Approved!",
+            message:    "Your requested changes have been applied. Please review your updated details and confirm they are correct.",
+            extra:      { tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        });
+
+        document.getElementById("changeReqModal")?.remove();
+        showToast("✅ Changes applied & user notified.", "success");
+    } catch (e) {
+        showToast("Failed: Permission Denied.", "error");
+    }
+};
+
+window.rejectChangeRequest = async function(tournamentId, userId) {
+    const reason = prompt("Optional: Enter a reason for rejecting the change request:") || "";
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId, "changeRequests", userId), {
+            status:           "rejected",
+            rejectionReason:  reason,
+            processedAt:      serverTimestamp()
+        });
+        await sendDualNotification(userId, {
+            type:       "change_request_rejected",
+            title:      "❌ Change Request Rejected",
+            message:    reason
+                ? `Your change request was rejected. Reason: ${reason}. If you need to correct your details, you may re-register.`
+                : "Your change request was rejected by the admin. If you need to correct your details, you may re-register for this tournament.",
+            extra:      { tournamentId },
+            actionLink: `resubmit&tournament=${tournamentId}`,
+        });
+        document.getElementById("changeReqModal")?.remove();
+        showToast("❌ Request rejected & user notified.", "error");
+    } catch (e) {
+        showToast("Failed: Permission Denied.", "error");
+    }
+};
+
+
 window.kickTeamFromSlot = async function(tournamentId, teamId) {
     if (!confirm("Kick this team? This will delete their slot and notify them.")) return;
     try {
@@ -2170,11 +2458,11 @@ window.kickTeamFromSlot = async function(tournamentId, teamId) {
         
         showToast("Team kicked & notified.", "success");
         manageTournamentSlots(tournamentId);
-        
     } catch (e) {
-        showToast("Action failed: Permission Denied.", "error");
+        showToast("Error kicking team.", "error");
     }
 };
+
 
 window.promoteFromWaitlist = async function(tournamentId, teamId) {
     const slotNumberStr = prompt("Enter the slot number (1-12) to assign this team:");

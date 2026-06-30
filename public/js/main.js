@@ -3608,16 +3608,6 @@ function listenToUpcomingApproval(tournamentId, userId) {
                 }
             );
             
-            // Also add to notification inbox
-            await addDoc(collection(db, "users", userId, "notifications"), {
-                type: "upcoming_approved",
-                title: "Tournament Registration Approved",
-                message: `Your registration for ${data.eventDate ? 'tournament on ' + new Date(data.eventDate).toLocaleDateString() : 'upcoming tournament'} is approved. Be ready!`,
-                tournamentId: tournamentId,
-                read: false,
-                createdAt: serverTimestamp()
-            });
-            
         } else if (data.status === "rejected" && !data.notified) {
             await updateDoc(ref, { notified: true });
             
@@ -3652,16 +3642,26 @@ async function showApprovedReviewInterface(tournamentId, userId) {
         let regData = null;
         let isUpcoming = false;
 
-        // First, try to fetch from pendingPayment (for ongoing tournaments)
-        let snap = await getDoc(doc(db, "users", userId, "pendingPayment", tournamentId));
+        // First, try to fetch from tournaments/{id}/verifications (ongoing)
+        let snap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
         if (snap.exists()) {
             regData = snap.data();
+            // We also need to check if payment is already made. For ongoing, check participants doc.
+            const pSnap = await getDoc(doc(db, "tournaments", tournamentId, "participants", userId));
+            if (pSnap.exists() && pSnap.data().paymentStatus) {
+                regData.paymentStatus = pSnap.data().paymentStatus;
+            }
         } else {
-            // If not found in pendingPayment, try upcomingRegistrations (for upcoming tournaments)
-            snap = await getDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId));
+            // If not found in verifications, try upcomingRegistrations
+            snap = await getDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId));
             if (snap.exists()) {
                 regData = snap.data();
                 isUpcoming = true;
+                // For upcoming, check user's personal doc to see if paid
+                const uSnap = await getDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId));
+                if (uSnap.exists() && uSnap.data().paymentStatus) {
+                    regData.paymentStatus = uSnap.data().paymentStatus;
+                }
             }
         }
         const tournament = tournaments.find(t => t.id === tournamentId);

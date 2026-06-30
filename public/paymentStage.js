@@ -213,9 +213,19 @@ async function handlePaymentSuccess(tournamentId, response) {
 
       try {
         // 3. Slots doc → admin slot management reads this
-        // We need the teamId from the participant doc to find the slot doc
+        let teamId = null;
+        // First try to get it from participants doc (for ongoing)
         const partSnap = await getDoc(doc(db, 'tournaments', tournamentId, 'participants', _currentUserId));
-        const teamId = partSnap.exists() ? (partSnap.data().teamId || null) : null;
+        if (partSnap.exists() && partSnap.data().teamId) {
+            teamId = partSnap.data().teamId;
+        } else {
+            // Fallback for upcoming tournaments: get from user's profile
+            const uSnap = await getDoc(doc(db, 'users', _currentUserId));
+            if (uSnap.exists() && uSnap.data().teamId) {
+                teamId = uSnap.data().teamId;
+            }
+        }
+        
         if (teamId) {
           await updateDoc(
             doc(db, 'tournaments', tournamentId, 'slots', teamId),
@@ -223,6 +233,13 @@ async function handlePaymentSuccess(tournamentId, response) {
           );
         }
       } catch (e) { console.warn('[PAYMENT] slots sync:', e); }
+      try {
+        // 4. Update the user's pendingPayment doc (for ongoing tournaments)
+        await updateDoc(
+          doc(db, 'users', _currentUserId, 'pendingPayment', tournamentId),
+          { paymentStatus: 'verified', paidAt: serverTimestamp() }
+        );
+      } catch (e) { /* doc may not exist if it was upcoming, that's fine */ }
     }
 
     // ✅ FIX: Stop the snapshot listener BEFORE showing the success screen.
