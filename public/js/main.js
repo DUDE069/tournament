@@ -6512,18 +6512,11 @@ window.cancelRegistrationUserSide = async function(tournamentId) {
         const uid = currentUser.uid;
         const batch = writeBatch(db);
         
-        // Remove from user's upcoming registrations
+        // Remove from user's upcoming registrations (User Side Mirror)
         batch.delete(doc(db, "users", uid, "upcomingRegistrations", tournamentId));
         
-        // Remove from tournament participants
-        if (userProfile?.teamId) {
-            batch.delete(doc(db, "tournaments", tournamentId, "participants", userProfile.teamId));
-            // Also clean up change requests if any
-            batch.delete(doc(db, "tournaments", tournamentId, "changeRequests", userProfile.teamId));
-        } else {
-            batch.delete(doc(db, "tournaments", tournamentId, "participants", uid));
-            batch.delete(doc(db, "tournaments", tournamentId, "changeRequests", uid));
-        }
+        // Remove from tournament's upcoming registrations
+        batch.delete(doc(db, "tournaments", tournamentId, "upcomingRegistrations", uid));
         
         await batch.commit();
         showMessage("Registration cancelled successfully.");
