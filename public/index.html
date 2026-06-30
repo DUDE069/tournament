@@ -559,31 +559,34 @@
     <div class="dashboard-box">
 
       <!-- TEAM PROFILE — shows full team data (leader, teammates, emails, code) -->
-      <div class="dash-card" data-popup="profile">
+      <div class="dash-card" data-popup="profile" style="position:relative;">
         <h3>Team Profile</h3>
         <p>Team roster &amp; stats</p>
       </div>
 
       <!-- TOURNAMENT HISTORY -->
-      <div class="dash-card" data-popup="tournaments">
+      <div class="dash-card" data-popup="tournaments" style="position:relative;">
+        <span id="badge-tournaments" style="display:none; width:10px; height:10px; background:#ff4444; border-radius:50%; position:absolute; top:15px; right:15px; box-shadow: 0 0 8px #ff4444;"></span>
         <h3>Tournament History</h3>
         <p>Your confirmed registrations</p>
       </div>
 
       <!-- UPCOMING MATCHES -->
-      <div class="dash-card" data-popup="matches">
+      <div class="dash-card" data-popup="matches" style="position:relative;">
+        <span id="badge-matches" style="display:none; width:10px; height:10px; background:#ff4444; border-radius:50%; position:absolute; top:15px; right:15px; box-shadow: 0 0 8px #ff4444;"></span>
         <h3>Upcoming Matches</h3>
         <p>Check your scheduled matches</p>
       </div>
 
       <!-- PERFORMANCE -->
-      <div class="dash-card" data-popup="performance">
+      <div class="dash-card" data-popup="performance" style="position:relative;">
+        <span id="badge-performance" style="display:none; width:10px; height:10px; background:#ff4444; border-radius:50%; position:absolute; top:15px; right:15px; box-shadow: 0 0 8px #ff4444;"></span>
         <h3>Performance</h3>
         <p>Wins &amp; earnings only</p>
       </div>
 
       <!-- MY ACCOUNT -->
-      <div class="dash-card" data-popup="account">
+      <div class="dash-card" data-popup="account" style="position:relative;">
         <h3>My Account</h3>
         <p>Wallet &amp; transactions</p>
       </div>
@@ -615,7 +618,7 @@
             <th>Team Name</th>
             <th>Players</th>
             <th>Mode</th>
-            <th>Total Wins</th>
+            <th>Total Kills</th>
           </tr>
         </thead>
         <tbody id="leaderboardContainer"></tbody>

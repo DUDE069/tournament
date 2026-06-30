@@ -2545,11 +2545,14 @@ async function renderTournamentHistoryTab(content) {
         <div id="thTableWrap" style="display:none;overflow-x:auto;"></div>`;
 
     try {
-        // Fetch paid/confirmed registrations from user's sub-collection
-        const paidSnap = await getDocs(
-            collection(db, "users", currentUser.uid, "confirmedRegistrations")
-        );
-        const rows = paidSnap.docs.map(d => d.data());
+        if (!userProfile?.teamId) {
+            document.getElementById("thLoadingMsg").innerHTML = `<p style="color:#ff4444;">No team assigned. Join a team first to view history.</p>`;
+            return;
+        }
+
+        // Fetch tournament history for the team
+        const histSnap = await getDocs(collection(db, "teams", userProfile.teamId, "tournamentHistory"));
+        const rows = histSnap.docs.map(d => d.data()).sort((a,b) => (b.date?.seconds || 0) - (a.date?.seconds || 0));
 
         document.getElementById("thLoadingMsg").style.display = "none";
         const wrap = document.getElementById("thTableWrap");
@@ -2558,16 +2561,16 @@ async function renderTournamentHistoryTab(content) {
         const tableRows = rows.length === 0
             ? `<tr>
                 <td colspan="5" style="text-align:center;color:#444;padding:24px;font-style:italic;">
-                    No tournament history yet. Join and complete payment to appear here.
+                    No tournament history yet for your team.
                 </td>
                </tr>`
             : rows.map(r => `
                 <tr>
                     <td>${r.tournamentName || '—'}</td>
-                    <td>₹${r.entryFee || 0}</td>
-                    <td>${r.mode || '—'}</td>
-                    <td>${r.date ? new Date(r.date).toLocaleDateString('en-IN') : '—'}</td>
-                    <td>${r.time || '—'}</td>
+                    <td>${r.date?.toDate?.()?.toLocaleDateString('en-IN') || '—'}</td>
+                    <td>${r.isWin ? '<span style="color:#00ff88;font-weight:bold;">Win</span>' : '<span style="color:#ff4444;font-weight:bold;">Loss</span>'}</td>
+                    <td>#${r.rank || '—'}</td>
+                    <td>${r.totalKills || 0}</td>
                 </tr>`).join('');
 
         wrap.innerHTML = `
@@ -2575,16 +2578,16 @@ async function renderTournamentHistoryTab(content) {
                 <thead>
                     <tr>
                         <th>Tournament</th>
-                        <th>Entry Fee</th>
-                        <th>Mode</th>
                         <th>Date</th>
-                        <th>Time</th>
+                        <th>Result</th>
+                        <th>Rank</th>
+                        <th>Total Kills</th>
                     </tr>
                 </thead>
                 <tbody>${tableRows}</tbody>
             </table>
             <p style="color:#555;font-size:12px;margin-top:14px;text-align:right;">
-                Future columns: Result · Status · Match ID
+                * History is synced automatically when Admins assign ranks.
             </p>`;
     } catch (err) {
         console.error("Tournament history error:", err);
@@ -2640,6 +2643,10 @@ async function renderUpcomingMatchesTab(content) {
                 : m.status === 'rejected' ? '#ff4444' : '#ffd700';
             const statusLabel = m.status === 'approved' ? '✅ Approved'
                 : m.status === 'rejected' ? '❌ Rejected' : '⏳ Pending Review';
+            
+            const isPaid = (m.paymentStatus === 'verified' || m.paymentStatus === 'paid' || m.paymentStatus === 'Payment Verified');
+            
+            const tId = m.tournamentId || m.id; // ensure we have ID
             return `
                 <div style="background:#1a1a1a;border-radius:10px;padding:18px 20px;margin-bottom:12px;
                     border:1px solid #2a2a2a;border-left:4px solid #3b82f6;display:flex;
@@ -2650,6 +2657,11 @@ async function renderUpcomingMatchesTab(content) {
                         </div>
                         <div style="color:#888;font-size:13px;">📅 ${eventDate}</div>
                         ${m.eventTime ? `<div style="color:#3b82f6;font-size:13px;margin-top:3px;">⏰ ${m.eventTime}</div>` : ''}
+                        
+                        <div style="margin-top:12px;">
+                            <button onclick="window.scrollToTournament('${tId}')" style="background:#3b82f6;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;margin-right:8px;">Open Details</button>
+                            ${!isPaid ? `<button onclick="window.cancelRegistrationUserSide('${tId}')" style="background:transparent;color:#ff4444;border:1px solid #ff4444;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;">Remove/Cancel</button>` : `<span style="font-size:11px;color:#00ff88;">Paid (Cannot Cancel)</span>`}
+                        </div>
                     </div>
                     <span style="background:${statusColor}22;color:${statusColor};
                         padding:5px 12px;border-radius:20px;font-size:12px;font-weight:700;
@@ -2681,64 +2693,70 @@ async function renderPerformanceTab(content) {
         <div id="perfContent" style="display:none;"></div>`;
 
     try {
-        const perfSnap = await getDocs(
-            collection(db, "users", currentUser.uid, "performanceHistory")
-        );
-        const records = perfSnap.docs.map(d => d.data())
-            .filter(r => r.earnings && r.earnings > 0); // Only earnings, no losses
+        if (!userProfile?.teamId) {
+            document.getElementById("perfLoading").innerHTML = `<p style="color:#ff4444;">No team assigned. Join a team first.</p>`;
+            return;
+        }
 
-        const totalEarnings = records.reduce((sum, r) => sum + (r.earnings || 0), 0);
+        const teamSnap = await getDoc(doc(db, "teams", userProfile.teamId));
+        const tData = teamSnap.exists() ? teamSnap.data() : {};
+
+        const totalEarnings = tData.totalEarnings || 0;
+        const totalKills = tData.totalKills || 0;
+
+        // Fetch team's win history directly from tournament history
+        const histSnap = await getDocs(collection(db, "teams", userProfile.teamId, "tournamentHistory"));
+        const wonTournaments = histSnap.docs.map(d => d.data()).filter(r => r.isWin);
 
         document.getElementById("perfLoading").style.display = "none";
         const perfDiv = document.getElementById("perfContent");
         perfDiv.style.display = "block";
 
-        const tableRows = records.length === 0
+        const tableRows = wonTournaments.length === 0
             ? `<tr>
                 <td colspan="3" style="text-align:center;color:#444;padding:24px;font-style:italic;">
-                    No earnings recorded yet. Win a tournament to see your stats here!
+                    No wins recorded yet. Win a tournament to see your stats here!
                 </td>
                </tr>`
-            : records.map(r => `
+            : wonTournaments.map(r => `
                 <tr>
                     <td>${r.tournamentName || '—'}</td>
                     <td style="text-align:center;">
-                        ${r.position === 1 ? '🥇 1st' : r.position === 2 ? '🥈 2nd' : r.position === 3 ? '🥉 3rd' : `#${r.position || '—'}`}
+                        🥇 1st
                     </td>
-                    <td style="color:#00ff88;font-weight:700;text-align:right;">₹${r.earnings}</td>
+                    <td style="color:#00ff88;font-weight:700;text-align:right;">${r.totalKills || 0}</td>
                 </tr>`).join('');
 
         perfDiv.innerHTML = `
-            <!-- Total Earnings Summary -->
+            <!-- Team Performance Summary -->
             <div style="background:linear-gradient(135deg,#1a2a1a,#2a3a1a);border:2px solid #ffd700;
                 border-radius:12px;padding:24px;margin-bottom:24px;display:flex;
                 justify-content:space-between;align-items:center;flex-wrap:wrap;gap:15px;">
                 <div>
-                    <div style="color:#888;font-size:13px;margin-bottom:6px;">💰 Total Earnings</div>
+                    <div style="color:#888;font-size:13px;margin-bottom:6px;">💰 Team Total Earnings</div>
                     <div style="color:#ffd700;font-size:36px;font-weight:900;">₹${totalEarnings}</div>
                 </div>
                 <div style="text-align:right;">
-                    <div style="color:#888;font-size:13px;">Tournaments Won</div>
-                    <div style="color:#00ff88;font-size:28px;font-weight:700;">${records.length}</div>
+                    <div style="color:#888;font-size:13px;margin-bottom:6px;">🎯 Total Kills</div>
+                    <div style="color:#00ff88;font-size:36px;font-weight:900;">${totalKills}</div>
                 </div>
             </div>
+
+            <div style="margin-bottom: 12px; color: #aaa; font-size: 14px;">🏆 Tournaments Won: <span style="color:#fff;font-weight:bold;">${wonTournaments.length}</span></div>
 
             <!-- Performance Table -->
             <div style="overflow-x:auto;">
                 <table class="dash-table">
                     <thead>
                         <tr>
-                            <th>Tournament</th>
+                            <th>Winning Tournament</th>
                             <th style="text-align:center;">Position</th>
-                            <th style="text-align:right;">Earnings (₹)</th>
+                            <th style="text-align:right;">Tournament Kills</th>
                         </tr>
                     </thead>
                     <tbody>${tableRows}</tbody>
                 </table>
-            </div>
-            <p style="color:#555;font-size:12px;margin-top:14px;text-align:right;">
-                Future: Kill stats · Match stats · Ranking history
-            </p>`;
+            </div>`;
     } catch (err) {
         console.error("Performance error:", err);
         document.getElementById("perfLoading").innerHTML = `<p style="color:#ff4444;">Failed to load. Try again.</p>`;
@@ -4609,19 +4627,23 @@ async function renderTournamentHistoryContent(content) {
     content.innerHTML = dashboardTemplates.tournaments;
     
     try {
-        const paidSnap = await getDocs(
-            collection(db, "users", currentUser.uid, "confirmedRegistrations")
-        );
-        const rows = paidSnap.docs.map(d => d.data());
+        if (!userProfile?.teamId) {
+            document.getElementById("dp-tournaments").innerHTML = `<p style="color:#ff4444;text-align:center;padding:20px;">No team assigned. Join a team first to view history.</p>`;
+            return;
+        }
+
+        const histSnap = await getDocs(collection(db, "teams", userProfile.teamId, "tournamentHistory"));
+        const rows = histSnap.docs.map(d => d.data()).sort((a,b) => (b.date?.seconds || 0) - (a.date?.seconds || 0));
 
         const tableRows = rows.length === 0
-            ? `<tr><td colspan="4" style="text-align: center; color: #555; padding: 30px;">No tournament history yet</td></tr>`
+            ? `<tr><td colspan="5" style="text-align: center; color: #555; padding: 30px;">No tournament history yet</td></tr>`
             : rows.map(r => `
                 <tr>
                     <td>${r.tournamentName || '—'}</td>
-                    <td>₹${r.entryFee || 0}</td>
-                    <td>${r.mode || '—'}</td>
-                    <td>${r.date ? new Date(r.date).toLocaleDateString('en-IN') : '—'}</td>
+                    <td>${r.date?.toDate?.()?.toLocaleDateString('en-IN') || '—'}</td>
+                    <td>${r.isWin ? '<span style="color:#00ff88;font-weight:bold;">Win</span>' : '<span style="color:#ff4444;font-weight:bold;">Loss</span>'}</td>
+                    <td>#${r.rank || '—'}</td>
+                    <td>${r.totalKills || 0}</td>
                 </tr>`).join('');
 
         document.getElementById("dp-tournaments").innerHTML = `
@@ -4630,14 +4652,18 @@ async function renderTournamentHistoryContent(content) {
                     <thead>
                         <tr>
                             <th>Tournament</th>
-                            <th>Fee</th>
-                            <th>Mode</th>
                             <th>Date</th>
+                            <th>Result</th>
+                            <th>Rank</th>
+                            <th>Total Kills</th>
                         </tr>
                     </thead>
                     <tbody>${tableRows}</tbody>
                 </table>
             </div>
+            <p style="color:#555;font-size:12px;margin-top:14px;text-align:right;">
+                * History is synced automatically when Admins assign ranks.
+            </p>
         `;
     } catch (err) {
         document.getElementById("dp-tournaments").innerHTML = `<p style="color: #ff4444; text-align: center;">Failed to load</p>`;
@@ -4666,13 +4692,23 @@ async function renderUpcomingMatchesContent(content) {
         document.getElementById("dp-matches").innerHTML = matches.map(m => {
             const eventDate = m.eventDate ? new Date(m.eventDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) : 'TBA';
             const statusColor = m.status === 'approved' ? '#00ff88' : m.status === 'rejected' ? '#ff4444' : '#ffd700';
-            
+            const isPaid = (m.paymentStatus === 'verified' || m.paymentStatus === 'paid' || m.paymentStatus === 'Payment Verified');
+            const tId = m.tournamentId || m.id;
+
             return `
                 <div style="background: #1a1a1a; border-radius: 10px; padding: 16px; margin-bottom: 12px; border-left: 3px solid ${statusColor};">
-                    <div style="color: #fff; font-weight: 600; margin-bottom: 6px;">${m.title || '—'}</div>
-                    <div style="color: #888; font-size: 13px;">📅 ${eventDate}</div>
-                    <div style="color: ${statusColor}; font-size: 12px; margin-top: 6px; font-weight: 600;">
-                        ${m.status === 'approved' ? '✅ Approved' : m.status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}
+                    <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                        <div>
+                            <div style="color: #fff; font-weight: 600; margin-bottom: 6px;">${m.title || '—'}</div>
+                            <div style="color: #888; font-size: 13px;">📅 ${eventDate}</div>
+                            <div style="color: ${statusColor}; font-size: 12px; margin-top: 6px; font-weight: 600;">
+                                ${m.status === 'approved' ? '✅ Approved' : m.status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}
+                            </div>
+                        </div>
+                        <div style="text-align:right;">
+                            <button onclick="window.scrollToTournament('${tId}')" style="background:#3b82f6;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;margin-bottom:6px;width:100%;">Open Details</button>
+                            ${!isPaid ? `<button onclick="window.cancelRegistrationUserSide('${tId}')" style="background:transparent;color:#ff4444;border:1px solid #ff4444;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;width:100%;">Remove/Cancel</button>` : `<div style="font-size:11px;color:#00ff88;padding:6px 0;">Paid (Cannot Cancel)</div>`}
+                        </div>
                     </div>
                 </div>
             `;
@@ -4686,42 +4722,51 @@ async function renderPerformanceContent(content) {
     content.innerHTML = dashboardTemplates.performance;
     
     try {
-        const perfSnap = await getDocs(
-            collection(db, "users", currentUser.uid, "performanceHistory")
-        );
-        const records = perfSnap.docs.map(d => d.data()).filter(r => r.earnings && r.earnings > 0);
-        
-        const totalEarnings = records.reduce((sum, r) => sum + (r.earnings || 0), 0);
+        if (!userProfile?.teamId) {
+            document.getElementById("dp-performance").innerHTML = `<p style="color:#ff4444;text-align:center;padding:20px;">No team assigned. Join a team first.</p>`;
+            return;
+        }
+
+        const teamSnap = await getDoc(doc(db, "teams", userProfile.teamId));
+        const tData = teamSnap.exists() ? teamSnap.data() : {};
+
+        const totalEarnings = tData.totalEarnings || 0;
+        const totalKills = tData.totalKills || 0;
+
+        const histSnap = await getDocs(collection(db, "teams", userProfile.teamId, "tournamentHistory"));
+        const wonTournaments = histSnap.docs.map(d => d.data()).filter(r => r.isWin);
 
         document.getElementById("dp-performance").innerHTML = `
-            <div style="background: linear-gradient(135deg, #1a2a1a, #2a3a1a); border: 2px solid #ffd700; border-radius: 12px; padding: 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="background: linear-gradient(135deg, #1a2a1a, #2a3a1a); border: 2px solid #ffd700; border-radius: 12px; padding: 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap:wrap; gap:15px;">
                 <div>
-                    <div style="color: #888; font-size: 12px;">Total Earnings</div>
+                    <div style="color: #888; font-size: 12px;">Team Total Earnings</div>
                     <div style="color: #ffd700; font-size: 32px; font-weight: 900;">₹${totalEarnings}</div>
                 </div>
                 <div style="text-align: right;">
-                    <div style="color: #888; font-size: 12px;">Tournaments Won</div>
-                    <div style="color: #00ff88; font-size: 24px; font-weight: 700;">${records.length}</div>
+                    <div style="color: #888; font-size: 12px;">Total Kills</div>
+                    <div style="color: #00ff88; font-size: 32px; font-weight: 700;">${totalKills}</div>
                 </div>
             </div>
             
-            ${records.length === 0 ? `
-                <p style="color: #555; text-align: center; padding: 20px;">No earnings recorded yet</p>
+            <div style="margin-bottom: 12px; color: #aaa; font-size: 14px;">🏆 Tournaments Won: <span style="color:#fff;font-weight:bold;">${wonTournaments.length}</span></div>
+            
+            ${wonTournaments.length === 0 ? `
+                <p style="color: #555; text-align: center; padding: 20px;">No wins recorded yet. Keep playing!</p>
             ` : `
                 <table class="dash-table">
                     <thead>
                         <tr>
-                            <th>Tournament</th>
+                            <th>Winning Tournament</th>
                             <th>Position</th>
-                            <th>Earnings</th>
+                            <th>Tournament Kills</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${records.map(r => `
+                        ${wonTournaments.map(r => `
                             <tr>
                                 <td>${r.tournamentName || '—'}</td>
-                                <td>${r.position === 1 ? '🥇 1st' : r.position === 2 ? '🥈 2nd' : r.position === 3 ? '🥉 3rd' : `#${r.position || '—'}`}</td>
-                                <td style="color: #00ff88;">₹${r.earnings}</td>
+                                <td>🥇 1st</td>
+                                <td style="color: #00ff88;">${r.totalKills || 0}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -5486,8 +5531,9 @@ window.checkUpcomingAlreadyApplied = async function(tournamentId, tournament) {
 };
 
 function showAlreadyAppliedModal(data, tournamentId, tournament, category) {
+    const isPaid = (data.paymentStatus === 'verified' || data.paymentStatus === 'paid' || data.paymentStatus === 'Payment Verified');
     const statusColor = data.status === "approved" ? "#00ff88" : data.status === "rejected" ? "#ff4444" : "#ffd700";
-    const statusLabel = data.status === "approved" ? "✅ Approved — Awaiting Payment" : data.status === "rejected" ? `❌ Rejected — Reason: ${data.rejectionNote || "Check details"}` : "⏳ Under Review";
+    const statusLabel = data.status === "approved" ? (isPaid ? "✅ Payment Verified — Waiting for Room ID" : "✅ Approved — Awaiting Payment") : data.status === "rejected" ? `❌ Rejected — Reason: ${data.rejectionNote || "Check details"}` : "⏳ Under Review";
     const uids = Array.isArray(data.uids) ? data.uids.join(", ") : "—";
 
     document.getElementById("alreadyAppliedModal")?.remove();
@@ -6202,19 +6248,39 @@ window.triggerPushNotification = function(title, body, options = {}) {
 // PART 3.4 — 12-SLOT MANUAL LEADERBOARD GRID
 // =============================================================================
 window.renderLeaderboard = async function(tournamentId) {
-    const container = document.getElementById("leaderboardTableBody") || document.querySelector(".leaderboard-table tbody");
+    const container = document.getElementById("leaderboardTableBody") || document.getElementById("leaderboardContainer") || document.querySelector(".leaderboard-table tbody");
     if (!container) return;
-    container.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#666;">Loading...</td></tr>`;
+    container.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px; color:#666;">Loading...</td></tr>`;
     try {
-        const snap = await getDocs(query(collection(db, "tournaments", tournamentId, "leaderboard"), orderBy("rank", "asc")));
-        const existing = {}; snap.forEach(d => { existing[d.data().rank] = d.data(); });
+        const [lbSnap, tSnap] = await Promise.all([
+            getDocs(query(collection(db, "tournaments", tournamentId, "leaderboard"), orderBy("rank", "asc"))),
+            getDoc(doc(db, "tournaments", tournamentId))
+        ]);
+        const tournament = tSnap.exists() ? tSnap.data() : {};
+        const mode = tournament.mode || "—";
+
+        const existing = {}; lbSnap.forEach(d => { existing[d.data().rank] = d.data(); });
         let html = ""; const rankColors = { 1: "gold", 2: "silver", 3: "#cd7f32" };
         for (let i = 1; i <= 12; i++) {
             const d = existing[i]; const color = rankColors[i] || "#aaa";
-            html += `<tr style="${d ? "" : "opacity:0.4;"}"><td style="color:${color}; font-weight:bold; text-align:center;">#${i}</td><td style="color:${d ? "#fff" : "#555"};">${d?.teamName || "—"}</td><td style="color:${color}; text-align:center;">${d?.score ?? "—"}</td><td style="color:#aaa; text-align:center;">${d?.kills ?? "—"}</td></tr>`;
+            
+            // To be accurate, nicknames require reading the team data or we can just use teamName if not available
+            html += `<tr style="${d ? "" : "opacity:0.4;"}">
+                <td style="color:${color}; font-weight:bold; text-align:center;">#${i}</td>
+                <td style="color:${d ? "#fff" : "#555"};">${d?.teamName || "—"}</td>
+                <td style="color:#aaa; text-align:center;">${d?.teamName ? "Members" : "—"}</td>
+                <td style="color:#888; text-align:center;">${d ? mode : "—"}</td>
+                <td style="color:${color}; text-align:center;">${d?.totalKills ?? "—"}</td>
+            </tr>`;
         }
         container.innerHTML = html;
-    } catch (err) { container.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#ff4444;">Error.</td></tr>`; }
+        
+        // Also fix the table header if possible (if using an old header id)
+        const thead = container.parentElement?.querySelector("thead tr");
+        if (thead && thead.children.length === 4) {
+            thead.innerHTML = `<th>Rank</th><th>Team Name</th><th>Players</th><th>Mode</th><th>Total Kills</th>`;
+        }
+    } catch (err) { container.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#ff4444;">Error.</td></tr>`; }
 };
 
 // =============================================================================
@@ -6436,5 +6502,99 @@ window.saveInAppTeamSetup = async function() {
     }
 };
 
+// ==========================================
+// CANCEL REGISTRATION (USER SIDE)
+// ==========================================
+window.cancelRegistrationUserSide = async function(tournamentId) {
+    if (!confirm("Are you sure you want to cancel this registration? This action cannot be undone.")) return;
+    
+    try {
+        const uid = currentUser.uid;
+        const batch = writeBatch(db);
+        
+        // Remove from user's upcoming registrations
+        batch.delete(doc(db, "users", uid, "upcomingRegistrations", tournamentId));
+        
+        // Remove from tournament participants
+        if (userProfile?.teamId) {
+            batch.delete(doc(db, "tournaments", tournamentId, "participants", userProfile.teamId));
+            // Also clean up change requests if any
+            batch.delete(doc(db, "tournaments", tournamentId, "changeRequests", userProfile.teamId));
+        } else {
+            batch.delete(doc(db, "tournaments", tournamentId, "participants", uid));
+            batch.delete(doc(db, "tournaments", tournamentId, "changeRequests", uid));
+        }
+        
+        await batch.commit();
+        showMessage("Registration cancelled successfully.");
+        
+        // Refresh the upcoming matches tab
+        const content = document.getElementById("dashboardContent");
+        if (content) {
+            await renderUpcomingMatchesContent(content);
+        }
+    } catch (e) {
+        console.error("Error cancelling registration:", e);
+        showMessage("Error: " + e.message);
+    }
+};
+
+
 window.getDeduplicatedTeamMembers = window.getDeduplicatedTeamMembers;
 window.syncAcceptanceToUser    = window.syncAcceptanceToUser;
+
+// ==========================================
+// DASHBOARD RED DOT LOGIC
+// ==========================================
+window.markDashboardTabViewed = function(tabName) {
+    localStorage.setItem(`dash_lastViewed_${tabName}`, Date.now().toString());
+    const badge = document.getElementById(`badge-${tabName}`);
+    if (badge) badge.style.display = "none";
+};
+
+// Check for updates periodically or on listener triggers
+window.checkDashboardUpdates = async function() {
+    if (!currentUser || !userProfile) return;
+    try {
+        // 1. Matches update check
+        const matchViewed = parseInt(localStorage.getItem('dash_lastViewed_matches') || '0');
+        const matchBadge = document.getElementById('badge-matches');
+        if (matchBadge) {
+            // We use upcomingRegistrations to detect match updates
+            const mSnap = await getDocs(query(collection(db, "users", currentUser.uid, "upcomingRegistrations"), orderBy("createdAt", "desc"), limit(1)));
+            if (!mSnap.empty) {
+                const latest = mSnap.docs[0].data().createdAt?.toMillis?.() || 0;
+                if (latest > matchViewed) matchBadge.style.display = "block";
+            }
+        }
+        
+        // 2. Tournaments & Performance check (from team doc lastUpdateAt)
+        if (userProfile.teamId) {
+            const tSnap = await getDoc(doc(db, "teams", userProfile.teamId));
+            if (tSnap.exists()) {
+                const tData = tSnap.data();
+                const teamUpdated = tData.lastUpdateAt?.toMillis?.() || 0;
+                
+                const tViewed = parseInt(localStorage.getItem('dash_lastViewed_tournaments') || '0');
+                const tBadge = document.getElementById('badge-tournaments');
+                if (tBadge && teamUpdated > tViewed) tBadge.style.display = "block";
+                
+                const pViewed = parseInt(localStorage.getItem('dash_lastViewed_performance') || '0');
+                const pBadge = document.getElementById('badge-performance');
+                if (pBadge && teamUpdated > pViewed) pBadge.style.display = "block";
+            }
+        }
+    } catch(e) {}
+};
+
+// Hook into openDashboard
+const _oldOpenDashForBadges = window.openDashboard;
+window.openDashboard = window._newOpenDashboard = async function(type) {
+    if (type === 'tournaments' || type === 'matches' || type === 'performance') {
+        window.markDashboardTabViewed(type);
+    }
+    if (_oldOpenDashForBadges) _oldOpenDashForBadges(type);
+};
+
+// Call checkDashboardUpdates occasionally (e.g. on load)
+setTimeout(() => { if (window.checkDashboardUpdates) window.checkDashboardUpdates(); }, 5000);

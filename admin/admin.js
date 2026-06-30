@@ -50,7 +50,7 @@ import { db, auth } from "./firebase.js";
 
 import {
     getFirestore, collection, doc, getDocs, getDoc, updateDoc, setDoc, deleteDoc,
-    query, where, orderBy, onSnapshot, writeBatch, serverTimestamp, addDoc, limit, collectionGroup
+    query, where, orderBy, onSnapshot, writeBatch, serverTimestamp, addDoc, limit, collectionGroup, increment
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
   signInWithEmailAndPassword, onAuthStateChanged, signOut,
@@ -377,6 +377,7 @@ window.removeApplication = async function(tournamentId, userId) {
       message:    `Your application for "${tournamentName}" was removed from the Verification stage. If this was a mistake, tap to re-submit.`,
       extra:      { tournamentId, tournamentName, stage: "ongoing", teamName },
       actionLink: `resubmit=ongoing&tournament=${tournamentId}`,
+      silent:     true
     })));
 
     // Immediate UI removal — don’t wait for snapshot
@@ -681,7 +682,7 @@ window.sendTeamNotification = async function(tournamentId, userId, memberIds, te
 //             and sends FCM only if user's FCM token exists and is not blocked.
 //             If no Cloud Function is set up yet, push is silently skipped.
 // ============================================================================
-async function sendDualNotification(userId, { type, title, message, extra = {}, actionLink = "" }) {
+async function sendDualNotification(userId, { type, title, message, extra = {}, actionLink = "", silent = false }) {
   // A. In-app (MANDATORY — never skip)
   try {
       await addDoc(collection(db, "users", userId, "notifications"), {
@@ -691,7 +692,9 @@ async function sendDualNotification(userId, { type, title, message, extra = {}, 
         ...extra,
         actionLink,
         read:       false,
-        popupShown: false,
+        // If silent is true, we pretend the popup was already shown so the client UI skips the popup bubble,
+        // but since read is false, it still shows up in the notification inbox.
+        popupShown: silent ? true : false,
         createdAt:  serverTimestamp(),
       });
   } catch (err) {
@@ -702,6 +705,11 @@ async function sendDualNotification(userId, { type, title, message, extra = {}, 
   // FIX: Skip push queue for obvious test accounts like "1111" to prevent database errors
   if (!userId || userId.length < 10) {
       return; 
+  }
+
+  // If the notification is explicitly marked silent, don't trigger a push notification either.
+  if (silent) {
+      return;
   }
 
   try {
@@ -1261,6 +1269,7 @@ window.removeUpcoming = async function(tournamentId, userId, cardId) {
       message:    `Your registration for "${tournamentName}" was removed from the Registration stage. If this was a mistake, tap to re-submit.`,
       extra:      { tournamentId, tournamentName, stage: "upcoming" },
       actionLink: `resubmit=upcoming&tournament=${tournamentId}`,
+      silent:     true
     })));
 
     document.getElementById(`regcard-${cardId}`)?.remove();
@@ -1941,7 +1950,7 @@ window.manageTournamentSlots = async function(tournamentId) {
     overlay.innerHTML = `
         <div class="status-modal" style="max-width:900px; width:100%;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
-                <h3 style="color:var(--gold); margin:0;">🎯 Slot Management</h3>
+                <h3 style="color:var(--gold); margin:0;">🎯 Ranking Teams</h3>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                     <input type="text" id="slotSearch" placeholder="🔍 Search team or code…"
                            style="padding:8px 12px; border-radius:6px; border:1px solid #444; background:#1a1a1a; color:#fff; width:180px;"
@@ -1957,16 +1966,32 @@ window.manageTournamentSlots = async function(tournamentId) {
                 </div>
             </div>
             
-            <div id="rg-tiebreaker-area"></div>
-            <div id="rg-waitlist-bar-area"></div>
-            
-            <div id="table-container" style="overflow-x:auto; overflow-y:auto; max-height:75vh; margin-bottom:15px; border-radius:8px; border:1px solid #333;">
-                <p style="color:#888; padding:15px; text-align:center;">Loading slots…</p>
+            <div style="display:flex; gap:10px; margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:10px;">
+                <button onclick="document.getElementById('tab-slots').style.display='block'; document.getElementById('tab-ranks').style.display='none'; this.style.color='var(--gold)'; this.nextElementSibling.style.color='#888';" style="background:none; border:none; color:var(--gold); font-size:15px; font-weight:bold; cursor:pointer;">1. Slots & Waitlist</button>
+                <button onclick="document.getElementById('tab-slots').style.display='none'; document.getElementById('tab-ranks').style.display='block'; this.style.color='var(--gold)'; this.previousElementSibling.style.color='#888';" style="background:none; border:none; color:#888; font-size:15px; font-weight:bold; cursor:pointer;">2. Rank the Teams</button>
             </div>
+            
+            <div id="tab-slots">
+                <div id="rg-tiebreaker-area"></div>
+                <div id="rg-waitlist-bar-area"></div>
+                
+                <div id="table-container" style="overflow-x:auto; overflow-y:auto; max-height:75vh; margin-bottom:15px; border-radius:8px; border:1px solid #333;">
+                    <p style="color:#888; padding:15px; text-align:center;">Loading slots…</p>
+                </div>
 
-            <div id="waitlistPanel" style="background:#111; padding:12px; border:1px solid #333; border-radius:8px;">
-                <h4 style="color:var(--blue); margin-bottom:10px;">📋 Waitlist Queue</h4>
-                <div id="waitlistGrid"><p style="color:#666; font-size:13px;">No teams in waitlist.</p></div>
+                <div id="waitlistPanel" style="background:#111; padding:12px; border:1px solid #333; border-radius:8px;">
+                    <h4 style="color:var(--blue); margin-bottom:10px;">📋 Waitlist Queue</h4>
+                    <div id="waitlistGrid"><p style="color:#666; font-size:13px;">No teams in waitlist.</p></div>
+                </div>
+            </div>
+            
+            <div id="tab-ranks" style="display:none;">
+                <div id="ranks-container" style="overflow-x:auto; overflow-y:auto; max-height:75vh; margin-bottom:15px; border-radius:8px; border:1px solid #333;">
+                    <p style="color:#888; padding:15px; text-align:center;">Loading teams for ranking...</p>
+                </div>
+                <button onclick="saveAllTeamRankings('${tournamentId}')" style="width:100%; padding:12px; background:var(--gold); color:#000; border:none; border-radius:8px; font-weight:bold; cursor:pointer; margin-bottom:10px;">
+                    💾 Save Rankings & Kills
+                </button>
             </div>
             
             <button onclick="document.getElementById('statusModalOverlay').remove()"
@@ -2188,6 +2213,49 @@ window.manageTournamentSlots = async function(tournamentId) {
 
         html += `</tbody></table>`;
         document.getElementById("table-container").innerHTML = html;
+
+        // --- POPULATE RANKS TAB ---
+        let ranksHtml = `
+            <table class="slot-table" style="width:100%; border-collapse:collapse; background:#111; font-size:13px;">
+                <thead style="background:#222; text-align:left;">
+                    <tr>
+                        <th style="padding:10px; color:#aaa; width:50px;">Slot</th>
+                        <th style="padding:10px; color:#aaa;">Team Name</th>
+                        <th style="padding:10px; color:#aaa; width:80px;">Rank</th>
+                        <th style="padding:10px; color:#aaa; width:80px;">Total Kills</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+        
+        let hasTeamsToRank = false;
+        for (let slot = 1; slot <= 12; slot++) {
+            const team = confirmed[slot - 1] || null;
+            if (team) {
+                hasTeamsToRank = true;
+                // Pre-fill existing data if it exists in the leaderboard or history (would need to fetch it ideally, but keeping it empty initially is fine, or reading from existing leaderboard)
+                ranksHtml += `
+                    <tr style="border-bottom:1px solid #222;" data-team-id="${team.id}" class="rank-row">
+                        <td style="padding:10px; color:#888;">#${slot}</td>
+                        <td style="padding:10px; color:#fff; font-weight:bold;">${escHtml(team.teamName || team.name || "Unnamed Team")}</td>
+                        <td style="padding:10px;">
+                            <input type="number" class="rank-input" min="1" placeholder="e.g. 1" data-team-id="${team.id}" style="width:100%; padding:6px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px;">
+                        </td>
+                        <td style="padding:10px;">
+                            <input type="number" class="kills-input" min="0" placeholder="e.g. 15" data-team-id="${team.id}" style="width:100%; padding:6px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px;">
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+        
+        if (!hasTeamsToRank) {
+            ranksHtml += `<tr><td colspan="4" style="text-align:center; padding:20px; color:#888;">No teams have confirmed slots yet.</td></tr>`;
+        }
+        
+        ranksHtml += `</tbody></table>`;
+        document.getElementById("ranks-container").innerHTML = ranksHtml;
+
 
         const wlGrid = document.getElementById("waitlistGrid");
         if (waitlisted.length === 0) {
@@ -3135,4 +3203,76 @@ window.filterAnalyticsUserTable = function() {
             row.style.display = "none";
         }
     });
+};
+
+// ==========================================
+// RANKING TEAMS SAVING LOGIC
+// ==========================================
+window.saveAllTeamRankings = async function(tournamentId) {
+    if (!confirm("Save these rankings? This will update the Leaderboard and Team History.")) return;
+
+    try {
+        const rows = document.querySelectorAll(".rank-row");
+        const batch = writeBatch(db);
+        let validUpdates = 0;
+
+        for (let row of rows) {
+            const teamId = row.getAttribute("data-team-id");
+            const rankInput = row.querySelector(".rank-input").value;
+            const killsInput = row.querySelector(".kills-input").value;
+
+            if (rankInput && teamId) {
+                const rankNum = parseInt(rankInput) || 0;
+                const killsNum = parseInt(killsInput) || 0;
+                
+                // Fetch team name/details from the row (very basic)
+                const teamName = row.children[1].innerText;
+                
+                // 1. Write to Leaderboard
+                const lbRef = doc(db, "tournaments", tournamentId, "leaderboard", teamId);
+                batch.set(lbRef, {
+                    teamId: teamId,
+                    teamName: teamName,
+                    rank: rankNum,
+                    totalKills: killsNum,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+
+                // 2. Write to Team's Tournament History
+                const thRef = doc(db, "teams", teamId, "tournamentHistory", tournamentId);
+                batch.set(thRef, {
+                    tournamentId: tournamentId,
+                    tournamentName: tournamentNameCache || "Tournament", // Or fetch
+                    rank: rankNum,
+                    totalKills: killsNum,
+                    isWin: rankNum === 1,
+                    date: serverTimestamp()
+                }, { merge: true });
+                
+                // 3. Update overall team stats
+                // Need to do this properly with transactions or increment
+                // For safety in batch, we can use increment
+                const teamRef = doc(db, "teams", teamId);
+                batch.update(teamRef, {
+                    totalKills: increment(killsNum),
+                    totalEarnings: increment(rankNum === 1 ? 500 : 0), // Simple logic, can be customized based on tournament prize
+                    lastUpdateAt: serverTimestamp()
+                });
+
+                validUpdates++;
+            }
+        }
+
+        if (validUpdates > 0) {
+            await batch.commit();
+            showToast(`✅ Successfully saved rankings for ${validUpdates} team(s)!`, "success");
+            // Trigger leaderboard silent update
+            await addDoc(collection(db, "systemEvents"), { type: "leaderboard_updated", tournamentId: tournamentId, timestamp: serverTimestamp() });
+        } else {
+            showToast("No valid ranks entered. Please input ranks for teams.", "warning");
+        }
+    } catch (e) {
+        console.error("Error saving rankings:", e);
+        showToast("Error saving rankings: Permission Denied or Invalid Data.", "error");
+    }
 };
