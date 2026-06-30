@@ -1,174 +1,165 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
     // ==========================================
-    // HELPER FUNCTIONS
+    // 1. CORE AUTHENTICATION FUNCTIONS
     // ==========================================
-
-    // Check if user is authenticated
-    function isAuthenticated() {
-      return request.auth != null;
+    function isLoggedIn() { 
+      return request.auth != null; 
     }
-
-    // Check if the current user is an admin by reading their user profile
-    function isAdmin() {
-      return isAuthenticated() &&
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    function isOwner(userId) { 
+      return isLoggedIn() && request.auth.uid == userId; 
     }
-
-    // Safely check if a field was changed (created, updated, or deleted)
-    function fieldChanged(field) {
-      return request.resource.data.diff(resource.data).affectedKeys().hasAny([field]);
+    function isAdmin() { 
+      return isLoggedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true; 
     }
 
     // ==========================================
-    // USERS COLLECTION
+    // 2. GLOBAL ADMIN OVERRIDES
+    // ==========================================
+    match /{path=**}/verifications/{docId} { allow read: if isAdmin(); }
+    match /{path=**}/upcomingRegistrations/{docId} { allow read: if isAdmin(); }
+    match /{path=**}/participants/{docId} { allow read: if isAdmin(); }
+
+    // ==========================================
+    // 3. USERS COLLECTION
     // ==========================================
     match /users/{userId} {
-      // Anyone can read user profiles
-      allow read: if true;
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isAdmin() || (isOwner(userId) && 
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'wallet', 'bonusCredits']));
+    }
 
-      // Allow creation for new users, but enforce no admin escalation
-      allow create: if isAuthenticated() && request.auth.uid == userId
-                    && request.resource.data.get('isAdmin', false) == false
-                    && request.resource.data.get('role', 'viewer') != 'admin';
-
-      // We will use a more specific rule for user updates to handle the referral logic
-      allow update: if isAdmin() ||
-          (isAuthenticated() && request.auth.uid == userId &&
-            !(fieldChanged('isAdmin') || (fieldChanged('role') && request.resource.data.role == 'admin')) &&
-            // If they are applying a referral code to THEMSELVES:
-            // They can update referredBy (only once) and increment bonusCredits & wallet.balance by 50 AT THE SAME TIME.
-            (
-                // Case 1: They are NOT touching bonusCredits or wallet or referredBy
-                (!fieldChanged('referredBy') && !fieldChanged('bonusCredits') && !fieldChanged('wallet')) ||
-                // Case 2: They are setting referredBy for the FIRST time, which MUST be accompanied by exactly +50 credits
-                (fieldChanged('referredBy') && !('referredBy' in resource.data) &&
-                 fieldChanged('bonusCredits') && request.resource.data.bonusCredits == resource.data.get('bonusCredits', 0) + 50 &&
-                 fieldChanged('wallet') && request.resource.data.wallet.balance == resource.data.get('wallet', {}).get('balance', 0) + 50)
-            )
-          ) ||
-          (isAuthenticated() && request.auth.uid != userId &&
-            // If another user is applying a referral code to THIS user (the referrer):
-            // We use getAfter to enforce this request is part of a batch where the referee (request.auth.uid) is setting their referredBy to THIS userId (userId) FOR THE FIRST TIME.
-            getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('referredBy', null) == userId &&
-            !( 'referredBy' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data ) &&
-            // They can only increment referralCount by 1, bonusCredits by 50, and wallet.balance by 50.
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['referralCount', 'bonusCredits', 'wallet']) &&
-            request.resource.data.referralCount == resource.data.get('referralCount', 0) + 1 &&
-            request.resource.data.bonusCredits == resource.data.get('bonusCredits', 0) + 50 &&
-            request.resource.data.get('wallet', {}).get('balance', 0) == resource.data.get('wallet', {}).get('balance', 0) + 50
-          );
-
-      allow delete: if isAdmin();
-
-      // --- USER WALLET ---
-      match /wallet/{walletId} {
-        allow read: if isAuthenticated() && request.auth.uid == userId;
-
-        // Allow creating a 0 balance wallet
-        allow create: if isAuthenticated() && request.auth.uid == userId
-                      && request.resource.data.balance == 0;
-
-        // Only allow decreases in balance by the user (spending)
-        // Or any change by an Admin
-        allow update: if isAdmin() ||
-                      (isAuthenticated() && request.auth.uid == userId
-                       && request.resource.data.balance <= resource.data.balance);
-      }
-
-      // --- USER SUBCOLLECTIONS ---
-      match /transactions/{txId} {
-        allow read: if isAuthenticated() && request.auth.uid == userId;
-        // Users can log pending credit requests or debits
-        allow create: if isAuthenticated() && request.auth.uid == userId;
-      }
-
-      match /notifications/{docId} {
-        allow read: if isAuthenticated() && request.auth.uid == userId;
-        // System and Admins write notifications
-        allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
-      }
-
-      match /upcomingRegistrations/{docId} {
-        allow read: if isAuthenticated() && request.auth.uid == userId;
-        allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
-      }
+    match /users/{userId}/notifications/{notifId} { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/pendingPayment/{tournamentId} { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/upcomingRegistrations/{docId} { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/confirmedRegistrations/{docId} { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/performanceHistory/{docId} { allow read, write: if isOwner(userId) || isAdmin(); }
+    
+    match /users/{userId}/wallet/{walletId} { 
+      allow read: if isOwner(userId) || isAdmin(); 
+      allow write: if isAdmin(); 
+    }
+    match /users/{userId}/transactions/{transId} { 
+      allow read: if isOwner(userId) || isAdmin(); 
+      allow write: if isAdmin(); 
     }
 
     // ==========================================
-    // TOURNAMENTS COLLECTION
+    // 4. TOURNAMENTS COLLECTION
     // ==========================================
     match /tournaments/{tournamentId} {
       allow read: if true;
-      // ONLY admins can create, update, or delete tournaments
-      allow create, update, delete: if isAdmin();
+      allow create, update, delete: if isAdmin(); 
 
-      match /{subcollection}/{docId} {
-        allow read: if true;
-        // Users can apply to tournaments (create/update their own entries)
-        // But only admins can delete or modify other people's entries
-        allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == docId);
-      }
-    }
-
-    // ==========================================
-    // CALENDAR EVENTS COLLECTION
-    // ==========================================
-    match /calendarEvents/{eventId} {
-      allow read: if true;
-      // ONLY admins can manage calendar events
-      allow write: if isAdmin();
-    }
-
-    // ==========================================
-    // ADMIN NOTIFICATIONS COLLECTION
-    // ==========================================
-    match /adminNotifications/{docId} {
-      // Admins can read
-      allow read: if isAdmin();
-      // Users can write (e.g. reporting a cheater)
-      allow create: if isAuthenticated();
-      // Only admins can delete
-      allow update, delete: if isAdmin();
-    }
-
-    // ==========================================
-    // TEAMS COLLECTION
-    // ==========================================
-    match /teams/{teamId} {
-      allow read: if true;
-      // ONLY allow team members or admins to write to the team document
-      allow create: if isAuthenticated() && request.resource.data.leaderId == request.auth.uid;
-      allow update, delete: if isAdmin() || (isAuthenticated() && request.auth.uid in resource.data.members);
-
-      match /wallet/{docId} {
-         allow read: if isAuthenticated();
-         // Similar logic to user wallets: only allow deductions by team members, or admin changes
-         allow create: if isAuthenticated() && request.resource.data.balance == 0;
-         // Note: We need to use get() to check team membership for subcollection rules
-         allow update: if isAdmin() || (isAuthenticated() &&
-           request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members &&
-           request.resource.data.balance <= resource.data.balance);
+      match /participants/{docId} {
+        allow read: if isOwner(docId) || isAdmin();
+        // ✅ FIX: Use .get() to prevent crashes if the field is missing
+        allow create: if isOwner(docId) && request.resource.data.get('paymentStatus', '') != 'verified';
+        allow update: if isAdmin() || (isOwner(docId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmationReceived', 'confirmedAt']));
       }
       
+      match /verifications/{docId} { 
+        allow read: if isOwner(docId) || isAdmin(); 
+        allow create: if isOwner(docId) && request.resource.data.get('status', '') != 'approved';
+        
+        // ✅ FIX: Allows user to update their document and change status ONLY to 'pending' (for resubmissions)
+        allow update: if isAdmin() || (isOwner(docId) && 
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['paymentStatus']) &&
+          (request.resource.data.status == resource.data.status || request.resource.data.status == 'pending')
+        );
+        allow delete: if isOwner(docId) || isAdmin();
+      }
+      
+      match /teamSessions/{teamId} { 
+        allow read: if isLoggedIn(); 
+        allow write: if isOwner(teamId) || isAdmin(); 
+      }
+      
+      match /limitedNotifyList/{docId} { 
+        allow read, write: if isOwner(docId) || isAdmin(); 
+      }
+      
+      match /slots/{slotId} {
+        allow read: if true; 
+        allow write: if isAdmin(); 
+      }
+
+      match /leaderboard/{rankId} {
+        allow read: if true; 
+        allow write: if isAdmin(); 
+      }
+
+      match /upcomingRegistrations/{docId} {
+        allow read: if isOwner(docId) || isAdmin();
+        allow create: if isOwner(docId) 
+                      && request.resource.data.get('paymentStatus', '') != 'verified' 
+                      && request.resource.data.get('status', '') != 'approved';
+        
+        // ✅ FIX: Ensure users can ALSO resubmit upcoming registrations without permission errors
+        allow update: if isAdmin() || (isOwner(docId) && 
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['paymentStatus']) &&
+          (request.resource.data.status == resource.data.status || request.resource.data.status == 'pending')
+        );
+          
+    allow delete: if isOwner(docId) || isAdmin();
+      }
+
+      match /lockedRegistrations/{docId} {
+        allow read, write: if isOwner(docId) || isAdmin();
+      }
+    }
+
+    // ==========================================
+    // 5. TEAMS COLLECTION
+    // ==========================================
+    match /teams/{teamId} {
+      allow read, create: if isLoggedIn();
+      allow delete: if isAdmin();
+      
+      allow update: if isAdmin() || (isLoggedIn() && (
+        resource.data.leaderId == request.auth.uid || 
+        request.auth.uid in resource.data.members ||
+        request.auth.uid in request.resource.data.members
+      ));
+      
+      match /wallet/{walletId} { 
+        allow read: if isLoggedIn(); 
+        allow write: if isAdmin(); 
+      }
+      
+      // ✅ FIX 1: Allow team members to read their Financial Ledger
       match /transactions/{txId} {
-        allow read: if isAdmin() || (isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members);
+        allow read: if isAdmin() || (isLoggedIn() && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members);
         allow write: if isAdmin();
       }
       
+      // ✅ FIX 2: Allow anyone to read team tournament histories
       match /tournamentHistory/{docId} {
         allow read: if true;
         allow write: if isAdmin();
       }
     }
-
-    // Default deny
-    match /{document=**} {
-      allow read, write: if false;
+    
+    // ==========================================
+    // 6. SYSTEM & ADMIN DATA
+    // ==========================================
+    match /adminNotifications/{notifId} { 
+      allow create: if isLoggedIn(); 
+      allow read, update, delete: if isAdmin(); 
     }
+    
+    match /reports/{reportId} { 
+      allow create: if isLoggedIn(); 
+      allow read, update, delete: if isAdmin(); 
+    }
+    
+    match /calendarEvents/{eventId} { 
+      allow read: if true; 
+      allow write: if isAdmin(); 
+    }
+    
   }
 }
