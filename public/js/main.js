@@ -395,7 +395,7 @@ function renderTournaments() {
             // Check if user has an approved registration for this tournament
             let isApproved = false;
             // Checks global cache if admin has approved them
-            if (typeof currentUser !== 'undefined' && currentUser && window.userUpcomingRegs && window.userUpcomingRegs[t.id]?.status === 'approved') {
+            if (typeof currentUser !== 'undefined' && currentUser && window.userUpcomingRegs && (window.userUpcomingRegs[t.id]?.status === 'approved' || window.userUpcomingRegs[t.id]?.status === 'accepted')) {
                 isApproved = true;
             }
 
@@ -1475,7 +1475,7 @@ onAuthStateChanged(auth, async (user) => {
                 currentTournamentIds.add(tournamentId);
 
                 // Attach listener if approved and paid/verified
-                if ((regData.status === 'approved' && (regData.paymentStatus === 'paid' || regData.paymentStatus === 'verified'))) {
+                if (((regData.status === 'approved' || regData.status === 'accepted') && (regData.paymentStatus === 'paid' || regData.paymentStatus === 'verified'))) {
                     if (!activeParticipantListeners[tournamentId]) {
                         console.log(`[PARTICIPANT LISTENER] Attaching listener for tournament: ${tournamentId}`);
                         const participantRef = doc(db, "tournaments", tournamentId, "participants", user.uid);
@@ -1801,7 +1801,7 @@ async function remindPendingPayments(tournamentId, eventDate) {
     
     if (regSnap.exists()) {
         const data = regSnap.data();
-        if (data.status === 'approved' && !data.paymentReminderSent) {
+        if ((data.status === 'approved' || data.status === 'accepted') && !data.paymentReminderSent) {
             // Show payment reminder popup
             showPopup(
                 "warning",
@@ -2665,9 +2665,9 @@ async function renderUpcomingMatchesTab(content) {
             const eventDate = m.eventDate
                 ? new Date(m.eventDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
                 : 'TBA';
-            const statusColor = m.status === 'approved' ? '#00ff88'
+            const statusColor = (m.status === 'approved' || m.status === 'accepted') ? '#00ff88'
                 : m.status === 'rejected' ? '#ff4444' : '#ffd700';
-            const statusLabel = m.status === 'approved' ? '✅ Approved'
+            const statusLabel = (m.status === 'approved' || m.status === 'accepted') ? '✅ Approved'
                 : m.status === 'rejected' ? '❌ Rejected' : '⏳ Pending Review';
             
             const isPaid = (m.paymentStatus === 'verified' || m.paymentStatus === 'paid' || m.paymentStatus === 'Payment Verified');
@@ -4722,7 +4722,8 @@ async function renderUpcomingMatchesContent(content) {
 
         document.getElementById("dp-matches").innerHTML = matches.map(m => {
             const eventDate = m.eventDate ? new Date(m.eventDate).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' }) : 'TBA';
-            const statusColor = m.status === 'approved' ? '#00ff88' : m.status === 'rejected' ? '#ff4444' : '#ffd700';
+            const isApp = (m.status === 'approved' || m.status === 'accepted');
+            const statusColor = isApp ? '#00ff88' : m.status === 'rejected' ? '#ff4444' : '#ffd700';
             const isPaid = (m.paymentStatus === 'verified' || m.paymentStatus === 'paid' || m.paymentStatus === 'Payment Verified');
             const tId = m.tournamentId || m.id;
 
@@ -4733,7 +4734,7 @@ async function renderUpcomingMatchesContent(content) {
                             <div style="color: #fff; font-weight: 600; margin-bottom: 6px;">${m.title || '—'}</div>
                             <div style="color: #888; font-size: 13px;">📅 ${eventDate}</div>
                             <div style="color: ${statusColor}; font-size: 12px; margin-top: 6px; font-weight: 600;">
-                                ${m.status === 'approved' ? '✅ Approved' : m.status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}
+                                ${isApp ? '✅ Approved' : m.status === 'rejected' ? '❌ Rejected' : '⏳ Pending'}
                             </div>
                         </div>
                         <div style="text-align:right;">
@@ -4943,6 +4944,34 @@ window.scrollToDashboard = function(e) {
     if (section) {
         const y = section.getBoundingClientRect().top + window.pageYOffset - 120;
         window.scrollTo({ top: y, behavior: "smooth" });
+    }
+};
+
+window.scrollToTournament = function(tId) {
+    if (window.closeDashboard) window.closeDashboard();
+    
+    // Attempt to find element
+    let el = document.getElementById("t-" + tId) || document.getElementById(tId);
+    
+    if (el) {
+        const y = el.getBoundingClientRect().top + window.pageYOffset - 100;
+        window.scrollTo({ top: y, behavior: 'smooth' });
+        
+        // Flash animation
+        const oldTrans = el.style.transition;
+        const oldBox = el.style.boxShadow;
+        el.style.transition = 'box-shadow 0.5s ease';
+        el.style.boxShadow = '0 0 20px 5px rgba(59,130,246,0.8)';
+        setTimeout(() => {
+            el.style.boxShadow = oldBox;
+            setTimeout(() => { el.style.transition = oldTrans; }, 500);
+        }, 1500);
+    } else {
+        if (typeof showToast === 'function') {
+            showToast("Tournament is not visible on the main screen.", "warning");
+        } else {
+            alert("Tournament is not visible on the main screen.");
+        }
     }
 };
 
