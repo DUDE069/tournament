@@ -1449,33 +1449,32 @@ window.addTournament = async function() {
     }
 };
 window.deleteTournament = async function(id) {
-  // ✅ FIX: Protect deletion — check for any pending/approved registrations first
   try {
     const tSnap = await getDoc(doc(db, "tournaments", id));
     const tData = tSnap.exists() ? tSnap.data() : {};
+    const now = new Date();
+    const eventTime = tData.eventDate ? new Date(tData.eventDate) : null;
+    const isTournamentOver = eventTime && eventTime <= now;
 
-    // Block if tournament is in registration or ongoing stage with active participants
-    if (tData.category === "ongoing" || tData.status === "live") {
-      showToast("❌ Cannot delete: This tournament is live/ongoing. Participants have registered and may have paid.", "error");
+    if (!isTournamentOver && (tData.category === "ongoing" || tData.status === "live")) {
+      showToast("❌ Cannot delete: This tournament is live/ongoing.", "error");
       return;
     }
 
-    // Also check for any pending or approved upcoming registrations
-    const regsSnap = await getDocs(collection(db, "tournaments", id, "upcomingRegistrations"));
-    const activeRegs = regsSnap.docs.filter(d => d.data().status === "pending" || d.data().status === "approved");
-    if (activeRegs.length > 0) {
-      showToast(`❌ Cannot delete: ${activeRegs.length} team(s) have registered. Reject all registrations first before deleting.`, "error");
-      return;
-    }
-
-    // Also check participant docs (paid users)
-    const partSnap = await getDocs(collection(db, "tournaments", id, "participants"));
-    if (!partSnap.empty) {
-      showToast(`❌ Cannot delete: ${partSnap.size} team(s) have paid and are confirmed. This data cannot be lost.`, "error");
-      return;
+    if (!isTournamentOver) {
+      const regsSnap = await getDocs(collection(db, "tournaments", id, "upcomingRegistrations"));
+      const activeRegs = regsSnap.docs.filter(d => d.data().status === "pending" || d.data().status === "approved");
+      if (activeRegs.length > 0) {
+        showToast(`❌ Cannot delete: ${activeRegs.length} team(s) have registered. Reject all registrations first before deleting.`, "error");
+        return;
+      }
+      const partSnap = await getDocs(collection(db, "tournaments", id, "participants"));
+      if (!partSnap.empty) {
+        showToast(`❌ Cannot delete: ${partSnap.size} team(s) have paid and are confirmed. This data cannot be lost.`, "error");
+        return;
+      }
     }
   } catch (checkErr) {
-    // If we can't check, still ask for confirmation to be safe
     console.warn("[DELETE CHECK]", checkErr);
   }
 
@@ -1497,20 +1496,38 @@ function loadTournaments() {
     const box = document.getElementById("tournamentList");
     if (!box) return;
     box.innerHTML = "";
+    
+    // Store for periodic checks
+    window._adminActiveTournaments = snapshot.docs;
+    
+    // Run interval only once
+    if (!window._adminTimerInterval) {
+        window._adminTimerInterval = setInterval(() => {
+            if (window._adminActiveTournaments) {
+                window._adminActiveTournaments.forEach(d => {
+                    checkAdminAutoPromotion(d.id, d.data());
+                });
+            }
+        }, 30000); // Check every 30 seconds
+    }
+
     snapshot.forEach(d => {
       const t   = d.data();
       
-      // ✅ NEW: Trigger Auto-Promotion Check
+      // ✅ Trigger immediately on load as well
       checkAdminAutoPromotion(d.id, t);
       
       const div = document.createElement("div");
       div.className = "item-card";
 
-      // ✅ FIX: Visually disable Delete button for active/ongoing tournaments
       const isActive = (t.category === "ongoing" || t.status === "live");
-      const deleteBtn = isActive
+      const eventTime = t.eventDate ? new Date(t.eventDate) : null;
+      const isTournamentOver = eventTime && eventTime <= new Date();
+
+      const deleteBtn = (isActive && !isTournamentOver)
         ? `<button class="btn-delete" disabled title="Cannot delete: tournament is active or ongoing" style="opacity:0.35;cursor:not-allowed;" onclick="event.preventDefault();">🔒 Delete</button>`
         : `<button class="btn-delete" onclick="deleteTournament('${d.id}')">Delete</button>`;
+
       
       div.innerHTML = `
         <div>
@@ -1529,54 +1546,105 @@ function loadTournaments() {
 }
 
 // ✅ NEW FEATURE: Admin Auto-Promotion & Notification Dispatcher
-// ✅ UPDATED: Uses the Hidden 'transitionTime' instead of the Match Start Time
 async function checkAdminAutoPromotion(tId, t) {
-    // If it lacks a transition time, we can't auto-promote it
-    if (t.category !== 'upcoming' || !t.transitionTime || t.promotionNotified) return;
-    
     const now = new Date();
-    // Parse the hidden timer the admin set
-    let transitionDateTime = new Date(t.transitionTime);
 
-    if (transitionDateTime <= now) {
-        console.log(`[AUTO-ADMIN] Hidden timer triggered for ${t.title}. Moving to Ongoing...`);
-        try {
-            // Lock the promotion instantly to prevent double-notifications
-            // Note: We keep the original Match Start time intact!
-            await updateDoc(doc(db, "tournaments", tId), {
-                category: 'ongoing',
-                status: 'live',
-                promotionNotified: true
-            });
+    // ── Phase 1: Auto-Promotion to Ongoing ──
+    if (t.category === 'upcoming' && t.transitionTime && !t.promotionNotified) {
+        let transitionDateTime = new Date(t.transitionTime);
+        if (transitionDateTime <= now) {
+            console.log(`[AUTO-ADMIN] Hidden timer triggered for ${t.title}. Moving to Ongoing...`);
+            try {
+                await updateDoc(doc(db, "tournaments", tId), {
+                    category: 'ongoing',
+                    status: 'live',
+                    promotionNotified: true
+                });
 
-            // Dispatch Mass Notifications
-            const regsSnap = await getDocs(collection(db, "tournaments", tId, "upcomingRegistrations"));
-            const batch = writeBatch(db);
-            let count = 0;
+                triggerAdminPhase1Alert(t.title);
 
-            regsSnap.forEach((docSnap) => {
-                const reg = docSnap.data();
-                if (reg.status === 'approved') {
-                    const notifRef = doc(collection(db, "users", reg.userId, "notifications"));
-                    batch.set(notifRef, {
-                        type: "tournament_live",
-                        title: "🔴 Tournament Registration Locked!",
-                        message: `"${t.title}" is now Ongoing! Click here to complete your payment and secure your slot before the match starts.`,
-                        tournamentId: tId,
-                        read: false,
-                        createdAt: serverTimestamp(),
-                        actionLink: `tournament=${tId}`
-                    });
-                    count++;
-                }
-            });
+                const regsSnap = await getDocs(collection(db, "tournaments", tId, "upcomingRegistrations"));
+                const batch = writeBatch(db);
+                let count = 0;
 
-            if (count > 0) await batch.commit();
-            console.log(`[AUTO-ADMIN] Successfully promoted and notified ${count} teams.`);
-        } catch (err) {
-            console.warn("[AUTO-ADMIN] Promotion error:", err);
+                regsSnap.forEach((docSnap) => {
+                    const reg = docSnap.data();
+                    if (reg.status === 'approved') {
+                        const notifRef = doc(collection(db, "users", reg.userId, "notifications"));
+                        batch.set(notifRef, {
+                            type: "tournament_live",
+                            title: "🔴 Tournament Registration Locked!",
+                            message: `"${t.title}" is now Ongoing! Click here to complete your payment and secure your slot before the match starts.`,
+                            tournamentId: tId,
+                            read: false,
+                            createdAt: serverTimestamp(),
+                            actionLink: `tournament=${tId}`
+                        });
+                        count++;
+                    }
+                });
+
+                if (count > 0) await batch.commit();
+                console.log(`[AUTO-ADMIN] Successfully promoted and notified ${count} teams.`);
+            } catch (err) {
+                console.warn("[AUTO-ADMIN] Promotion error:", err);
+            }
         }
     }
+
+    // ── Phase 2: Urgent Match Start Warning (30-40 mins before start) ──
+    if (t.category === 'ongoing' && t.eventDate && !t.adminPhase2Notified) {
+        let matchStartTime = new Date(t.eventDate);
+        let timeDiffMinutes = (matchStartTime - now) / (1000 * 60);
+
+        if (timeDiffMinutes <= 40 && timeDiffMinutes > 0) {
+            try {
+                await updateDoc(doc(db, "tournaments", tId), {
+                    adminPhase2Notified: true
+                });
+                
+                triggerAdminPhase2Alert(t.title, Math.round(timeDiffMinutes));
+            } catch (err) {
+                console.warn("[AUTO-ADMIN] Phase 2 Alert error:", err);
+            }
+        }
+    }
+}
+
+function triggerAdminPhase1Alert(title) {
+    const overlay = document.createElement("div");
+    overlay.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,0,0,0.2);z-index:99999;pointer-events:none;animation:flashBg 1s infinite;";
+    document.body.appendChild(overlay);
+
+    const popup = document.createElement("div");
+    popup.style = "position:fixed;top:20px;right:20px;background:#c62828;color:white;padding:20px;border-radius:10px;z-index:100000;box-shadow:0 0 20px red;border:2px solid #ff5252;width:300px;pointer-events:auto;";
+    popup.innerHTML = `
+        <h3 style="margin-top:0;display:flex;align-items:center;gap:10px;">⚠️ ONGOING NOW</h3>
+        <p style="margin-bottom:15px;font-size:14px;"><strong>${escHtml(title)}</strong> has moved to Ongoing! Verify pending payments immediately before the match starts.</p>
+        <button style="width:100%;padding:10px;background:#fff;color:#c62828;border:none;border-radius:5px;font-weight:bold;cursor:pointer;" onclick="this.parentElement.remove();document.body.removeChild(document.body.lastChild);">Acknowledge</button>
+    `;
+    
+    if (!document.getElementById("flashAnim")) {
+        const style = document.createElement("style");
+        style.id = "flashAnim";
+        style.innerHTML = `@keyframes flashBg { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }`;
+        document.head.appendChild(style);
+    }
+    document.body.appendChild(popup);
+    try { new Audio('alert.mp3').play(); } catch(e){}
+}
+
+function triggerAdminPhase2Alert(title, minsRemaining) {
+    const popup = document.createElement("div");
+    popup.style = "position:fixed;top:50%;left:50%;transform:translate(-50%, -50%);background:#111;color:white;padding:30px;border-radius:15px;z-index:100000;box-shadow:0 0 50px rgba(255,152,0,0.8);border:3px solid #ff9800;text-align:center;";
+    popup.innerHTML = `
+        <h2 style="margin-top:0;color:#ff9800;">🚨 URGENT: MATCH STARTING SOON</h2>
+        <p style="font-size:16px;"><strong>${escHtml(title)}</strong> starts in <strong>${minsRemaining} minutes!</strong></p>
+        <p style="color:#aaa;font-size:14px;margin-bottom:20px;">Finalize all verifications. Kick any unpaid teams to finalize the slot list.</p>
+        <button style="padding:10px 20px;background:#ff9800;color:#000;border:none;border-radius:5px;font-weight:bold;cursor:pointer;font-size:16px;" onclick="this.parentElement.remove();">Got It</button>
+    `;
+    document.body.appendChild(popup);
+    try { new Audio('alert.mp3').play(); } catch(e){}
 }
 
 // ============================================================================
@@ -2223,6 +2291,7 @@ window.manageTournamentSlots = async function(tournamentId) {
                         <th style="padding:10px; color:#aaa;">Team Name</th>
                         <th style="padding:10px; color:#aaa; width:80px;">Rank</th>
                         <th style="padding:10px; color:#aaa; width:80px;">Total Kills</th>
+                        <th style="padding:10px; color:#aaa; width:100px; text-align:center;">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -2233,7 +2302,6 @@ window.manageTournamentSlots = async function(tournamentId) {
             const team = confirmed[slot - 1] || null;
             if (team) {
                 hasTeamsToRank = true;
-                // Pre-fill existing data if it exists in the leaderboard or history (would need to fetch it ideally, but keeping it empty initially is fine, or reading from existing leaderboard)
                 ranksHtml += `
                     <tr style="border-bottom:1px solid #222;" data-team-id="${team.id}" class="rank-row">
                         <td style="padding:10px; color:#888;">#${slot}</td>
@@ -2243,6 +2311,9 @@ window.manageTournamentSlots = async function(tournamentId) {
                         </td>
                         <td style="padding:10px;">
                             <input type="number" class="kills-input" min="0" placeholder="e.g. 15" data-team-id="${team.id}" style="width:100%; padding:6px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px;">
+                        </td>
+                        <td style="padding:10px; text-align:center;">
+                            <button onclick="openRewardModal('${tournamentId}', '${team.teamId || team.id}', '${escHtml(team.teamName || team.name || "Unnamed Team").replace(/'/g, "\\'")}')" style="background:#00ff88;color:#000;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:bold;">💰 Reward</button>
                         </td>
                     </tr>
                 `;
@@ -3274,5 +3345,110 @@ window.saveAllTeamRankings = async function(tournamentId) {
     } catch (e) {
         console.error("Error saving rankings:", e);
         showToast("Error saving rankings: Permission Denied or Invalid Data.", "error");
+    }
+};
+
+// ============================================================================
+//  18. FINANCIAL HUB PAYOUT SYSTEM
+// ============================================================================
+
+window.openRewardModal = async function(tournamentId, teamId, teamName) {
+    if (!teamId) {
+        showToast("Error: Missing Team ID", "error");
+        return;
+    }
+    
+    // Fetch Team Data to get UPI ID
+    let upiId = "Not Set by User";
+    try {
+        const teamSnap = await getDoc(doc(db, "teams", teamId));
+        if (teamSnap.exists() && teamSnap.data().upiId) {
+            upiId = teamSnap.data().upiId;
+        }
+    } catch (e) {
+        console.error("Error fetching team data", e);
+    }
+
+    const overlay = document.createElement("div");
+    overlay.id = "rewardModalOverlay";
+    overlay.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:99999;display:flex;align-items:center;justify-content:center;";
+    
+    overlay.innerHTML = `
+        <div style="background:#111; border:2px solid #00ff88; border-radius:12px; padding:25px; width:90%; max-width:400px; color:#fff; font-family:'Rajdhani', sans-serif;">
+            <h2 style="margin-top:0; color:#00ff88;">💰 Reward Team</h2>
+            <p style="font-size:18px; margin-bottom:5px;"><strong>${escHtml(teamName)}</strong></p>
+            <div style="background:#1a1a1a; padding:10px; border-radius:6px; margin-bottom:20px; border-left:4px solid #ffd700;">
+                <p style="margin:0; font-size:12px; color:#888;">Team Leader's UPI ID / Bank:</p>
+                <p style="margin:5px 0 0 0; font-size:16px; font-weight:bold; color:#ffd700; word-break:break-all;">${escHtml(upiId)}</p>
+            </div>
+            
+            <p style="font-size:12px; color:#aaa; margin-bottom:15px;"><em>Please transfer the funds to the above account before confirming below.</em></p>
+            
+            <label style="display:block; margin-bottom:5px; font-size:13px; color:#888;">Amount Paid (₹)</label>
+            <input type="number" id="rewardAmount" placeholder="e.g. 500" style="width:100%; padding:10px; background:#222; border:1px solid #444; color:#fff; border-radius:6px; margin-bottom:15px;" required>
+            
+            <label style="display:block; margin-bottom:5px; font-size:13px; color:#888;">Transaction Reference / Proof ID</label>
+            <input type="text" id="rewardRef" placeholder="e.g. UTR123456789" style="width:100%; padding:10px; background:#222; border:1px solid #444; color:#fff; border-radius:6px; margin-bottom:20px;" required>
+            
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('rewardModalOverlay').remove()" style="flex:1; padding:10px; background:transparent; border:1px solid #555; color:#aaa; border-radius:6px; cursor:pointer;">Cancel</button>
+                <button onclick="submitReward('${teamId}', '${tournamentId}')" style="flex:1; padding:10px; background:#00ff88; border:none; color:#000; font-weight:bold; border-radius:6px; cursor:pointer;">Confirm Payout</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+};
+
+window.submitReward = async function(teamId, tournamentId) {
+    const amountVal = document.getElementById("rewardAmount").value;
+    const refVal = document.getElementById("rewardRef").value.trim();
+    
+    if (!amountVal || amountVal <= 0) {
+        showToast("Enter a valid amount.", "error");
+        return;
+    }
+    if (!refVal) {
+        showToast("Enter the transaction reference ID.", "error");
+        return;
+    }
+    
+    const amount = Number(amountVal);
+    
+    try {
+        const btn = event.target;
+        btn.textContent = "Processing...";
+        btn.disabled = true;
+        
+        await addDoc(collection(db, "teams", teamId, "transactions"), {
+            type: 'credit',
+            amount: amount,
+            referenceId: refVal,
+            description: `Tournament Winnings (Ref: ${tournamentId.substring(0,6)})`,
+            tournamentId: tournamentId,
+            createdAt: serverTimestamp()
+        });
+        
+        await updateDoc(doc(db, "teams", teamId), {
+            lifetimeEarnings: increment(amount)
+        });
+        
+        const teamSnap = await getDoc(doc(db, "teams", teamId));
+        if (teamSnap.exists() && teamSnap.data().leaderUid) {
+            await addDoc(collection(db, "users", teamSnap.data().leaderUid, "notifications"), {
+                type: "payout_received",
+                title: "💰 Winnings Received!",
+                message: `You have received ₹${amount} for your tournament victory. Check your Financial Hub for the receipt.`,
+                read: false,
+                createdAt: serverTimestamp()
+            });
+        }
+        
+        showToast("Payout Logged Successfully!", "success");
+        document.getElementById("rewardModalOverlay").remove();
+        
+    } catch (e) {
+        console.error("Error logging reward:", e);
+        showToast("Failed to log payout. Permission denied?", "error");
     }
 };

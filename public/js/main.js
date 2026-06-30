@@ -822,9 +822,35 @@ document.addEventListener("DOMContentLoaded", function() {
 
        try {
             const userId = currentUser.uid;
+            const teamIdToCheck = userProfile.teamId;
             
             // Determine if this is a brand new application or an edit of a rejected one
             const isEditing = window.originalApplicationData !== undefined && window.originalApplicationData !== null;
+
+            // ✅ FIX: Check for double registrations by the same team before creating a new one
+            if (!isEditing && teamIdToCheck) {
+                // Check upcomingRegistrations
+                const upQuery = query(collection(db, "tournaments", tournamentId, "upcomingRegistrations"), where("teamId", "==", teamIdToCheck));
+                const upSnap = await getDocs(upQuery);
+                if (!upSnap.empty) {
+                    showMessage("❌ Your team has already submitted a registration for this tournament.");
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = isUpcoming ? "Register Now" : "Send Details";
+                    if (processing) processing.style.display = "none";
+                    return;
+                }
+                
+                // Check verifications
+                const vQuery = query(collection(db, "tournaments", tournamentId, "verifications"), where("teamId", "==", teamIdToCheck));
+                const vSnap = await getDocs(vQuery);
+                if (!vSnap.empty) {
+                    showMessage("❌ Your team is already in the verification stage for this tournament.");
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = isUpcoming ? "Register Now" : "Send Details";
+                    if (processing) processing.style.display = "none";
+                    return;
+                }
+            }
 
             if (isUpcoming) {
                 // ========================================
@@ -3143,8 +3169,8 @@ function initNotifications() {
                 const notifId = change.doc.id;
                 console.log("📥 New Notification Data:", notif);
 
-                // Stop right here if this notification has already fired a popup on this page load
-                if (window.shownPopupIds.has(notifId)) return;
+                // Stop right here if this notification has already fired a popup on this page load or another tab
+                if (window.shownPopupIds.has(notifId) || localStorage.getItem("popupShown_" + notifId)) return;
 
                 // --- SOUND TRIGGER ---
                 if (notif.type === "approval" || notif.type === "upcoming_approved") {
@@ -3162,6 +3188,7 @@ function initNotifications() {
                     
                     // Shield the client instantly on the spot before making the async database update call
                     window.shownPopupIds.add(notifId);
+                    localStorage.setItem("popupShown_" + notifId, "true");
 
                     if (notif.type === "approval" || notif.type === "approved") {
                         showPopup("success", notif.message || "Your team has been approved!", "Continue →", () => {
@@ -3337,9 +3364,13 @@ window.markAllRead = async function() {
 };
 
 window.handleNotificationClick = async function(notifId, actionLink, type) {
-    // 1. Mark as read
+    // 1. Mark as read immediately on client side
     try {
-        await updateDoc(doc(db, "users", currentUser.uid, "notifications", notifId), { read: true });
+        await updateDoc(doc(db, "users", currentUser.uid, "notifications", notifId), { 
+            read: true,
+            popupShown: true // Double guard against re-popups
+        });
+        localStorage.setItem("popupShown_" + notifId, "true");
     } catch (err) { console.error("Update failed:", err); }
 
     if (window.toggleNotifications) window.toggleNotifications();
@@ -4781,35 +4812,74 @@ async function renderPerformanceContent(content) {
 async function renderAccountContent(content) {
     content.innerHTML = dashboardTemplates.account;
     
+    if (!userProfile || !userProfile.teamId) {
+        document.getElementById("dp-account").innerHTML = `<p style="color:#ff4444;text-align:center;">You need to create or join a team first.</p>`;
+        return;
+    }
+    
     try {
+        const teamRef = doc(db, "teams", userProfile.teamId);
+        const teamSnap = await getDoc(teamRef);
+        const teamData = teamSnap.exists() ? teamSnap.data() : {};
+        
         const txSnap = await getDocs(
-            query(
-                collection(db, "users", currentUser.uid, "transactions"),
-                orderBy("createdAt", "desc")
-            )
+            query(collection(db, "teams", userProfile.teamId, "transactions"), orderBy("createdAt", "desc"))
         );
         const txs = txSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        const balance = userWallet?.balance || 0;
+        const balance = teamData.lifetimeEarnings || 0;
+        
+        const isLeader = (currentUser.uid === teamData.leaderUid);
+        const upiDisplay = teamData.upiId || 'Not set';
+
+        let upiBlock = '';
+        if (isLeader) {
+            upiBlock = `
+                <div style="margin-top: 15px; padding: 10px; background: rgba(255, 255, 255, 0.05); border-radius: 8px; font-size: 13px; width: 100%;">
+                    <label style="color: #888; display: block; margin-bottom: 5px;">Payout UPI ID / Bank Details</label>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="teamUpiInput" value="${teamData.upiId || ''}" placeholder="e.g. 9876543210@ybl" style="flex:1; padding: 8px; border-radius: 4px; border: 1px solid #444; background: #111; color: #fff;">
+                        <button onclick="window.saveTeamUPI()" style="padding: 8px 12px; background: #00ff88; color: #000; font-weight: bold; border: none; border-radius: 4px; cursor: pointer;">Save</button>
+                    </div>
+                </div>
+            `;
+        } else {
+            upiBlock = `
+                <div style="margin-top: 15px; font-size: 13px; color: #888; width: 100%;">
+                    Payout UPI ID: <span style="color:#fff;">${upiDisplay}</span><br>
+                    <small>(Only the Team Leader can update this)</small>
+                </div>
+            `;
+        }
 
         document.getElementById("dp-account").innerHTML = `
             <div style="background: linear-gradient(135deg, #1a1a2a, #2a1a3a); border: 2px solid #ffd700; border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-direction: column;">
                     <div>
-                        <div style="color: #888; font-size: 12px;">Wallet Balance</div>
+                        <div style="color: #888; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;">Lifetime Earnings</div>
                         <div style="color: #ffd700; font-size: 32px; font-weight: 900;">₹${balance}</div>
                     </div>
-                    <button onclick="openWalletModal()" style="padding: 10px 20px; background: #ffd700; color: #000; border: none; border-radius: 8px; cursor: pointer; font-weight: 700;">+ Add Funds</button>
+                    ${upiBlock}
                 </div>
             </div>
             
-            <h4 style="color: #888; margin-bottom: 12px; font-size: 13px;">TRANSACTION HISTORY</h4>
-            <div style="max-height: 200px; overflow-y: auto;">
+            <h4 style="color: #888; margin-bottom: 12px; font-size: 13px;">TRANSACTION LEDGER</h4>
+            <div style="max-height: 250px; overflow-y: auto;">
                 ${txs.length === 0 ? `<p style="color: #555; text-align: center; padding: 20px;">No transactions yet</p>` : txs.map(t => {
                     const isCredit = t.type === 'credit';
+                    const color = isCredit ? '#00ff88' : '#ff4444';
+                    
+                    let refHtml = '';
+                    if (isCredit && t.referenceId) {
+                        refHtml = `<button onclick="alert('Transaction Proof / Ref:\\n${t.referenceId}\\n\\nPaid by Admin.')" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:16px;padding:0 5px;" title="View Receipt">⋮</button>`;
+                    }
+                    
                     return `
                         <div style="padding: 12px; border-bottom: 1px solid #2a2a2a; display: flex; justify-content: space-between; align-items: center;">
                             <div>
-                                <div style="color: ${isCredit ? '#00ff88' : '#ff4444'}; font-weight: 600;">${isCredit ? '+' : '-'}₹${t.amount}</div>
+                                <div style="color: ${color}; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                                    ${isCredit ? '+' : '-'}₹${t.amount}
+                                    ${refHtml}
+                                </div>
                                 <div style="color: #666; font-size: 12px;">${t.description || '—'}</div>
                             </div>
                             <div style="color: #555; font-size: 11px;">${t.createdAt?.toDate ? new Date(t.createdAt.toDate()).toLocaleDateString() : 'Pending'}</div>
@@ -4819,9 +4889,41 @@ async function renderAccountContent(content) {
             </div>
         `;
     } catch (err) {
-        document.getElementById("dp-account").innerHTML = `<p style="color: #ff4444; text-align: center;">Failed to load</p>`;
+        console.error(err);
+        document.getElementById("dp-account").innerHTML = `<p style="color: #ff4444; text-align: center;">Failed to load wallet</p>`;
     }
 }
+
+// Attach UPI saving function
+window.saveTeamUPI = async function() {
+    if (!userProfile || !userProfile.teamId) return;
+    const input = document.getElementById("teamUpiInput");
+    const val = input ? input.value.trim() : "";
+    if (!val) {
+        showMessage("Please enter a valid UPI ID or Bank Details.");
+        return;
+    }
+    
+    try {
+        const btn = input.nextElementSibling;
+        const originalText = btn.textContent;
+        btn.textContent = "Saving...";
+        btn.disabled = true;
+        
+        await updateDoc(doc(db, "teams", userProfile.teamId), {
+            upiId: val
+        });
+        
+        btn.textContent = "Saved ✓";
+        setTimeout(() => {
+            btn.textContent = originalText;
+            btn.disabled = false;
+        }, 2000);
+    } catch (e) {
+        console.error("Error saving UPI:", e);
+        showMessage("Error saving details. Check permissions.");
+    }
+};
 
 // Close dashboard
 window.closeDashboard = function() {

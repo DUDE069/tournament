@@ -295,3 +295,14 @@
         text-align: center;
     }
 }
+
+/* Global Table Responsiveness */
+@media screen and (max-width: 768px) {
+    table, .admin-table {
+        display: block !important;
+        width: 100% !important;
+        overflow-x: auto !important;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap !important;
+    }
+}

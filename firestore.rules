@@ -154,6 +154,16 @@ service cloud.firestore {
            request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members &&
            request.resource.data.balance <= resource.data.balance);
       }
+      
+      match /transactions/{txId} {
+        allow read: if isAdmin() || (isAuthenticated() && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members);
+        allow write: if isAdmin();
+      }
+      
+      match /tournamentHistory/{docId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
     }
 
     // Default deny
