@@ -4298,6 +4298,13 @@ const dashboardTemplates = {
                     <span style="color: #666;">Team</span>
                     <span style="color: var(--npc-glow);" id="dp-team">No Team</span>
                 </div>
+                <div style="padding: 14px; background: #1a1a1a; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: #666;">Leader UID</span>
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <span style="color: #fff; font-size:11px; background:#333; padding:4px 8px; border-radius:4px;" id="dp-uid">—</span>
+                        <button onclick="navigator.clipboard.writeText(document.getElementById('dp-uid').innerText); showToast('UID Copied!', 'success')" style="background:transparent; border:1px solid #555; color:#888; padding:4px 8px; border-radius:4px; cursor:pointer; font-size:11px;">Copy</button>
+                    </div>
+                </div>
             </div>
             
             <div style="display: flex; gap: 10px; margin-top: 24px;">
@@ -5005,12 +5012,12 @@ window.sendSignupOTP = async function() {
     const email = document.getElementById("regEmail").value.trim();
     const pass = document.getElementById("regPass").value;
     const age = parseInt(document.getElementById("regAge").value);
-    
-    // Feature Addition: Nickname
     const nickname = document.getElementById("regNickname") ? document.getElementById("regNickname").value.trim() : "";
+    const freeFireUid = document.getElementById("regUID") ? document.getElementById("regUID").value.trim() : "";
 
-    // Validations
-    if (!email.includes("@gmail.com")) { showMessage("Please use a valid Gmail ID"); return; }
+    // Validations — accept any valid email (not just @gmail.com)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) { showMessage("Please enter a valid email address"); return; }
     if (pass.length < 6) { showMessage("Password too short (min 6 characters)"); return; }
     if (isNaN(age) || age < 12 || age > 60) { showMessage("Age must be between 12 and 60"); return; }
     if (pass !== document.getElementById("regConfirm")?.value) { showMessage("Passwords do not match"); return; }
@@ -5230,11 +5237,15 @@ window.openPersonalProfile = function(...args) {
                         <div style="font-size:28px; margin-bottom:8px;">👁️</div>
                         <h4 style="color:orange; margin-bottom:8px;">Viewer Account</h4>
                         <p style="color:#9ca3af; font-size:13px; margin-bottom:14px;">
-                            You joined as a viewer. Create or join a team to compete in tournaments!
+                            Create or join a team to compete — or use <b style="color:#ffd700;">Broker Mode</b> to register other players.
                         </p>
                         <button onclick="closeCustomModal(); window.openViewerUpgradeModal();"
-                                style="background:orange; color:#000; font-weight:bold; padding:10px 24px; border:none; border-radius:7px; cursor:pointer; font-family:inherit;">
-                            Upgrade to Player →
+                                style="background:orange; color:#000; font-weight:bold; padding:10px 24px; border:none; border-radius:7px; cursor:pointer; font-family:inherit; margin-bottom:8px; width:100%;">
+                            ⬆️ Upgrade to Player →
+                        </button>
+                        <button onclick="closeCustomModal(); window.showBrokerTournamentPicker();"
+                                style="background:transparent; color:#ffd700; border:1px solid #ffd700; font-weight:bold; padding:10px 24px; border-radius:7px; cursor:pointer; font-family:inherit; width:100%;">
+                            🎯 Broker Mode — Register Others
                         </button>
                     </div>
                 `);
@@ -5243,25 +5254,36 @@ window.openPersonalProfile = function(...args) {
     }, 300);
 };
 
-
-
-
 window.openEditProfile = function() {
     const content = document.getElementById("customActionContent");
     document.getElementById("customActionModal").classList.add("active");
     
+    const safeNick = (userProfile.nickname || '').replace(/"/g, '&quot;');
+    const safeUID  = (userProfile.freeFireUid || '').replace(/"/g, '&quot;');
+    
     content.innerHTML = `
         <div class="modal-header">
-            <h2>Edit Personal Profile</h2>
-            <button class="close-modal" onclick="closeCustomModal()">×</button>
+            <h2 style="font-size:18px;">&#9998;&#65039; Edit Profile</h2>
+            <button class="close-modal" onclick="closeCustomModal()">&#215;</button>
         </div>
-        <label style="color:#888; font-size:12px;">In-Game Nickname</label>
-        <input id="editNickname" value="${userProfile.nickname || ''}" type="text" placeholder="Nickname">
-        <label style="color:#888; font-size:12px;">Gmail ID</label>
-        <input id="editEmail" value="${userProfile.email}" type="email">
-        <label style="color:#888; font-size:12px;">Age</label>
-        <input id="editAge" value="${userProfile.age}" type="number">
-        <button onclick="saveProfileUpdate()" style="background:#00ff88; color:#000;">Save Changes</button>
+        <p style="color:#555; font-size:12px; margin:-10px 0 16px 0;">Changes save to your account instantly.</p>
+        
+        <label style="color:#888; font-size:12px; font-weight:600; letter-spacing:0.5px;">IN-GAME NICKNAME</label>
+        <input id="editNickname" value="${safeNick}" type="text" placeholder="Nickname" style="margin-bottom:16px;">
+        
+        <label style="color:#888; font-size:12px; font-weight:600; letter-spacing:0.5px;">FREE FIRE UID</label>
+        <input id="editFreeFireUid" value="${safeUID}" type="text" placeholder="Your in-game UID / Player ID" style="margin-bottom:16px;">
+        
+        <label style="color:#888; font-size:12px; font-weight:600; letter-spacing:0.5px;">AGE</label>
+        <input id="editAge" value="${userProfile.age || ''}" type="number" min="12" max="60" placeholder="Age (12–60)" style="margin-bottom:16px;">
+        
+        <label style="color:#888; font-size:12px; font-weight:600; letter-spacing:0.5px;">EMAIL (read-only)</label>
+        <div style="background:#1a1a1a; padding:12px 14px; border-radius:8px; color:#555; font-size:13px; margin-bottom:20px; border:1px solid #2a2a2a;">
+            ${userProfile.email || 'N/A'}
+            <span style="font-size:10px; color:#444; margin-left:8px;">(To change email, contact support)</span>
+        </div>
+        
+        <button onclick="saveProfileUpdate()" style="background:#00ff88; color:#000; font-weight:700;">&#128190; Save Changes</button>
     `;
 };
 // ==========================================
@@ -5269,59 +5291,54 @@ window.openEditProfile = function() {
 // ==========================================
 window.saveProfileUpdate = async function() {
     const newNickname = document.getElementById("editNickname")?.value?.trim();
-    const newEmail = document.getElementById("editEmail")?.value?.trim();
+    const newFreeFireUid = document.getElementById("editFreeFireUid")?.value?.trim();
     const newAge = parseInt(document.getElementById("editAge")?.value);
 
-    if (!newEmail || !newEmail.includes('@')) { showMessage("Please enter a valid email"); return; }
     if (isNaN(newAge) || newAge < 12 || newAge > 60) { showMessage("Age must be between 12 and 60"); return; }
+    if (!newNickname) { showMessage("Nickname cannot be empty"); return; }
 
-    const btn = event.target;
-    const originalText = btn.textContent;
-    btn.disabled = true; btn.textContent = "Saving...";
+    const btn = event?.target;
+    const originalText = btn?.textContent;
+    if (btn) { btn.disabled = true; btn.textContent = "Saving..."; }
 
     try {
         const userRef = doc(db, "users", currentUser.uid);
         await updateDoc(userRef, {
-            nickname: newNickname,
-            email: newEmail,
-            age: newAge
+            nickname:    newNickname,
+            freeFireUid: newFreeFireUid || "",
+            age:         newAge
         });
 
         if (userProfile) {
-            userProfile.nickname = newNickname;
-            userProfile.email = newEmail;
-            userProfile.age = newAge;
+            userProfile.nickname    = newNickname;
+            userProfile.freeFireUid = newFreeFireUid;
+            userProfile.age         = newAge;
         }
 
         closeCustomModal();
         showMessage("Profile updated successfully!");
-        setTimeout(() => location.reload(), 1000);
     } catch (err) {
         console.error("Profile update error:", err);
-        showMessage("Error updating profile. Permission Denied or Invalid Input.");
+        showMessage("Error updating profile: " + err.message);
     } finally {
-        btn.disabled = false; btn.textContent = originalText;
+        if (btn) { btn.disabled = false; btn.textContent = originalText; }
     }
 };
 
-
-
-
-
-// WITH THIS
 window.openChangePassword = function() {
     const content = document.getElementById("customActionContent");
     document.getElementById("customActionModal").classList.add("active");
     
     content.innerHTML = `
         <div class="modal-header">
-            <h2>Security</h2>
-            <button class="close-modal" onclick="closeCustomModal()">×</button>
+            <h2 style="font-size:18px;">&#128274; Security</h2>
+            <button class="close-modal" onclick="closeCustomModal()">&#215;</button>
         </div>
         <div id="passFlowContent">
+            <p style="color:#888; font-size:13px; margin-bottom:16px;">Enter your current password to set a new one, or use Forgot Password if you don't remember it.</p>
+            <label style="color:#888;font-size:12px;font-weight:600;">CURRENT PASSWORD</label>
             <div style="position: relative;">
                 <input id="currPass" type="password" placeholder="Current Password" style="padding-right: 40px;">
-                <span onclick="togglePasswordVisibility('currPass', this)" style="position: absolute; right: 12px; top: 12px; cursor: pointer; font-size: 16px; user-select: none;">👁️</span>
             </div>
             <div style="position: relative;">
                 <input id="newPass" type="password" placeholder="New Password" style="padding-right: 40px;">
@@ -5452,7 +5469,8 @@ window.createAccount = async function() {
 
        let userData = {
             uid, email, age,
-            nickname: document.getElementById("regNickname")?.value.trim() || "", // <-- ADD THIS
+            nickname: document.getElementById("regNickname")?.value.trim() || "",
+            freeFireUid: document.getElementById("regUID")?.value.trim() || "",
             gameRole: document.getElementById("regGameRole")?.value || "All-Rounder",
             role: selectedRole || "viewer",
             isAdmin: false,
@@ -6080,6 +6098,7 @@ window.openViewerUpgradeModal = function() {
         ">
             <div style="background:#111827; border:1px solid orange; border-radius:14px; padding:28px; width:100%; max-width:440px; margin:auto;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+
                     <h3 style="color:orange; margin:0;">👑 Upgrade Account</h3>
                     <button onclick="document.getElementById('viewerUpgradeModal').remove()" 
                             style="background:none;border:none;color:#888;font-size:22px;cursor:pointer;">×</button>
@@ -6538,6 +6557,263 @@ window.showPayLaterPopup       = window.showPayLaterPopup;
 window.requestPushPermissions  = window.requestPushPermissions;
 window.triggerPushNotification = window.triggerPushNotification;
 window.renderLeaderboard       = window.renderLeaderboard;
+
+// ==========================================
+// PASSWORD STRENGTH METER
+// ==========================================
+window.updatePassStrength = function(pass, barId) {
+    barId = barId || 'newPassStrength';
+    const bar = document.getElementById(barId) || document.getElementById('strengthFill')?.parentElement;
+    const fill = document.getElementById('strengthFill');
+    
+    let level = 0;
+    if (pass.length >= 6) level = 1;
+    if (pass.length >= 8 && /[0-9]/.test(pass)) level = 2;
+    if (pass.length >= 10 && /[0-9]/.test(pass) && /[^a-zA-Z0-9]/.test(pass)) level = 3;
+    
+    // CSS class-based bar
+    if (bar && bar.classList.contains('pass-strength-bar')) {
+        bar.dataset.level = level;
+    }
+    // Inline bar fallback
+    if (fill) {
+        const pct  = ['0%','33%','66%','100%'][level];
+        const col  = ['transparent','#ef4444','#f59e0b','#00ff88'][level];
+        fill.style.width      = pct;
+        fill.style.background = col;
+    }
+};
+
+// Legacy alias used by signup form
+window.checkPasswordStrength = function() {
+    const pass = document.getElementById('regPass')?.value || '';
+    window.updatePassStrength(pass, 'newPassStrength');
+    // also update inline bar if present
+    const fill = document.getElementById('strengthFill');
+    if (fill) {
+        let level = 0;
+        if (pass.length >= 6) level = 1;
+        if (pass.length >= 8 && /[0-9]/.test(pass)) level = 2;
+        if (pass.length >= 10 && /[0-9]/.test(pass) && /[^a-zA-Z0-9]/.test(pass)) level = 3;
+        const pct = ['0%','33%','66%','100%'][level];
+        const col = ['transparent','#ef4444','#f59e0b','#00ff88'][level];
+        fill.style.width      = pct;
+        fill.style.background = col;
+    }
+};
+
+window.sendForgotLink = window.sendForgotLink || async function() {
+    const email = document.getElementById('forgotEmailInput')?.value.trim();
+    if (!email) { showMessage('Please enter your email'); return; }
+    try {
+        await sendPasswordResetEmail(auth, email);
+        showMessage('✅ Reset link sent to ' + email + '! Check Spam too.');
+        closeCustomModal();
+    } catch (err) {
+        showMessage('Error: ' + err.message.replace('Firebase: ', ''));
+    }
+};
+
+// ==========================================
+// VIEWER BROKER MODE — Authenticated broker flow
+// A Viewer can register OTHER players for tournaments
+// ==========================================
+window.showBrokerTournamentPicker = function() {
+    if (!currentUser || !userProfile) { openLogin(); return; }
+    
+    // Only viewers (no team) can use broker mode
+    if (userProfile.role !== 'viewer' && (userProfile.teamId)) {
+        showMessage('Broker mode is only for Viewer accounts with no team.');
+        return;
+    }
+
+    const availableTournaments = tournaments.filter(t => t.category === 'upcoming' && t.status === 'open');
+    if (availableTournaments.length === 0) {
+        showMessage('No upcoming open tournaments available for registration.');
+        return;
+    }
+
+    const existing = document.getElementById('brokerPickerModal');
+    if (existing) existing.remove();
+
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="brokerPickerModal" style="
+            position:fixed;inset:0;background:rgba(0,0,0,0.92);
+            display:flex;align-items:center;justify-content:center;
+            z-index:10010;padding:20px;overflow-y:auto;
+        ">
+            <div style="background:#111;border:1px solid #ffd700;border-radius:16px;padding:28px;
+                        width:100%;max-width:400px;margin:auto;
+                        animation:modalSlide 0.4s cubic-bezier(0.16,1,0.3,1);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+                    <h3 style="color:#ffd700;margin:0;">🎯 Select Tournament</h3>
+                    <button onclick="document.getElementById('brokerPickerModal').remove()"
+                        style="background:none;border:none;color:#888;font-size:24px;cursor:pointer;line-height:1;">×</button>
+                </div>
+                <p style="color:#9ca3af;font-size:13px;margin:0 0 20px 0;">
+                    Select an upcoming tournament to register players for:
+                </p>
+                <div style="display:flex;flex-direction:column;gap:12px;max-height:300px;overflow-y:auto;">
+                    ${availableTournaments.map(t => `
+                        <button onclick="document.getElementById('brokerPickerModal').remove(); window.openViewerBrokerModal('${t.id}')"
+                            style="width:100%;padding:14px;background:#1a1a1a;color:#fff;border:1px solid #333;
+                                   border-radius:8px;font-size:14px;cursor:pointer;transition:0.2s;text-align:left;">
+                            <b style="color:#ffd700;">${t.title}</b>
+                            <div style="font-size:12px;color:#888;margin-top:4px;">Mode: ${t.mode} | Fee: ₹${t.entryFee}</div>
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    `);
+};
+
+window.openViewerBrokerModal = function(tournamentId) {
+    if (!currentUser || !userProfile) { openLogin(); return; }
+    
+    // Only viewers (no team) can use broker mode
+    if (userProfile.role !== 'viewer' && (userProfile.teamId)) {
+        showMessage('Broker mode is only for Viewer accounts with no team.');
+        return;
+    }
+
+    const existing = document.getElementById('viewerBrokerModal');
+    if (existing) existing.remove();
+
+    document.body.insertAdjacentHTML('beforeend', `
+        <div id="viewerBrokerModal" style="
+            position:fixed;inset:0;background:rgba(0,0,0,0.92);
+            display:flex;align-items:center;justify-content:center;
+            z-index:10010;padding:20px;overflow-y:auto;
+        ">
+            <div style="background:#111;border:1px solid #ffd700;border-radius:16px;padding:28px;
+                        width:100%;max-width:460px;margin:auto;
+                        animation:modalSlide 0.4s cubic-bezier(0.16,1,0.3,1);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <h3 style="color:#ffd700;margin:0;">🎯 Broker Registration</h3>
+                    <button onclick="document.getElementById('viewerBrokerModal').remove()"
+                        style="background:none;border:none;color:#888;font-size:24px;cursor:pointer;line-height:1;">×</button>
+                </div>
+                <p style="color:#9ca3af;font-size:13px;margin:0 0 20px 0;">
+                    As a <b style="color:#ffd700;">Viewer/Broker</b>, you can register other players for this tournament.
+                    You are responsible for the accuracy of all UIDs and details you submit.
+                </p>
+                
+                <div style="background:rgba(255,68,68,0.07);border:1px solid rgba(255,68,68,0.25);
+                            border-radius:8px;padding:12px 14px;margin-bottom:18px;">
+                    <p style="color:#ff4444;font-size:12px;margin:0;line-height:1.6;">
+                        ⚠️ <b>Important:</b> Misuse of broker mode (fake UIDs, fraudulent entries) will result in
+                        permanent account ban. All submissions are logged under your account UID.
+                    </p>
+                </div>
+                
+                <label style="color:#888;font-size:12px;font-weight:600;letter-spacing:0.5px;display:block;margin-bottom:6px;">TEAM NAME</label>
+                <input id="brokerTeamName" type="text" placeholder="e.g. Phoenix Squad"
+                    style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #2a2a2a;
+                           color:#fff;border-radius:8px;font-size:14px;margin-bottom:14px;box-sizing:border-box;">
+                
+                <label style="color:#888;font-size:12px;font-weight:600;letter-spacing:0.5px;display:block;margin-bottom:6px;">TEAM CODE (if existing)</label>
+                <input id="brokerTeamCode" type="text" placeholder="Team code or leave blank"
+                    style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #2a2a2a;
+                           color:#fff;border-radius:8px;font-size:14px;margin-bottom:14px;box-sizing:border-box;">
+                
+                <label style="color:#888;font-size:12px;font-weight:600;letter-spacing:0.5px;display:block;margin-bottom:8px;">PLAYER UIDs (Leader first)</label>
+                ${[1,2,3,4].map(i => `
+                    <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+                        <span style="color:#555;font-size:12px;width:22px;">P${i}</span>
+                        <input id="brokerUID${i}" type="text" placeholder="Player ${i} UID"
+                            style="flex:1;padding:10px 12px;background:#1a1a1a;border:1px solid #2a2a2a;
+                                   color:#fff;border-radius:8px;font-size:13px;box-sizing:border-box;">
+                        <input id="brokerNick${i}" type="text" placeholder="Nickname"
+                            style="flex:1;padding:10px 12px;background:#1a1a1a;border:1px solid #2a2a2a;
+                                   color:#fff;border-radius:8px;font-size:13px;box-sizing:border-box;">
+                    </div>
+                `).join('')}
+                
+                <label style="color:#888;font-size:12px;font-weight:600;letter-spacing:0.5px;display:block;margin-bottom:6px;">YOUR CONTACT (for verification)</label>
+                <input id="brokerContact" type="text" placeholder="Your phone or backup email"
+                    style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #2a2a2a;
+                           color:#fff;border-radius:8px;font-size:14px;margin-bottom:20px;box-sizing:border-box;">
+                
+                <button onclick="submitBrokerRegistration('${tournamentId}')"
+                    style="width:100%;padding:14px;background:#ffd700;color:#000;border:none;
+                           border-radius:10px;font-weight:800;font-size:15px;cursor:pointer;
+                           font-family:inherit;transition:0.2s;">
+                    📋 Submit Registration
+                </button>
+            </div>
+        </div>
+    `);
+};
+
+window.submitBrokerRegistration = async function(tournamentId) {
+    if (!currentUser || !userProfile) return;
+
+    const teamName   = document.getElementById('brokerTeamName')?.value.trim();
+    const teamCode   = document.getElementById('brokerTeamCode')?.value.trim() || 'BROKER';
+    const contact    = document.getElementById('brokerContact')?.value.trim();
+    
+    if (!teamName) { showMessage('Please enter a team name'); return; }
+    if (!contact)  { showMessage('Please enter your contact info'); return; }
+
+    const playersData = [1,2,3,4].map(i => ({
+        uid:      document.getElementById(`brokerUID${i}`)?.value.trim() || '',
+        nickname: document.getElementById(`brokerNick${i}`)?.value.trim() || ''
+    })).filter(p => p.uid);
+
+    if (playersData.length === 0) { showMessage('Please enter at least one player UID'); return; }
+
+    const btn = document.querySelector('#viewerBrokerModal button[onclick^="submitBroker"]');
+    const orig = btn?.textContent;
+    if (btn) { btn.disabled = true; btn.textContent = 'Submitting...'; }
+
+    try {
+        const tournament = tournaments.find(t => t.id === tournamentId);
+        const brokerDocId = 'broker_' + currentUser.uid;
+        
+        await setDoc(doc(db, 'tournaments', tournamentId, 'upcomingRegistrations', brokerDocId), {
+            teamName,
+            teamCode,
+            teamId:      brokerDocId,
+            brokerUid:   currentUser.uid,
+            brokerEmail: userProfile.email,
+            brokerContact: contact,
+            playersData,
+            uids: playersData.map(p => p.uid),
+            status:        'pending',
+            paymentStatus: 'Pending Payment',
+            submittedAt:   serverTimestamp(),
+            isBrokerEntry: true,
+        });
+
+        // Notify admin via verifications collection
+        await setDoc(doc(db, 'tournaments', tournamentId, 'verifications', brokerDocId), {
+            teamName,
+            teamCode,
+            teamId:      brokerDocId,
+            brokerUid:   currentUser.uid,
+            brokerEmail: userProfile.email,
+            playersData,
+            uids: playersData.map(p => p.uid),
+            status:  'pending',
+            type:    'broker',
+            submittedAt: serverTimestamp(),
+        });
+
+        document.getElementById('viewerBrokerModal')?.remove();
+        showMessage('✅ Broker registration submitted! Admin will review shortly.');
+    } catch (err) {
+        console.error('Broker registration error:', err);
+        showMessage('Error: ' + err.message);
+        if (btn) { btn.disabled = false; btn.textContent = orig; }
+    }
+};
+
+window.openViewerBrokerModal  = window.openViewerBrokerModal;
+window.submitBrokerRegistration = window.submitBrokerRegistration;
+window.updatePassStrength     = window.updatePassStrength;
+window.checkPasswordStrength  = window.checkPasswordStrength;
+window.sendForgotLink         = window.sendForgotLink;
 // ==========================================
 // 5. IN-APP TEAM SETUP (FOR EXISTING USERS)
 // ==========================================

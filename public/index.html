@@ -664,8 +664,7 @@
     <p style="color: #555; font-size: 13px; margin: 0;">© 2026 NPC's Esports Tournaments | All Rights Reserved</p>
   </footer>
 
-  <!-- ══ LOGIN MODAL ════════════════════════════════════════ -->
-// WITH THIS
+  <!-- ══ LOGIN MODAL ════════════════════════════════════════════ -->
   <div id="loginModal" class="modal-overlay">
     <div class="modal-card" style="max-height: 85vh; overflow-y: auto; padding-right: 5px;">
 
@@ -692,17 +691,19 @@
 
       <div id="createView" style="display:none;">
         <h2>Create Account</h2>
-       <div id="signupStep1">
+       <div id="signupStep1" class="signup-step">
           <input id="regEmail"   placeholder="Gmail ID"          type="email">
           <div style="position: relative;">
-            <input id="regPass" type="password" placeholder="Password" style="width: 100%; padding-right: 40px; box-sizing: border-box;">
+            <input id="regPass" type="password" placeholder="Password" oninput="checkPasswordStrength()" style="width: 100%; padding-right: 40px; box-sizing: border-box;">
             <span onclick="togglePasswordVisibility('regPass', this)" style="position: absolute; right: 12px; top: 12px; cursor: pointer; font-size: 16px; user-select: none; z-index: 10;">👁️</span>
           </div>
+          <div id="strengthBar" style="height:4px;width:100%;background:#333;margin:8px 0;border-radius:2px;"><div id="strengthFill" style="height:100%;width:0%;transition:0.3s;"></div></div>
           <div style="position: relative;">
             <input id="regConfirm" type="password" placeholder="Confirm Password" style="width: 100%; padding-right: 40px; box-sizing: border-box;">
             <span onclick="togglePasswordVisibility('regConfirm', this)" style="position: absolute; right: 12px; top: 12px; cursor: pointer; font-size: 16px; user-select: none; z-index: 10;">👁️</span>
           </div>
-          <input id="regNickname" type="text"                    placeholder="IN-Game Nickname (e.g. progamer)">
+          <input id="regNickname" type="text" placeholder="In-Game Nickname">
+          <input id="regUID"      type="number" placeholder="Free Fire UID">
           <input type="number"   id="regAge"  placeholder="Your Age (12-60)" min="12" max="60">
           <select id="regGameRole" style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #2a2a2a;color:#fff;border-radius:8px;font-size:14px;font-family:inherit;margin-bottom:4px;">
             <option value="" disabled selected style="color:#888;">Select your In-Game Role</option>
@@ -717,10 +718,10 @@
           <button onclick="sendSignupOTP()" id="btnSendOTP" style="background:#00ff88;color:#000;">Verify Details</button>
         </div>
 
-        <div id="signupStep2" style="display:none;margin-top:15px;">
+        <div id="signupStep2" class="signup-step" style="display:none;margin-top:15px;">
     <div style="background:#1a2a1a;padding:25px;border-radius:10px;border:1px solid #00ff88;text-align:center;margin-bottom:20px;">
         <div style="font-size:50px;margin-bottom:15px;">📧</div>
-        <h3 style="color:#00ff88;margin:0 0 10px 0;">Check Your Gmail!</h3>
+        <h3 style="color:#00ff88;margin:0 0 10px 0;">Check Your Email!</h3>
         <p style="color:#888;font-size:13px;margin:0;">We've sent a verification link to your email address.</p>
     </div>
     

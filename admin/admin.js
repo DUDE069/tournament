@@ -1398,6 +1398,7 @@ window.addTournament = async function() {
             tournamentData.entryFee = Number(document.getElementById("tournamentFee")?.value) || 0;
             tournamentData.mode = document.getElementById("tournamentMode")?.value || "Solo";
             tournamentData.duration = Number(document.getElementById("tournamentDuration")?.value) || 60;
+            tournamentData.totalSlots = Math.max(2, Number(document.getElementById("tournamentTotalSlots")?.value) || 12);
             tournamentData.prize = {
                 first: Number(document.getElementById("prizeFirst")?.value) || 0,
                 second: Number(document.getElementById("prizeSecond")?.value) || 0,
@@ -2175,8 +2176,9 @@ window.manageTournamentSlots = async function(tournamentId) {
             return tA - tB;
         });
 
-        const confirmed  = allTeams.filter(t => t.paymentStatus !== "Waitlist").slice(0, 12);
-        const waitlisted = allTeams.filter(t => t.paymentStatus === "Waitlist" || allTeams.indexOf(t) >= 12);
+        const totalSlots = tournament.totalSlots || 12;
+        const confirmed  = allTeams.filter(t => t.paymentStatus !== "Waitlist").slice(0, totalSlots);
+        const waitlisted = allTeams.filter(t => t.paymentStatus === "Waitlist" || allTeams.indexOf(t) >= totalSlots);
         
         // ✅ X-AXIS SCROLL FIX: min-width 1200px to stop columns from crushing together
         let html = `
@@ -2193,7 +2195,7 @@ window.manageTournamentSlots = async function(tournamentId) {
                 </thead>
                 <tbody id="slotTableBody">`;
 
-        for (let slot = 1; slot <= 12; slot++) {
+        for (let slot = 1; slot <= totalSlots; slot++) {
             const team = confirmed[slot - 1] || null;
 
             for (let pi = 0; pi < rowsPerTeam; pi++) {
@@ -2298,7 +2300,7 @@ window.manageTournamentSlots = async function(tournamentId) {
         `;
         
         let hasTeamsToRank = false;
-        for (let slot = 1; slot <= 12; slot++) {
+        for (let slot = 1; slot <= totalSlots; slot++) {
             const team = confirmed[slot - 1] || null;
             if (team) {
                 hasTeamsToRank = true;
@@ -2583,22 +2585,44 @@ window.rejectChangeRequest = async function(tournamentId, userId) {
 
 
 window.kickTeamFromSlot = async function(tournamentId, teamId) {
-    if (!confirm("Kick this team? This will delete their slot and notify them.")) return;
+    if (!confirm("Kick this team? This will remove all their data and notify every team member.")) return;
     try {
-        await deleteDoc(doc(db, "tournaments", tournamentId, "slots", teamId)).catch(() => {});
-        await deleteDoc(doc(db, "tournaments", tournamentId, "participants", teamId)).catch(() => {});
-        
-        await sendDualNotification(teamId, {
+        // 1. Delete from all tournament subcollections
+        await Promise.allSettled([
+            deleteDoc(doc(db, "tournaments", tournamentId, "slots",                  teamId)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "participants",           teamId)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "verifications",          teamId)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations",  teamId)),
+        ]);
+
+        // 2. Look up team members and notify ALL of them
+        const notifyPayload = {
             type:       "admin_notice",
             title:      "❌ Removed from Tournament",
             message:    "Your team has been removed from the tournament slot. Please contact admin for details.",
             actionLink: `tournament=${tournamentId}`
-        });
+        };
         
-        showToast("Team kicked & notified.", "success");
+        try {
+            const teamSnap = await getDoc(doc(db, "teams", teamId));
+            if (teamSnap.exists()) {
+                const members = teamSnap.data().members || [teamId];
+                await Promise.all(members.map(uid => sendDualNotification(uid, notifyPayload)));
+            } else {
+                // Fallback: notify whoever the teamId maps to (leader)
+                await sendDualNotification(teamId, notifyPayload);
+            }
+        } catch (notifyErr) {
+            // Notification failure should not block the kick
+            console.warn("[KICK] Notification partial failure:", notifyErr);
+            await sendDualNotification(teamId, notifyPayload).catch(() => {});
+        }
+
+        showToast("Team kicked, all data removed & all members notified.", "success");
         manageTournamentSlots(tournamentId);
     } catch (e) {
-        showToast("Error kicking team.", "error");
+        console.error("[KICK]", e);
+        showToast("Error kicking team: " + (e.message || "Unknown error"), "error");
     }
 };
 
@@ -2608,8 +2632,8 @@ window.promoteFromWaitlist = async function(tournamentId, teamId) {
     if (!slotNumberStr) return;
 
     const slotNumber = parseInt(slotNumberStr);
-    if (isNaN(slotNumber) || slotNumber < 1 || slotNumber > 12) {
-        showToast("Invalid slot number. Please enter a number between 1 and 12.", "warning");
+    if (isNaN(slotNumber) || slotNumber < 1) {
+        showToast("Invalid slot number.", "warning");
         return;
     }
 

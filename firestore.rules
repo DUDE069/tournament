@@ -146,6 +146,11 @@ service cloud.firestore {
     // ==========================================
     // 6. SYSTEM & ADMIN DATA
     // ==========================================
+    match /refundRequests/{requestId} {
+      allow create: if isLoggedIn();
+      allow read, update, delete: if isAdmin();
+    }
+    
     match /adminNotifications/{notifId} { 
       allow create: if isLoggedIn(); 
       allow read, update, delete: if isAdmin(); 
