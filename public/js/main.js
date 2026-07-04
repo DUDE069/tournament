@@ -1291,6 +1291,7 @@ window.confirmPayment = async function(tournamentId) {
             teamId:       userProfile.teamId,
             teamName:     userProfile.teamName,
             submittedBy:  currentUser.uid,
+            userId:       currentUser.uid,
             submittedByName: getUserDisplayName(),
             utr:          utr,
             status:       "pending_verification",
@@ -2408,6 +2409,7 @@ window.reportCheater = async function(tournamentId, teamId, reason) {
         reportedTeam: teamId,
         reason: reason,
         reportedBy: currentUser.uid,
+        userId: currentUser.uid,
         reporterName: userProfile.email || 'Anonymous',
         createdAt: serverTimestamp(),
         status: 'pending'
@@ -2419,6 +2421,7 @@ window.reportCheater = async function(tournamentId, teamId, reason) {
         title: "🚨 Cheating Report",
         message: `New report for tournament ${tournamentId}`,
         type: 'report',
+        userId: currentUser.uid,
         read: false,
         createdAt: serverTimestamp()
     });

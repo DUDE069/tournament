@@ -1,11 +1,28 @@
 // =====================================================
-// paymentStage.js (v4.1 - Secured via Render.com Backend)
+// paymentStage.js (v4.2 - Security Hardened)
 // =====================================================
 
 import { db, auth } from './js/firebase.js';
 import {
   doc, onSnapshot, updateDoc, setDoc, serverTimestamp, getDoc
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+// 🔒 SECURITY FIX (Issue 6): Suppress sensitive payment logs in production.
+// Payment IDs, Order IDs, and Signatures must never appear in browser console
+// on a live site. Set to true ONLY during local development/debugging.
+const PAYMENT_DEBUG_MODE = false;
+if (!PAYMENT_DEBUG_MODE) {
+  // Redirect payment-specific logs to a no-op to protect sensitive data.
+  // This does NOT affect main.js logs (they have their own DEBUG_MODE guard).
+  const _noop = () => {};
+  // Override is scoped to this module only via the closure pattern in main.js.
+  // We use a local wrapper below instead of overriding global console.
+}
+
+// Safe payment logger — use this instead of console.log in this file
+function payLog(...args) { if (PAYMENT_DEBUG_MODE) console.log(...args); }
+function payError(...args) { if (PAYMENT_DEBUG_MODE) console.error(...args); }
+function payWarn(...args) { if (PAYMENT_DEBUG_MODE) console.warn(...args); }
 
 // Variables
 let unsubPayment = null;
@@ -45,7 +62,7 @@ export function enterPaymentStage(userId, tournamentId, tournamentName, entryFee
 // PAY BUTTON CLICKED
 // ============================================
 async function startRazorpayPayment(tournamentId) {
-  console.log("[PAYMENT] Pay button clicked for:", tournamentId);
+  payLog("[PAYMENT] Pay button clicked for:", tournamentId);
   
   const btn = document.getElementById('payBtn');
   if (btn) {
@@ -64,7 +81,7 @@ async function startRazorpayPayment(tournamentId) {
     const tournament = tSnap.data();
     const entryFee = tournament.entryFee || 0;
 
-    console.log("[PAYMENT] Entry fee:", entryFee);
+    payLog("[PAYMENT] Entry fee:", entryFee);
 
     if (entryFee <= 0) {
       alert("Invalid entry fee!");
@@ -72,7 +89,7 @@ async function startRazorpayPayment(tournamentId) {
     }
 
     // STEP 1: Connect to your live Render Web Service to build a secure Order
-    console.log("[PAYMENT] Fetching secure order from Render backend...");
+    payLog("[PAYMENT] Fetching secure order from Render backend...");
     const response = await fetch('https://npc-secure-backend.onrender.com/create-razorpay-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -84,13 +101,13 @@ async function startRazorpayPayment(tournamentId) {
     }
 
     const backendOrder = await response.json();
-    console.log("[PAYMENT] Secure order received:", backendOrder);
+    payLog("[PAYMENT] Secure order received (order created)");
 
     // STEP 2: Pass the secure server data into your checkout interface
     openRazorpayCheckout(tournamentId, backendOrder.amount, tournament.title, backendOrder.orderId);
 
   } catch (error) {
-    console.error("[PAYMENT] Error:", error);
+    payError("[PAYMENT] Error:", error);
     alert("Error preparing payment: " + error.message);
   } finally {
     if (btn) {
@@ -104,7 +121,7 @@ async function startRazorpayPayment(tournamentId) {
 // OPEN RAZORPAY POPUP
 // ============================================
 function openRazorpayCheckout(tournamentId, calculatedAmount, tournamentName, secureOrderId) {
-  console.log("[PAYMENT] Opening Razorpay checkout for Order ID:", secureOrderId);
+  payLog("[PAYMENT] Opening Razorpay checkout...");
 
   const options = {
     key: RAZORPAY_KEY_ID,
@@ -121,27 +138,27 @@ function openRazorpayCheckout(tournamentId, calculatedAmount, tournamentName, se
     modal: {
       confirmClose: true,
       ondismiss: function() {
-        console.log("[PAYMENT] Payment popup closed");
+        payLog("[PAYMENT] Payment popup closed");
         showToast("Payment cancelled", "warning");
       }
     },
     handler: async function(response) {
-      console.log("[PAYMENT] Payment success:", response);
+      payLog("[PAYMENT] Payment success response received");
       await handlePaymentSuccess(tournamentId, response);
     }
   };
 
   try {
-    console.log("[PAYMENT] Creating Razorpay instance...");
+    payLog("[PAYMENT] Creating Razorpay instance...");
     const rzp = new Razorpay(options);
     rzp.on("payment.failed", function(response) {
-      console.error("[PAYMENT] Payment failed:", response.error);
+      payError("[PAYMENT] Payment failed:", response.error);
       showToast(`Payment failed: ${response.error.description}`, "error");
     });
-    console.log("[PAYMENT] Opening popup...");
+    payLog("[PAYMENT] Opening popup...");
     rzp.open();
   } catch (error) {
-    console.error("[PAYMENT] Razorpay error:", error);
+    payError("[PAYMENT] Razorpay error:", error);
     showToast("Error opening payment: " + error.message, "error");
   }
 }
@@ -150,7 +167,7 @@ function openRazorpayCheckout(tournamentId, calculatedAmount, tournamentName, se
 // HANDLE PAYMENT SUCCESS
 // ============================================
 async function handlePaymentSuccess(tournamentId, response) {
-  console.log("[PAYMENT] Handling success:", response);
+  payLog("[PAYMENT] Handling success flow");
 
   const btn = document.getElementById('payBtn');
   if (btn) {
@@ -161,7 +178,7 @@ async function handlePaymentSuccess(tournamentId, response) {
   try {
     const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = response;
 
-    console.log("[PAYMENT] Sending verification request to backend...");
+    payLog("[PAYMENT] Sending verification request to backend...");
     const verificationResponse = await fetch('https://npc-secure-backend.onrender.com/verify-payment', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -176,10 +193,10 @@ async function handlePaymentSuccess(tournamentId, response) {
     });
 
     const verificationResult = await verificationResponse.json();
-    console.log("[PAYMENT] Backend verification response:", verificationResult);
+    payLog("[PAYMENT] Backend verification completed");
 
     if (!verificationResponse.ok || !verificationResult.success) {
-      console.error("[PAYMENT] Backend verification failed:", verificationResult.message || "Unknown error");
+      payError("[PAYMENT] Backend verification failed:", verificationResult.message || "Unknown error");
       showToast(`Payment verification failed: ${verificationResult.message || "Please contact support."}`, "error");
       return;
     }
@@ -257,7 +274,7 @@ async function handlePaymentSuccess(tournamentId, response) {
     );
 
   } catch (error) {
-    console.error("[PAYMENT] Verification error:", error);
+    payError("[PAYMENT] Verification error:", error);
     showToast("Payment recorded but verification pending. Contact support if issues persist.", "warning");
   }
 }
@@ -377,7 +394,7 @@ async function loadPaymentDetails(tournamentId) {
       if (amountEl) amountEl.textContent = `₹ ${t.entryFee || '—'}`;
     }
   } catch (error) {
-    console.error("[PAYMENT] Error loading details:", error);
+    payError("[PAYMENT] Error loading details:", error);
   }
 }
 
@@ -609,4 +626,4 @@ function showToast(message, type = "success") {
 // Attach to window so HTML onclick can find it
 window.startRazorpayPayment = startRazorpayPayment;
 
-console.log("[PAYMENT] Secured paymentStage.js successfully initialized!");
+payLog("[PAYMENT] Secured paymentStage.js v4.2 initialized.");
