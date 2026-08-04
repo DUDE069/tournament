@@ -68,7 +68,7 @@ section {
     background: var(--bg-main);
     /* Removed sticky positioning; this element will now scroll with the page */
     border-bottom: 2px solid var(--npc-blue);
-    padding: 10px 0;
+    padding: max(10px, env(safe-area-inset-top)) 0 10px 0;
 }
 
 .navbar {
@@ -2256,3 +2256,16 @@ button, .dash-card, .role-card {
 #customActionModal {
     z-index: 10004 !important;
 }
+ / *   W e b V i e w   n a t i v e   a p p   s t y l e s   * / 
+ b o d y . n a t i v e - a p p   . d o w n l o a d - s e c t i o n , 
+ b o d y . n a t i v e - a p p   a [ h r e f = " / N P C - E s p o r t . a p k " ]   { 
+         d i s p l a y :   n o n e   ! i m p o r t a n t ; 
+ } 
+  
+ 
+/* Native App WebView overrides */
+body.native-app .download-section,
+body.native-app a[href='/NPC-Esport.apk'] {
+    display: none !important;
+}
+

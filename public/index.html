@@ -394,7 +394,10 @@
       
       /* ✅ FIX: Enable absolute full-viewport scrolling for the modal box on mobile screens */
       #loginModal.modal-overlay.active {
-        display: block !important;
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
         overflow-y: auto !important;
         padding: 30px 12px !important;
         -webkit-overflow-scrolling: touch;
@@ -408,6 +411,13 @@
       }
     }
   </style>
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      if (navigator.userAgent.includes("NPCTournamentApp")) {
+        document.body.classList.add("native-app");
+      }
+    });
+  </script>
 </head>
 <body>
 
