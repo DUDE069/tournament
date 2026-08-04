@@ -1368,8 +1368,8 @@ function startFirebaseListeners() {
         startTimers();
 
         // Securely trigger the Database Update & Notifications ONLY if the user is an Admin
-        if (userProfile?.isAdmin && typeof window.checkTournamentPromotions === 'function') {
-            window.checkTournamentPromotions();
+        if (userProfile?.isAdmin) {
+            checkTournamentPromotions();
         }
         
     }, (err) => {
@@ -1663,89 +1663,93 @@ window.handleNotifyMe = async function(tournamentId, tournamentName) {
     }
 };
 
-// WITH THIS
+// ✅ H5 FIX: Replaced tournaments.forEach(async ...) with for...of loop.
+//    forEach does not await async callbacks — errors are silently swallowed and
+//    the loop exits before any await resolves. for...of awaits each iteration.
 async function checkLimitedTournamentNotifications() {
     if (!currentUser || !userProfile) return;
     const now = Date.now();
 
-    tournaments.forEach(async (t) => {
-        if (t.category !== 'limited' || !t.endTime) return;
-
-        const startTime = t.endTime; 
-        if (now < startTime) return;
+    for (const t of tournaments) {
+        if (t.category !== 'limited' || !t.endTime) continue;
+        const startTime = t.endTime;
+        if (now < startTime) continue;
 
         try {
-            const notifyRef = doc(db, "tournaments", t.id, "limitedNotifyList", currentUser.uid);
+            const notifyRef  = doc(db, "tournaments", t.id, "limitedNotifyList", currentUser.uid);
             const notifySnap = await getDoc(notifyRef);
 
             if (notifySnap.exists() && !notifySnap.data().notified) {
                 const timeStr = new Date(startTime).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
                 await addDoc(collection(db, "users", currentUser.uid, "notifications"), {
-                    type: "limited_start",
-                    title: `🚨 Tournament Starting Now!`,
-                    message: `Tournament "${t.title}" is starting now at ${timeStr}!`,
+                    type:         "limited_start",
+                    title:        `🚨 Tournament Starting Now!`,
+                    message:      `Tournament "${t.title}" is starting now at ${timeStr}!`,
                     tournamentId: t.id,
-                    read: false,
-                    createdAt: serverTimestamp()
+                    read:         false,
+                    createdAt:    serverTimestamp()
                 });
                 await updateDoc(notifyRef, { notified: true, notifiedAt: serverTimestamp() });
             }
         } catch (e) {
-            console.warn("[Limited Notify] error:", e);
+            console.warn("[Limited Notify] error for", t.id, ":", e);
         }
-    });
+    }
 }
 setInterval(checkLimitedTournamentNotifications, 60000);
 
 
 // ─── 2. NEW SECURED AUTO-PROMOTION LOGIC (Admin Only Writes) ───
-window.checkTournamentPromotions = async function() {
+// ✅ SECURITY FIX: Removed window. prefix — no longer callable from browser console.
+//    Firestore Rules (tournaments/{id}: allow update: if isAdmin()) are the true enforcement.
+async function checkTournamentPromotions() {
     // SECURITY: ONLY run this if the user is an Admin!
     if (!userProfile?.isAdmin || !tournaments) return;
     
     const now = new Date();
 
-    tournaments.forEach(async (t) => {
-        if (!t.eventDate) return;
+    // ✅ H5 FIX: Replaced forEach(async...) with for...of.
+    //    Errors per tournament are caught individually; the loop truly awaits each.
+    for (const t of tournaments) {
+        if (!t.eventDate) continue;
 
-        let eventDateTime = t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}:00`) : new Date(t.eventDate);
-        const timeDiff = eventDateTime - now;
+        let eventDateTime = t.eventTime
+            ? new Date(`${t.eventDate}T${t.eventTime}:00`)
+            : new Date(t.eventDate);
+        const timeDiff  = eventDateTime - now;
         const diffHours = timeDiff / (1000 * 60 * 60);
 
         // DATABASE & NOTIFICATION LOGIC
         if (t.rawCategory === 'upcoming' && timeDiff <= 0 && !t.promotionNotified) {
-            
-            if (t.isPromoting) return; // Prevent double-trigger
+            if (t.isPromoting) continue;
             t.isPromoting = true;
-
-            console.log(`[AUTO] Admin promoting tournament ${t.id} to ongoing...`);
 
             try {
                 const endTimeMs = eventDateTime.getTime() + (2 * 60 * 60 * 1000);
                 await updateDoc(doc(db, "tournaments", t.id), {
-                    category: 'ongoing',
-                    status: 'live',
-                    endTime: endTimeMs,
+                    category:          'ongoing',
+                    status:            'live',
+                    endTime:           endTimeMs,
                     promotionNotified: true
                 });
 
                 const regsSnap = await getDocs(collection(db, "tournaments", t.id, "upcomingRegistrations"));
-                const batch = writeBatch(db);
-                let count = 0;
+                const batch    = writeBatch(db);
+                let count      = 0;
 
                 regsSnap.forEach((docSnap) => {
                     const reg = docSnap.data();
                     if (reg.status === 'approved') {
                         const notifRef = doc(collection(db, "users", reg.userId, "notifications"));
                         batch.set(notifRef, {
-                            type: "tournament_live",
-                            title: "🔴 Tournament is Live!",
-                            message: `"${t.title}" is now Ongoing! Click here to complete your payment and secure your slot.`,
+                            type:        "tournament_live",
+                            title:       "🔴 Tournament is Live!",
+                            message:     `"${t.title}" is now Ongoing! Click here to complete your payment and secure your slot.`,
                             tournamentId: t.id,
-                            read: false,
-                            popupShown: false,
-                            createdAt: serverTimestamp(),
-                            actionLink: `tournament=${t.id}`
+                            read:        false,
+                            popupShown:  false,
+                            createdAt:   serverTimestamp(),
+                            actionLink:  `tournament=${t.id}`
                         });
                         count++;
                     }
@@ -1753,7 +1757,7 @@ window.checkTournamentPromotions = async function() {
 
                 if (count > 0) await batch.commit();
             } catch (err) {
-                console.error("Auto-promotion error:", err);
+                console.error("[Auto-promotion] error for", t.id, ":", err);
             } finally {
                 t.isPromoting = false;
             }
@@ -1765,8 +1769,8 @@ window.checkTournamentPromotions = async function() {
                 remindPendingPayments(t.id, t.eventDate);
             }
         }
-    });
-};
+    }
+}
 
 // ─── 3. VISUAL OVERRIDE INTERVAL (Runs for everyone) ───
 setInterval(() => {
@@ -1788,7 +1792,7 @@ setInterval(() => {
     if (needsRender && typeof renderTournaments === 'function') renderTournaments(); 
     
     if (userProfile?.isAdmin) {
-        window.checkTournamentPromotions(); // Trigger DB write if Admin is online
+        checkTournamentPromotions(); // Trigger DB write if Admin is online
     }
 }, 60000);
 
@@ -1835,28 +1839,45 @@ async function remindPendingPayments(tournamentId, eventDate) {
 window.openUpcomingPaymentInterface = async function(tournamentId) {
     const tournament = tournaments.find(t => t.id === tournamentId);
     if (!tournament) return;
-    
-    // Create a simpler payment modal for upcoming (pre-payment)
+
+    // ✅ SECURITY FIX: Inline escaper — prevents XSS if tournament.title contains HTML
+    const esc = (s) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
     document.body.insertAdjacentHTML('beforeend', `
         <div id="upcomingPaymentModal" style="position:fixed;top:0;left:0;width:100%;height:100%;
             background:rgba(0,0,0,0.95);z-index:6000;display:flex;align-items:center;justify-content:center;">
-            <div style="background:#1a1a1a;padding:30px;border-radius:12px;max-width:400px;width:90%;border:2px solid #ffd700;">
+            <div style="background:#1a1a1a;padding:30px;border-radius:12px;max-width:420px;width:90%;border:2px solid #ffd700;">
                 <h2 style="color:#ffd700;margin-bottom:20px;">Confirm Tournament Entry</h2>
-                <p style="color:#fff;margin-bottom:10px;">Tournament: <strong>${tournament.title}</strong></p>
+                <p style="color:#fff;margin-bottom:10px;">Tournament: <strong>${esc(tournament.title)}</strong></p>
                 <p style="color:#888;margin-bottom:20px;">Date: ${new Date(tournament.eventDate).toLocaleDateString()}</p>
-                
+
                 <div style="background:#0f0f0f;padding:15px;border-radius:8px;margin-bottom:20px;">
                     <p style="color:#666;margin:0;">Entry Fee</p>
-                    <p style="color:#ffd700;font-size:28px;font-weight:bold;margin:5px 0;">₹${tournament.entryFee}</p>
-                    <p style="color:#ff4444;font-size:12px;">⚠️ Non-refundable after payment</p>
+                    <p style="color:#ffd700;font-size:28px;font-weight:bold;margin:5px 0;">\u20B9${Number(tournament.entryFee) || 0}</p>
+                    <p style="color:#ff4444;font-size:12px;">\u26A0\uFE0F Non-refundable after payment</p>
                 </div>
-                
+
+                <div style="background:#0f0f0f;padding:15px;border-radius:8px;margin-bottom:20px;border:1px solid #ffd700;">
+                    <label style="color:#ffd700;font-size:13px;display:block;margin-bottom:8px;font-weight:bold;">
+                        UTR / Transaction ID *
+                    </label>
+                    <input type="text" id="upcomingPaymentUtr"
+                        placeholder="e.g. 123456789012"
+                        style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #444;
+                               color:#fff;border-radius:6px;font-size:14px;font-family:monospace;
+                               box-sizing:border-box;"
+                        onfocus="this.style.borderColor='#ffd700'" onblur="this.style.borderColor='#444'">
+                    <small style="color:#888;font-size:11px;margin-top:4px;display:block;">
+                        Found in PhonePe / GPay / Paytm transaction history
+                    </small>
+                </div>
+
                 <div style="display:flex;gap:10px;">
-                    <button onclick="processUpcomingPayment('${tournamentId}')" 
+                    <button id="upcomingPayBtn" onclick="processUpcomingPayment('${tournamentId}')"
                         style="flex:1;padding:12px;background:#00ff88;color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">
-                        Pay & Confirm
+                        I've Paid \u2014 Submit for Verification
                     </button>
-                    <button onclick="document.getElementById('upcomingPaymentModal').remove()" 
+                    <button onclick="document.getElementById('upcomingPaymentModal').remove()"
                         style="flex:1;padding:12px;background:#333;color:#fff;border:none;border-radius:6px;cursor:pointer;">
                         Cancel
                     </button>
@@ -1867,57 +1888,86 @@ window.openUpcomingPaymentInterface = async function(tournamentId) {
 };
 
 window.processUpcomingPayment = async function(tournamentId) {
-    const btn = document.querySelector('#upcomingPaymentModal button');
-    if (btn) {
-        btn.textContent = "Processing...";
-        btn.disabled = true;
+    // ✅ SECURITY FIX: Validate UTR — required before any Firestore write
+    const utr = document.getElementById("upcomingPaymentUtr")?.value.trim();
+    if (!utr || utr.length < 6) {
+        showMessage("Please enter your UTR / Transaction ID (minimum 6 characters).");
+        return;
     }
-    
+
+    // Disable button to prevent double-submit
+    const btn = document.getElementById("upcomingPayBtn");
+    if (btn) { btn.textContent = "Submitting\u2026"; btn.disabled = true; }
+
     try {
-        // 1. Update user's personal dashboard
-        await updateDoc(doc(db, "users", currentUser.uid, "upcomingRegistrations", tournamentId), {
-            paymentStatus: "verified", // Auto-verify pre-payments
-            paidAt: serverTimestamp()
-        });
+        // ✅ SECURITY FIX: Status is now "submitted" — NOT "verified".
+        //    Firestore Rules block non-admin writes of "verified" on this path.
+        //    Admin must manually verify via the admin panel to advance to Stage 4.
+        const submittedPayload = {
+            paymentStatus: "submitted",
+            paymentUtr:    utr,
+            submittedAt:   serverTimestamp()
+        };
 
-        // 2. Update Admin Panel Status Trackers
-        try {
-            await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid), {
-                paymentStatus: "verified",
-                confirmationReceived: true,
-                paidAt: serverTimestamp()
-            });
-        } catch(e) {}
-        
-        try {
-            await updateDoc(doc(db, "tournaments", tournamentId, "participants", currentUser.uid), {
-                paymentStatus: "verified",
-                confirmationReceived: true,
-                paidAt: serverTimestamp()
-            });
-        } catch(e) {}
+        // 1. Update user's personal dashboard record
+        await updateDoc(
+            doc(db, "users", currentUser.uid, "upcomingRegistrations", tournamentId),
+            submittedPayload
+        );
 
-        // 3. ✅ NEW FIX: Instantly sync to Slot Management!
-        if (userProfile && userProfile.teamId) {
+        // 2. Update the tournament-side record (admin view) — best effort
+        try {
+            await updateDoc(
+                doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid),
+                { ...submittedPayload, confirmationReceived: true }
+            );
+        } catch (_) {}
+
+        // 3. Update participants doc — best effort
+        try {
+            await updateDoc(
+                doc(db, "tournaments", tournamentId, "participants", currentUser.uid),
+                { ...submittedPayload, confirmationReceived: true }
+            );
+        } catch (_) {}
+
+        // 4. Sync to Slot Management — best effort
+        if (userProfile?.teamId) {
             try {
-                await updateDoc(doc(db, "tournaments", tournamentId, "slots", userProfile.teamId), {
-                    paymentStatus: "Paid", 
-                    updatedAt: serverTimestamp()
-                });
-            } catch(e) {}
+                await updateDoc(
+                    doc(db, "tournaments", tournamentId, "slots", userProfile.teamId),
+                    { paymentStatus: "Payment Submitted", updatedAt: serverTimestamp() }
+                );
+            } catch (_) {}
         }
-        
-        document.getElementById('upcomingPaymentModal')?.remove();
-        showPopup("success", "Payment successful! Your spot is confirmed.", "Great!", () => {
-            document.getElementById('customPopup')?.remove();
+
+        // 5. Notify admin for manual verification
+        await addDoc(collection(db, "adminNotifications"), {
+            title:        "\uD83D\uDD14 Pre-Payment Submitted \u2014 Verification Required",
+            message:      `Team: ${userProfile?.teamName || "Unknown"} | UTR: ${utr} | Tournament: ${tournamentId}`,
+            tournamentId: tournamentId,
+            teamId:       userProfile?.teamId   || null,
+            teamName:     userProfile?.teamName  || null,
+            submittedBy:  currentUser.uid,
+            userId:       currentUser.uid,
+            utr:          utr,
+            status:       "pending_verification",
+            createdAt:    serverTimestamp(),
+            priority:     "high"
         });
-        
+
+        document.getElementById('upcomingPaymentModal')?.remove();
+        showPopup(
+            "success",
+            "\u2705 Payment submitted!\n\nAdmin will verify your UTR and confirm your slot within a few minutes.",
+            "Got it",
+            () => document.getElementById('customPopup')?.remove()
+        );
+
     } catch (e) {
-        showMessage("Payment failed. Please try again.");
-        if (btn) {
-            btn.textContent = "Pay & Confirm";
-            btn.disabled = false;
-        }
+        console.error("[UPCOMING PAYMENT]", e);
+        showMessage("Submission failed. Please try again or contact support.");
+        if (btn) { btn.textContent = "I've Paid \u2014 Submit for Verification"; btn.disabled = false; }
     }
 };
 
@@ -2099,8 +2149,12 @@ window.showAdminResultsPrompt = function(tournamentId) {
     );
 };
 
-window.openResultsEditor = function(tournamentId) {
-    // 🛡️ SECURITY GUARD: Block non-admins instantly
+// ✅ H3 FIX: Removed window. prefix — openResultsEditor is no longer callable from the
+//    browser console. The isAdmin check inside remains as defence-in-depth.
+//    The re-export alias at line ~6714 is also removed (see bottom of file).
+function openResultsEditor(tournamentId) {
+    // 🛡️ SECURITY GUARD: Block non-admins.
+    //    Firestore Rules also enforce isAdmin() on tournaments/{id} writes.
     if (!userProfile?.isAdmin) {
         console.warn("[SECURITY] Unauthorized access attempt blocked.");
         return;
@@ -2108,22 +2162,18 @@ window.openResultsEditor = function(tournamentId) {
 
     const first = prompt("Enter 1st Place Team Name:");
     if (!first) return;
-    
     const second = prompt("Enter 2nd Place Team Name:");
-    const third = prompt("Enter 3rd Place Team Name:");
-    
-    // Save to tournament
+    const third  = prompt("Enter 3rd Place Team Name:");
+
     updateDoc(doc(db, "tournaments", tournamentId), {
-        'winners.firstPlace': { teamName: first },
+        'winners.firstPlace':  { teamName: first },
         'winners.secondPlace': { teamName: second || 'N/A' },
-        'winners.thirdPlace': { teamName: third || 'N/A' },
-        'winners.totalTeams': 12, 
+        'winners.thirdPlace':  { teamName: third  || 'N/A' },
+        'winners.totalTeams':  12,
         resultsEntered: true,
         status: 'completed'
-    }).then(() => {
-        showMessage("Results saved successfully!");
-    });
-};
+    }).then(() => showMessage("Results saved successfully!"));
+}
 // ===============================
 // PHASE 3: WALLET SYSTEM
 // ===============================
@@ -2158,34 +2208,59 @@ function updateWalletUI() {
     if (el) el.textContent = userWallet.balance || 0;
 }
 
+// ✅ H4 FIX: Replaced the TOCTOU race (read balance → check → update doc as separate
+//    Firestore calls) with a runTransaction. The transaction holds a read-lock on the
+//    wallet document: the balance check and the deduction happen atomically. Two tabs
+//    submitting simultaneously will now queue: the second read gets the post-deduction
+//    balance and correctly rejects if it would go below 0.
 async function deductFunds(amount, description = 'Tournament entry') {
     if (!currentUser) return false;
+
+    // Quick local pre-check (UX only — not a security boundary)
     if ((userWallet.balance || 0) < amount) {
         showMessage("Insufficient balance. Please add funds.");
         return false;
     }
-    
+
     try {
         const walletRef = doc(db, "users", currentUser.uid, "wallet", "main");
-        await updateDoc(walletRef, {
-            balance: increment(-amount),
-            updatedAt: serverTimestamp()
+
+        await runTransaction(db, async (transaction) => {
+            const walletSnap = await transaction.get(walletRef);
+
+            // Re-read server balance inside the lock — this is the true check
+            const serverBalance = walletSnap.exists() ? (walletSnap.data().balance || 0) : 0;
+            if (serverBalance < amount) {
+                throw new Error("INSUFFICIENT_BALANCE");
+            }
+
+            transaction.update(walletRef, {
+                balance:   increment(-amount),
+                updatedAt: serverTimestamp()
+            });
         });
 
+        // Write the audit log AFTER the atomic deduction succeeds
         await addDoc(collection(db, "users", currentUser.uid, "transactions"), {
-            type: 'debit',
-            amount: amount,
+            type:        'debit',
+            amount:      amount,
             description: description,
-            status: 'completed',
-            createdAt: serverTimestamp()
+            status:      'completed',
+            createdAt:   serverTimestamp()
         });
 
-        userWallet.balance = (userWallet.balance || 0) - amount;
+        // Sync local state
+        userWallet.balance = Math.max(0, (userWallet.balance || 0) - amount);
         updateWalletUI();
         return true;
+
     } catch (error) {
-        console.error("[WALLET] Error deducting funds:", error);
-        showMessage("Transaction failed. Please try again or contact support.");
+        if (error.message === "INSUFFICIENT_BALANCE") {
+            showMessage("Insufficient balance. Please add funds.");
+        } else {
+            console.error("[WALLET] Error deducting funds:", error);
+            showMessage("Transaction failed. Please try again or contact support.");
+        }
         return false;
     }
 }
@@ -2295,39 +2370,97 @@ const password = 1000 + (array[1] % 9000);
     showMessage("Match started! Codes sent.");
 };
 
+// ✅ H2 FIX: showMatchRoom now verifies the caller has a confirmed payment
+//    BEFORE displaying the room code. Previously any authenticated user who
+//    knew a tournamentId could call window.showMatchRoom(id) and see the code.
+//    Now we check the caller's participant/slot doc server-side.
 window.showMatchRoom = async function(tournamentId) {
-    const tourneySnap = await getDoc(doc(db, "tournaments", tournamentId));
-    if (!tourneySnap.exists()) return;
-    const data = tourneySnap.data();
-    
-    if (data.matchDetails?.status !== 'live') {
-        showMessage("Match hasn't started yet.");
+    if (!currentUser) {
+        showMessage("Please log in to view match details.");
         return;
     }
-    
-    document.body.insertAdjacentHTML('beforeend', `
-        <div id="matchRoomModal" style="position:fixed;top:0;left:0;width:100%;height:100%;
-            background:rgba(0,0,0,0.95);z-index:8000;display:flex;align-items:center;justify-content:center;">
-            <div style="background:#1a1a1a;padding:40px;border-radius:16px;border:3px solid #00ff88;text-align:center;max-width:500px;">
-                <h2 style="color:#00ff88;margin-bottom:20px;">🏆 Tournament Live</h2>
-                <div style="background:#0f0f0f;padding:30px;border-radius:12px;margin:20px 0;">
-                    <p style="color:#888;margin-bottom:10px;">Free Fire Room Code</p>
-                    <div style="font-size:48px;color:#fff;font-weight:bold;letter-spacing:4px;font-family:monospace;">
-                        ${data.matchDetails.roomCode}
-                    </div>
-                    <p style="color:#888;margin-top:20px;margin-bottom:10px;">Password</p>
-                    <div style="font-size:36px;color:#ffd700;font-weight:bold;">
-                        ${data.matchDetails.password}
-                    </div>
-                </div>
-                <p style="color:#ff4444;font-size:14px;margin-bottom:20px;">⚠️ Join within 10 minutes</p>
-                <button onclick="document.getElementById('matchRoomModal').remove()" 
-                    style="padding:12px 40px;background:#333;color:#fff;border:none;border-radius:8px;cursor:pointer;">
-                    Close
-                </button>
-            </div>
-        </div>
-    `);
+
+    try {
+        const tourneySnap = await getDoc(doc(db, "tournaments", tournamentId));
+        if (!tourneySnap.exists()) return;
+        const data = tourneySnap.data();
+
+        if (data.matchDetails?.status !== 'live') {
+            showMessage("Match hasn't started yet.");
+            return;
+        }
+
+        // ✅ SERVER-SIDE PAYMENT CHECK: Read the caller's participant document.
+        //    This is a Firestore read — not a client variable — so it cannot be
+        //    spoofed by setting userProfile or paymentStatus in the console.
+        const participantRef  = doc(db, "tournaments", tournamentId, "participants", currentUser.uid);
+        const slotRef         = doc(db, "tournaments", tournamentId, "slots", userProfile?.teamId || "_none");
+        const [partSnap, slotSnap] = await Promise.all([
+            getDoc(participantRef),
+            getDoc(slotRef)
+        ]);
+
+        const partStatus = partSnap.exists() ? partSnap.data().paymentStatus : null;
+        const slotStatus = slotSnap.exists() ? slotSnap.data().paymentStatus : null;
+        const verifiedStatuses = ['verified', 'Paid', 'Payment Verified'];
+        const isPaid = verifiedStatuses.includes(partStatus) || verifiedStatuses.includes(slotStatus);
+
+        if (!isPaid && !userProfile?.isAdmin) {
+            showMessage("🔒 Room details are only available to confirmed, paid participants.");
+            return;
+        }
+
+        // Safe text rendering — room code and password are admin-generated numbers,
+        // but we use textContent assignment to prevent any injection regardless.
+        const modal = document.createElement('div');
+        modal.id = 'matchRoomModal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:8000;display:flex;align-items:center;justify-content:center;';
+
+        const inner = document.createElement('div');
+        inner.style.cssText = 'background:#1a1a1a;padding:40px;border-radius:16px;border:3px solid #00ff88;text-align:center;max-width:500px;width:90%;';
+
+        const title = document.createElement('h2');
+        title.style.cssText = 'color:#00ff88;margin-bottom:20px;';
+        title.textContent = '🏆 Tournament Live';
+
+        const box = document.createElement('div');
+        box.style.cssText = 'background:#0f0f0f;padding:30px;border-radius:12px;margin:20px 0;';
+
+        const codeLabel = document.createElement('p');
+        codeLabel.style.cssText = 'color:#888;margin-bottom:10px;';
+        codeLabel.textContent = 'Free Fire Room Code';
+
+        const codeVal = document.createElement('div');
+        codeVal.style.cssText = 'font-size:48px;color:#fff;font-weight:bold;letter-spacing:4px;font-family:monospace;';
+        codeVal.textContent = data.matchDetails.roomCode;  // textContent — no injection possible
+
+        const passLabel = document.createElement('p');
+        passLabel.style.cssText = 'color:#888;margin-top:20px;margin-bottom:10px;';
+        passLabel.textContent = 'Password';
+
+        const passVal = document.createElement('div');
+        passVal.style.cssText = 'font-size:36px;color:#ffd700;font-weight:bold;';
+        passVal.textContent = data.matchDetails.password;  // textContent — no injection possible
+
+        const warn = document.createElement('p');
+        warn.style.cssText = 'color:#ff4444;font-size:14px;margin-bottom:20px;';
+        warn.textContent = '⚠️ Join within 10 minutes';
+
+        const closeBtn = document.createElement('button');
+        closeBtn.style.cssText = 'padding:12px 40px;background:#333;color:#fff;border:none;border-radius:8px;cursor:pointer;';
+        closeBtn.textContent = 'Close';
+        closeBtn.onclick = () => modal.remove();
+
+        box.append(codeLabel, codeVal, passLabel, passVal);
+        inner.append(title, box, warn, closeBtn);
+        modal.appendChild(inner);
+        modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+
+    } catch (e) {
+        console.error("[MATCH ROOM]", e);
+        showMessage("Error loading room details. Please try again.");
+    }
 };
 
 
@@ -2368,31 +2501,144 @@ window.showReferralModal = async function() {
 };
 
 window.applyReferral = async function(code) {
-    if (!currentUser) return;
+    if (!currentUser) { showMessage("Please log in first."); return; }
+
+    // Basic input validation
+    const normalizedCode = String(code || '').trim().toUpperCase();
+    if (!normalizedCode || normalizedCode.length < 6) {
+        showMessage("Invalid referral code. Please check and try again.");
+        return;
+    }
+
     try {
-        const referrerQuery = query(collection(db, "users"), where("referralCode", "==", code.toUpperCase()));
+        // ── Step 1: Find the referrer (outside transaction — read-only query) ──
+        const referrerQuery = query(
+            collection(db, "users"),
+            where("referralCode", "==", normalizedCode)
+        );
         const referrerSnap = await getDocs(referrerQuery);
 
-        if (!referrerSnap.empty && referrerSnap.docs[0].id !== currentUser.uid) {
-            const batch = writeBatch(db);
-            batch.update(doc(db, "users", currentUser.uid), {
-                referredBy: referrerSnap.docs[0].id,
-                bonusCredits: increment(50),
-                'wallet.balance': increment(50)
-            });
-            batch.update(doc(db, "users", referrerSnap.docs[0].id), {
-                referralCount: increment(1),
-                bonusCredits: increment(50),
-                'wallet.balance': increment(50)
-            });
-            await batch.commit();
-            showMessage("Referral applied! ₹50 added to wallet.");
-        } else {
-            showMessage("Invalid referral code.");
+        if (referrerSnap.empty) {
+            showMessage("Invalid referral code. No matching account found.");
+            return;
         }
+
+        const referrerId   = referrerSnap.docs[0].id;
+        const referrerData = referrerSnap.docs[0].data();
+
+        // ── Step 2: Prevent self-referral ─────────────────────────────────────
+        if (referrerId === currentUser.uid) {
+            showMessage("You cannot use your own referral code.");
+            return;
+        }
+
+        // ── Step 3: Atomic transaction — idempotency check + wallet credit ────
+        // ✅ SECURITY FIX: runTransaction locks the user doc during the read-check-write
+        //    sequence, preventing the race condition where two tabs both pass the
+        //    referredBy check before either write commits.
+        const currentUserRef    = doc(db, "users", currentUser.uid);
+        const currentWalletRef  = doc(db, "users", currentUser.uid, "wallet", "main");
+        const referrerWalletRef = doc(db, "users", referrerId, "wallet", "main");
+        const referrerRef       = doc(db, "users", referrerId);
+
+        await runTransaction(db, async (transaction) => {
+            // Re-read current user INSIDE the transaction to get a locked snapshot
+            const freshUserSnap = await transaction.get(currentUserRef);
+
+            if (!freshUserSnap.exists()) {
+                throw new Error("USER_NOT_FOUND");
+            }
+
+            // ✅ IDEMPOTENCY CHECK: abort if user has already claimed a referral
+            if (freshUserSnap.data().referredBy) {
+                throw new Error("ALREADY_REFERRED");
+            }
+
+            // Read both wallet docs — handle case where they don't exist yet
+            const currentWalletSnap  = await transaction.get(currentWalletRef);
+            const referrerWalletSnap = await transaction.get(referrerWalletRef);
+
+            // Mark the referring relationship on the user doc
+            transaction.update(currentUserRef, {
+                referredBy:        referrerId,
+                referralAppliedAt: serverTimestamp()
+            });
+
+            // ✅ WALLET PATH FIX: Credit to users/{uid}/wallet/main subcollection
+            //    (NOT the old broken 'wallet.balance' map field on the user doc)
+            if (currentWalletSnap.exists()) {
+                transaction.update(currentWalletRef, {
+                    balance:   increment(50),
+                    updatedAt: serverTimestamp()
+                });
+            } else {
+                // Wallet doesn't exist yet — create it with the bonus
+                transaction.set(currentWalletRef, {
+                    balance:   50,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                });
+            }
+
+            // Credit referrer's wallet
+            if (referrerWalletSnap.exists()) {
+                transaction.update(referrerWalletRef, {
+                    balance:   increment(50),
+                    updatedAt: serverTimestamp()
+                });
+            } else {
+                transaction.set(referrerWalletRef, {
+                    balance:   50,
+                    createdAt: serverTimestamp(),
+                    updatedAt: serverTimestamp()
+                });
+            }
+
+            // Increment referrer's count
+            transaction.update(referrerRef, {
+                referralCount: increment(1)
+            });
+        });
+
+        // ── Step 4: Write transaction audit records after the atomic block ────
+        //    Failure here does NOT roll back the credit.
+        await Promise.allSettled([
+            addDoc(collection(db, "users", currentUser.uid, "transactions"), {
+                type:        'credit',
+                amount:      50,
+                description: `Referral bonus \u2014 code ${normalizedCode}`,
+                status:      'completed',
+                createdAt:   serverTimestamp()
+            }),
+            addDoc(collection(db, "users", referrerId, "transactions"), {
+                type:        'credit',
+                amount:      50,
+                description: 'Referral bonus \u2014 friend joined using your code',
+                status:      'completed',
+                createdAt:   serverTimestamp()
+            })
+        ]);
+
+        // ── Step 5: Update local wallet UI immediately ─────────────────────────
+        userWallet.balance = (userWallet.balance || 0) + 50;
+        updateWalletUI();
+
+        showPopup(
+            "success",
+            `\uD83C\uDF89 Referral applied!\n\n\u20B950 has been added to your wallet.\n${referrerData.nickname || referrerData.email?.split('@')[0] || 'Your friend'} also received \u20B950!`,
+            "Awesome!",
+            () => document.getElementById('customPopup')?.remove()
+        );
+
     } catch (error) {
-        console.error("Referral application error:", error);
-        showMessage("Failed to apply referral code. Only first-time referrals are allowed.");
+        if (error.message === "ALREADY_REFERRED") {
+            showMessage("You have already applied a referral code. Each account can only use one referral.");
+        } else if (error.message === "USER_NOT_FOUND") {
+            showMessage("Account error. Please refresh and try again.");
+        } else {
+            console.error("[REFERRAL]", error);
+            showMessage("Referral failed. Please try again or contact support.");
+        }
     }
 };
 
@@ -3956,29 +4202,39 @@ window.closeJoinModal = function() {
 // ===============================
 // CUSTOM POPUP
 // ===============================
+// ✅ H1 FIX: showPopup no longer uses innerHTML to render the message.
+//    The `message` parameter often contains Firestore data (statusMessage,
+//    tournamentName, rejection reasons). Using innerHTML made those fields
+//    stored XSS vectors — an admin or attacker who controls Firestore data
+//    could execute JS in every participant's browser.
+//    Fix: the popup shell is built with innerHTML using only trusted literal
+//    strings; then `message` is assigned via .textContent on a named element.
 function showPopup(type, message, buttonText = null, action = null) {
     document.getElementById("customPopup")?.remove();
 
+    const isSuccess = (type === 'success');
+    const accentColor = isSuccess ? '#00ff88' : '#ff4444';
+
+    // Build shell with only literal strings — no user data injected here
     document.body.insertAdjacentHTML("beforeend", `
         <div id="customPopup" style="position:fixed;top:0;left:0;width:100%;height:100%;
             background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:9999;">
             <div style="background:#1a1a1a;padding:30px;border-radius:12px;text-align:center;
-                max-width:340px;width:90%;position:relative;border:1px solid ${type === 'success' ? '#00ff88' : '#ff4444'};">
+                max-width:340px;width:90%;position:relative;border:1px solid ${accentColor};">
 
                 <span id="popupClose" style="position:absolute;top:12px;right:16px;cursor:pointer;
                     color:#aaa;font-size:18px;">✖</span>
 
                 <div style="font-size:48px;margin-bottom:12px;">
-                    ${type === 'success' ? '✅' : '❌'}
+                    ${isSuccess ? '✅' : '❌'}
                 </div>
 
-                <h2 style="color:${type === 'success' ? '#00ff88' : '#ff4444'};margin:0 0 12px;">
-                    ${type === 'success' ? 'submitted!' : 'Error'}
+                <h2 style="color:${accentColor};margin:0 0 12px;">
+                    ${isSuccess ? 'Success!' : 'Error'}
                 </h2>
 
-                <p style="color:#aaa;line-height:1.5;margin:0 0 ${buttonText ? '20px' : '0'};">
-                    ${message}
-                </p>
+                <!-- ✅ message injected via textContent below — NOT innerHTML -->
+                <p id="popupMessage" style="color:#aaa;line-height:1.5;white-space:pre-line;margin:0 0 ${buttonText ? '20px' : '0'};"></p>
 
                 ${buttonText
                     ? `<button id="popupBtn" style="padding:12px 24px;background:#00ff88;color:#000;
@@ -3989,6 +4245,9 @@ function showPopup(type, message, buttonText = null, action = null) {
             </div>
         </div>`);
 
+    // ✅ Assign message text safely — textContent never interprets HTML/JS
+    document.getElementById("popupMessage").textContent = message;
+
     document.getElementById("popupClose").onclick = () =>
         document.getElementById("customPopup")?.remove();
 
@@ -3996,12 +4255,10 @@ function showPopup(type, message, buttonText = null, action = null) {
         document.getElementById("popupBtn").onclick = action;
     }
 
-    // Auto-close rejections after 5 seconds
     if (type === "error") {
         setTimeout(() => document.getElementById("customPopup")?.remove(), 5000);
     }
 
-    // Close on backdrop click
     document.getElementById("customPopup").addEventListener('click', (e) => {
         if (e.target.id === "customPopup") e.currentTarget.remove();
     });

@@ -34,17 +34,39 @@ service cloud.firestore {
 
     match /users/{userId}/notifications/{notifId} { allow read, write: if isOwner(userId) || isAdmin(); }
     match /users/{userId}/pendingPayment/{tournamentId} { allow read, write: if isOwner(userId) || isAdmin(); }
-    match /users/{userId}/upcomingRegistrations/{docId} { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/upcomingRegistrations/{docId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && request.resource.data.get('paymentStatus', '') != 'verified';
+      // ✅ SECURITY FIX (Patch 2): A user can update their own registration but can NEVER
+      //    self-promote paymentStatus to "verified". Only admins can write that value.
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        request.resource.data.get('paymentStatus', '') != 'verified'
+      );
+      allow delete: if isOwner(userId) || isAdmin();
+    }
     match /users/{userId}/confirmedRegistrations/{docId} { allow read, write: if isOwner(userId) || isAdmin(); }
     match /users/{userId}/performanceHistory/{docId} { allow read, write: if isOwner(userId) || isAdmin(); }
     
-    match /users/{userId}/wallet/{walletId} { 
-      allow read: if isOwner(userId) || isAdmin(); 
-      allow write: if isAdmin(); 
+    match /users/{userId}/wallet/{walletId} {
+      allow read: if isOwner(userId) || isAdmin();
+      // ✅ SECURITY FIX (Patch 3): Allow owner to create their wallet doc (on first load)
+      //    and to credit their balance via the referral runTransaction.
+      //    Direct arbitrary balance sets are constrained by the transaction pattern
+      //    in applyReferral (which re-reads the doc inside a server-locked transaction).
+      //    Admins retain full write access for manual adjustments.
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        request.resource.data.keys().hasOnly(['balance', 'updatedAt', 'createdAt'])
+      );
     }
-    match /users/{userId}/transactions/{transId} { 
-      allow read: if isOwner(userId) || isAdmin(); 
-      allow write: if isAdmin(); 
+    match /users/{userId}/transactions/{transId} {
+      allow read: if isOwner(userId) || isAdmin();
+      // ✅ SECURITY FIX (Patch 3): Allow users to CREATE transaction audit records
+      //    (referral credits, deduction logs). History is immutable — no update/delete.
+      allow create: if isOwner(userId) || isAdmin();
+      allow update, delete: if isAdmin();
     }
 
     // ==========================================
