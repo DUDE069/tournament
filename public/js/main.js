@@ -967,29 +967,47 @@ document.addEventListener("DOMContentLoaded", function() {
                     eventDate:    tournament.eventDate || null,
                 };
 
-                if (isEditing) {
-                    // ✅ FIX: Update existing document safely
-                    regData.rejectedFields = []; // Clear old errors
-                    regData.userId = auth.currentUser.uid; // 🔥 FORCED INJECTION FOR RULES
-                    console.log("Submitting Live Payload (Update):", regData);
-                    await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), regData);
-                } else {
-                    // Create new document
-                    regData.registeredAt = serverTimestamp();
-                    regData.userId = auth.currentUser.uid; // 🔥 FORCED INJECTION FOR RULES
-                    console.log("Submitting Live Payload (New):", regData);
-                    await setDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), regData);
+                console.log("--- STARTING UPCOMING SUBMISSION ---");
+                
+                // Write 1: Upcoming Registration Ticket
+                try {
+                    const path1 = `tournaments/${tournamentId}/upcomingRegistrations/${userId}`;
+                    console.log(`Path 1: ${path1}`);
+                    if (isEditing) {
+                        regData.rejectedFields = [];
+                        regData.userId = auth.currentUser.uid;
+                        console.log("Payload 1 (Update):", JSON.stringify(regData));
+                        await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), regData);
+                    } else {
+                        regData.registeredAt = serverTimestamp();
+                        regData.userId = auth.currentUser.uid;
+                        console.log("Payload 1 (New):", JSON.stringify(regData));
+                        await setDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), regData);
+                    }
+                    console.log("Write 1: SUCCESS");
+                } catch (e) {
+                    console.error("Write 1 FAILED:", e.message);
                 }
 
-                await setDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId), {
-                    tournamentId:   tournamentId,
-                    title:          tournament.title,
-                    eventDate:      tournament.eventDate || null,
-                    teamName:       userProfile.teamName,
-                    status:         "pending",
-                    entryFee:       tournament.entryFee || 0, // ✅ FIX: Save the entry fee here!
-                    registeredAt:   serverTimestamp()
-                }, { merge: true });
+                // Write 2: User Profile History
+                try {
+                    const path2 = `users/${userId}/upcomingRegistrations/${tournamentId}`;
+                    console.log(`Path 2: ${path2}`);
+                    const historyPayload = {
+                        tournamentId:   tournamentId,
+                        title:          tournament.title,
+                        eventDate:      tournament.eventDate || null,
+                        teamName:       userProfile.teamName,
+                        status:         "pending",
+                        entryFee:       tournament.entryFee || 0,
+                        registeredAt:   serverTimestamp()
+                    };
+                    console.log("Payload 2:", JSON.stringify(historyPayload));
+                    await setDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId), historyPayload, { merge: true });
+                    console.log("Write 2: SUCCESS");
+                } catch (e) {
+                    console.error("Write 2 FAILED:", e.message);
+                }
 
                 listenToUpcomingApproval(tournamentId, userId);
 
@@ -1061,17 +1079,22 @@ document.addEventListener("DOMContentLoaded", function() {
             
             // If they chose pay_now or got instant approval, open payment stage immediately
             if (paymentChoice === "pay_now" || teamVerificationHistory) {
-                // Assign Provisional Slot (Hard Lock) by pushing to slots collection
+                // Write 3: Provisional Slot (Hard Lock)
                 try {
-                    await setDoc(doc(db, "tournaments", tournamentId, "slots", userProfile.teamId), {
+                    const path3 = `tournaments/${tournamentId}/slots/${userProfile.teamId}`;
+                    console.log(`Path 3: ${path3}`);
+                    const slotPayload = {
                         teamId: userProfile.teamId,
                         teamName: userProfile.teamName,
                         assignedAt: serverTimestamp(),
                         paymentStatus: "pending",
-                        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString() // 15 mins from now
-                    });
+                        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()
+                    };
+                    console.log("Payload 3:", JSON.stringify(slotPayload));
+                    await setDoc(doc(db, "tournaments", tournamentId, "slots", userProfile.teamId), slotPayload);
+                    console.log("Write 3: SUCCESS");
                 } catch (e) {
-                    console.warn("Could not allocate provisional slot", e);
+                    console.error("Write 3 FAILED:", e.message);
                 }
 
                 if (paymentChoice === "pay_now") {
