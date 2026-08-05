@@ -3419,7 +3419,7 @@ function initNotifications() {
                 console.log("📥 New Notification Data:", notif);
 
                 // Stop right here if this notification has already fired a popup on this page load or another tab
-                if (window.shownPopupIds.has(notifId) || localStorage.getItem("popupShown_" + notifId)) return;
+                if (window.shownPopupIds.has(notifId) || localStorage.getItem("popupShown_" + notifId) || notif.popupShown) return;
 
                 // --- SOUND TRIGGER ---
                 if (notif.type === "approval" || notif.type === "upcoming_approved") {
@@ -3458,8 +3458,10 @@ function initNotifications() {
                             if (typeof showMatchRoom === 'function') showMatchRoom(notif.tournamentId);
                         });
                     }
+                }
 
-                    // Mark the popup as shown in the database securely
+                // Mark the popup as shown in the database securely for ALL notification types
+                if (!notif.popupShown) {
                     try {
                         await updateDoc(change.doc.ref, { popupShown: true });
                     } catch (e) { 

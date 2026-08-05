@@ -74,7 +74,7 @@ section {
 .navbar {
     position: sticky;
     /* Now sticky at the very top, as welcome-text is no longer sticky */
-    top: 0;
+    top: env(safe-area-inset-top, 0px);
     /* ✅ Stays at 999 — clearly below all overlays */
     z-index: 999;
     background: var(--bg-secondary);
@@ -764,6 +764,8 @@ section {
 
 .modal-card input, .modal-card select {
     width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
     padding: 12px 14px;
     margin-bottom: 12px;
     border-radius: 8px;
