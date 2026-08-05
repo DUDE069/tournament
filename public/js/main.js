@@ -63,7 +63,10 @@ window.playCustomSound = function(type) {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
         if (audioContext.state === 'suspended') {
-            audioContext.resume();
+            const resumePromise = audioContext.resume();
+            if (resumePromise !== undefined) {
+                resumePromise.catch(e => console.warn("Audio resume blocked:", e));
+            }
         }
         const oscillator = audioContext.createOscillator();
         const gainNode = audioContext.createGain();
@@ -191,10 +194,15 @@ window.handleUpcomingRegister = async function(tournamentId) {
     document.getElementById("prizeFirst").textContent           = tournament.prize?.first || 0;
     document.getElementById("prizeSecond").textContent          = tournament.prize?.second || 0;
     document.getElementById("prizeThird").textContent           = tournament.prize?.third || 0;
-    // ✅ FIX: Show Entry Fee on the UI
-    document.getElementById("joinEntryFeeDisplay").textContent  = tournament.entryFee || 0;
-    document.getElementById("paymentAmount").textContent        = tournament.entryFee || 0;
-    document.getElementById("walletBalance").textContent        = "0";
+    // ✅ FIX: Safe DOM updates to prevent null crashes
+    const entryFeeDisplay = document.getElementById("joinEntryFeeDisplay");
+    if (entryFeeDisplay) entryFeeDisplay.textContent = tournament.entryFee || 0;
+    
+    const paymentAmount = document.getElementById("paymentAmount");
+    if (paymentAmount) paymentAmount.textContent = tournament.entryFee || 0;
+    
+    const walletBalance = document.getElementById("walletBalance");
+    if (walletBalance) walletBalance.textContent = "0";
     // ✅ FIXED DYNAMIC TIMING (UPCOMING)
     const dateStr = tournament.eventDate ? new Date(tournament.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : "TBA";
     const timeStr = tournament.eventTime || "TBA";
@@ -203,9 +211,13 @@ window.handleUpcomingRegister = async function(tournamentId) {
         joinStartTimeEl.textContent = `${dateStr} at ${timeStr}`;
     }
     
-    // HIDE Payment elements for upcoming
-    document.getElementById("walletBalance").parentElement.style.display = "none"; // Hide wallet
-    document.getElementById("joinEntryFeeDisplay").parentElement.style.display = "none"; // Hide entry fee display
+    // HIDE Payment elements for upcoming safely
+    if (walletBalance && walletBalance.parentElement) {
+        walletBalance.parentElement.style.display = "none";
+    }
+    if (entryFeeDisplay && entryFeeDisplay.parentElement) {
+        entryFeeDisplay.parentElement.style.display = "none";
+    }
     
     // SHOW Date prominently for upcoming
     const eventDate = tournament.eventDate ? new Date(tournament.eventDate).toLocaleDateString('en-IN', {
@@ -7159,6 +7171,7 @@ window.submitBrokerRegistration = async function(tournamentId) {
         const brokerDocId = 'broker_' + currentUser.uid;
         
         await setDoc(doc(db, 'tournaments', tournamentId, 'upcomingRegistrations', brokerDocId), {
+            userId:      currentUser.uid, // 🔒 EXPLICIT UID INJECTION
             teamName,
             teamCode,
             teamId:      brokerDocId,
@@ -7175,6 +7188,7 @@ window.submitBrokerRegistration = async function(tournamentId) {
 
         // Notify admin via verifications collection
         await setDoc(doc(db, 'tournaments', tournamentId, 'verifications', brokerDocId), {
+            userId:      currentUser.uid, // 🔒 EXPLICIT UID INJECTION
             teamName,
             teamCode,
             teamId:      brokerDocId,
