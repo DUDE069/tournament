@@ -452,9 +452,20 @@ function renderTournaments() {
             }
 
             // Check if user has a pending payment verification
-            const isVerificationPending = window.userPendingPayments && 
+            // Priority 1: Real-time Firestore listener (window.userPendingPayments)
+            // Priority 2: Instant localStorage lock (written by paymentStage.js on submit)
+            let isVerificationPending = window.userPendingPayments && 
                 (window.userPendingPayments[t.id]?.paymentStatus === 'pending_verification' || 
                  window.userPendingPayments[t.id]?.paymentStatus === 'submitted');
+
+            if (!isVerificationPending) {
+                try {
+                    const localPending = JSON.parse(localStorage.getItem('npc_pending_payments') || '{}');
+                    if (localPending[t.id]?.status === 'pending_verification') {
+                        isVerificationPending = true;
+                    }
+                } catch (e) {}
+            }
 
             if (isVerificationPending) {
                 buttonHTML = `

@@ -121,6 +121,13 @@ async function submitUtrVerification(tournamentId, entryFee) {
 
     showToast("✅ UTR Submitted! Pending Admin Approval.", "success");
 
+    // 🔒 IMMEDIATELY lock the UI state via localStorage so re-renders show "Verification Pending"
+    try {
+      const pending = JSON.parse(localStorage.getItem('npc_pending_payments') || '{}');
+      pending[tournamentId] = { utr: utrInput, submittedAt: Date.now(), status: 'pending_verification' };
+      localStorage.setItem('npc_pending_payments', JSON.stringify(pending));
+    } catch (e) {}
+
     // Close the overlay as it's now pending admin approval
     closePaymentOverlay();
 
@@ -218,7 +225,11 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
       </a>
       
       <div style="text-align:left;margin-bottom:16px;">
-        <label style="color:#aaa;font-size:12px;margin-bottom:4px;display:block;">12-Digit UTR / Ref No.</label>
+        <label style="color:#fff;font-size:14px;margin-bottom:6px;display:block;font-weight:bold;">📋 Enter UTR / Transaction Reference Number</label>
+        <p style="color:#888;font-size:12px;margin-bottom:8px;line-height:1.5;">
+          After completing your UPI payment, enter the 12-digit UTR number below to verify your payment. 
+          <strong style="color:#fbbf24;">This must be completed within the time limit shown below.</strong>
+        </p>
         <input type="text" id="utrInput" placeholder="e.g. 312345678901" maxlength="12" style="width:100%;padding:12px;border-radius:8px;border:1px solid #333;background:#0f0f0f;color:#fff;font-family:monospace;font-size:16px;box-sizing:border-box;">
       </div>
 
@@ -235,7 +246,7 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
         font-family: 'Rajdhani', sans-serif;
         transition: transform 0.1s, box-shadow 0.2s;
       " onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
-        Submit UTR
+        ✅ Submit UTR & Verify Payment
       </button>
       
       <p style="color: #555; font-size: 12px; margin-top: 14px;">

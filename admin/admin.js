@@ -1668,7 +1668,7 @@ window.deleteTournament = async function(id) {
     const isTournamentOver = eventTime && eventTime <= now;
 
     if (!isTournamentOver && (tData.category === "ongoing" || tData.status === "live")) {
-      showToast("❌ Cannot delete: This tournament is live/ongoing.", "error");
+      showToast("\u274c Cannot delete: This tournament is live/ongoing.", "error");
       return;
     }
 
@@ -1676,12 +1676,19 @@ window.deleteTournament = async function(id) {
       const regsSnap = await getDocs(collection(db, "tournaments", id, "upcomingRegistrations"));
       const activeRegs = regsSnap.docs.filter(d => d.data().status === "pending" || d.data().status === "approved");
       if (activeRegs.length > 0) {
-        showToast(`❌ Cannot delete: ${activeRegs.length} team(s) have registered. Reject all registrations first before deleting.`, "error");
+        showToast(`\u274c Cannot delete: ${activeRegs.length} team(s) have active registrations. Reject all first.`, "error");
         return;
       }
       const partSnap = await getDocs(collection(db, "tournaments", id, "participants"));
       if (!partSnap.empty) {
-        showToast(`❌ Cannot delete: ${partSnap.size} team(s) have paid and are confirmed. This data cannot be lost.`, "error");
+        showToast(`\u274c Cannot delete: ${partSnap.size} team(s) are confirmed participants. This data cannot be lost.`, "error");
+        return;
+      }
+      // Check for pending verifications
+      const verifSnap = await getDocs(collection(db, "tournaments", id, "verifications"));
+      const pendingVerifs = verifSnap.docs.filter(d => d.data().status === 'pending');
+      if (pendingVerifs.length > 0) {
+        showToast(`\u274c Cannot delete: ${pendingVerifs.length} team(s) have pending payment verifications. Resolve them first.`, "error");
         return;
       }
     }
@@ -1689,12 +1696,29 @@ window.deleteTournament = async function(id) {
     console.warn("[DELETE CHECK]", checkErr);
   }
 
-  if (!confirm("Delete this tournament? This cannot be undone.")) return;
+  if (!confirm("Delete this tournament? This action is permanent and cannot be undone.")) return;
+  
   try {
+    showToast("Deleting tournament and all related data...", "info");
+
+    // Cascade delete sub-collections first (Firestore does NOT auto-delete sub-collections)
+    const subCollections = ['upcomingRegistrations', 'verifications', 'slots', 'leaderboard', 'lockedRegistrations', 'teamSessions', 'limitedNotifyList'];
+    for (const colName of subCollections) {
+      try {
+        const snap = await getDocs(collection(db, "tournaments", id, colName));
+        const batchDel = writeBatch(db);
+        snap.docs.forEach(d => batchDel.delete(d.ref));
+        if (!snap.empty) await batchDel.commit();
+      } catch (e) {
+        console.warn(`[DELETE] Could not clean up ${colName}:`, e.message);
+      }
+    }
+
     await deleteDoc(doc(db, "tournaments", id));
-    showToast("Tournament deleted.", "success");
+    showToast("\u2705 Tournament and all related data deleted successfully.", "success");
   } catch (e) {
-    showToast("Error deleting: Permission Denied.", "error");
+    console.error("[DELETE] Error:", e);
+    showToast("Error deleting tournament: " + e.message, "error");
   }
 };
 
@@ -1842,7 +1866,7 @@ function triggerAdminPhase1Alert(title) {
         document.head.appendChild(style);
     }
     document.body.appendChild(popup);
-    try { new Audio('alert.mp3').play(); } catch(e){}
+    try { new Audio('/alert.mp3').play(); } catch(e){}
 }
 
 function triggerAdminPhase2Alert(title, minsRemaining) {
@@ -1855,7 +1879,7 @@ function triggerAdminPhase2Alert(title, minsRemaining) {
         <button style="padding:10px 20px;background:#ff9800;color:#000;border:none;border-radius:5px;font-weight:bold;cursor:pointer;font-size:16px;" onclick="this.parentElement.remove();">Got It</button>
     `;
     document.body.appendChild(popup);
-    try { new Audio('alert.mp3').play(); } catch(e){}
+    try { new Audio('/alert.mp3').play(); } catch(e){}
 }
 
 // ============================================================================

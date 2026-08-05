@@ -18,9 +18,12 @@ service cloud.firestore {
     // ==========================================
     // 2. GLOBAL ADMIN OVERRIDES
     // ==========================================
-    match /{path=**}/verifications/{docId} { allow read: if isAdmin(); }
-    match /{path=**}/upcomingRegistrations/{docId} { allow read: if isAdmin(); }
-    match /{path=**}/participants/{docId} { allow read: if isAdmin(); }
+    // Admin can read/write ANY document in ANY subcollection via collection-group queries
+    match /{path=**}/verifications/{docId} { allow read, write: if isAdmin(); }
+    match /{path=**}/upcomingRegistrations/{docId} { allow read, write: if isAdmin(); }
+    match /{path=**}/participants/{docId} { allow read, write: if isAdmin(); }
+    match /{path=**}/transactions/{docId} { allow read, write: if isAdmin(); }
+    match /{path=**}/notifications/{docId} { allow read, write: if isAdmin(); }
 
     // ==========================================
     // 3. USERS COLLECTION
@@ -223,6 +226,7 @@ service cloud.firestore {
     match /withdrawal_requests/{requestId} {
       // User can create their own withdrawal requests
       allow create: if isLoggedIn() && request.resource.data.userId == request.auth.uid;
+      // Admin has FULL unrestricted access (read, update, delete) — required for snapshot listeners
       allow read, update, delete: if isAdmin();
     }
     
