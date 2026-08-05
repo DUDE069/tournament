@@ -58,14 +58,30 @@ let currentStream = null;
 let activeParticipantListeners = {}; // Store unsubscribe functions for participant listeners
 
 window.playCustomSound = function(type) {
-    let soundFile = '/alert.mp3';
-    if (type === 'advertising' || type === 'promo' || type === 'global_alert') {
-        soundFile = '/promo.mp3';
-    } else if (type === 'room_id' || type === 'approval' || type === 'upcoming_approved' || type === 'match_started') {
-        soundFile = '/success.mp3';
+    try {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioContext.state === 'suspended') {
+            audioContext.resume();
+        }
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        oscillator.type = (type === 'room_id' || type === 'approval') ? 'sine' : 'square';
+        oscillator.frequency.setValueAtTime(type === 'room_id' ? 880 : 440, audioContext.currentTime);
+        
+        gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + 0.1);
+    } catch (e) {
+        console.warn("Web Audio API failed or blocked:", e.message);
     }
-    const audio = new Audio(soundFile);
-    audio.play().catch(e => console.warn("Audio skipped by browser:", e.message));
 };
 
 // ===============================
@@ -241,20 +257,31 @@ window.handleUpcomingRegister = async function(tournamentId) {
         window.headerTimerInterval = setInterval(updateCountdown, 60000);
     }
 
-    // Fill user data (same as ongoing)
-    document.getElementById("joinDisplayEmail").textContent = userProfile.email;
-    document.getElementById("joinDisplayAge").textContent   = userProfile.age + " years";
-    document.getElementById("joinDisplayTeam").textContent  = userProfile.teamName;
-    document.getElementById("joinDisplayCode").textContent  = "Code: " + (userProfile.teamCode || "N/A");
+    // Fill user data safely
+    try {
+        if (userProfile) {
+            document.getElementById("joinDisplayEmail").textContent = userProfile.email || "N/A";
+            document.getElementById("joinDisplayAge").textContent   = (userProfile.age || "N/A") + " years";
+            document.getElementById("joinDisplayTeam").textContent  = userProfile.teamName || "N/A";
+            document.getElementById("joinDisplayCode").textContent  = "Code: " + (userProfile.teamCode || "N/A");
+            
+            // Clear previous values
+            document.getElementById("uidPlayer1").value     = userProfile.freeFireUid || "";
+        }
+    } catch (e) {
+        console.error("Error setting user profile details in UI:", e);
+    }
 
-    // Clear previous values
-    document.getElementById("uidPlayer1").value     = userProfile.freeFireUid || "";
-    document.getElementById("joinBackupEmail").value = "";
-    document.getElementById("uidPlayer2").value     = "";
-    document.getElementById("uidPlayer3").value     = "";
-    document.getElementById("uidPlayer4").value     = "";
-    document.getElementById("uidPlayer5").value     = "";
-    document.getElementById("joinPhone").value       = "";
+    try {
+        document.getElementById("joinBackupEmail").value = "";
+        document.getElementById("uidPlayer2").value     = "";
+        document.getElementById("uidPlayer3").value     = "";
+        document.getElementById("uidPlayer4").value     = "";
+        document.getElementById("uidPlayer5").value     = "";
+        document.getElementById("joinPhone").value       = "";
+    } catch (e) {
+        console.error("Error clearing form inputs:", e);
+    }
 
     // Change submit button text
     const submitBtn = document.getElementById("joinSubmitBtn");
@@ -666,29 +693,43 @@ document.getElementById('player5Container').style.display = 'none';
         }
     }
 
-    document.getElementById("joinDisplayEmail").textContent = userProfile.email;
-    document.getElementById("joinDisplayAge").textContent   = userProfile.age + " years";
-    document.getElementById("joinDisplayTeam").textContent  = userProfile.teamName;
-    document.getElementById("joinDisplayCode").textContent  = "Code: " + (userProfile.teamCode || "N/A");
-
-    document.getElementById("uidPlayer1").value      = userProfile.freeFireUid || "";
-    document.getElementById("joinBackupEmail").value = "";
-    document.getElementById("uidPlayer2").value      = "";
-    document.getElementById("uidPlayer3").value      = "";
-    document.getElementById("uidPlayer4").value      = "";
-    document.getElementById("uidPlayer5").value      = "";
-    document.getElementById("joinPhone").value        = "";
-
-    if (userProfile.isLeader) {
-        document.getElementById("joinDisplayLeader").textContent = "👑 You are the Team Leader";
-    } else {
-        try {
-            const teamDoc    = await getDoc(doc(db, "teams", userProfile.teamId));
-            const leaderName = teamDoc.exists() ? teamDoc.data().leaderName : "Unknown";
-            document.getElementById("joinDisplayLeader").textContent = `👤 Leader: ${leaderName}`;
-        } catch (e) {
-            document.getElementById("joinDisplayLeader").textContent = "👤 Team Member";
+    // Fill user data safely
+    try {
+        if (userProfile) {
+            document.getElementById("joinDisplayEmail").textContent = userProfile.email || "N/A";
+            document.getElementById("joinDisplayAge").textContent   = (userProfile.age || "N/A") + " years";
+            document.getElementById("joinDisplayTeam").textContent  = userProfile.teamName || "N/A";
+            document.getElementById("joinDisplayCode").textContent  = "Code: " + (userProfile.teamCode || "N/A");
+            document.getElementById("uidPlayer1").value      = userProfile.freeFireUid || "";
         }
+    } catch (e) {
+        console.error("Error setting user profile details in UI:", e);
+    }
+
+    try {
+        document.getElementById("joinBackupEmail").value = "";
+        document.getElementById("uidPlayer2").value      = "";
+        document.getElementById("uidPlayer3").value      = "";
+        document.getElementById("uidPlayer4").value      = "";
+        document.getElementById("uidPlayer5").value      = "";
+        document.getElementById("joinPhone").value        = "";
+    } catch (e) {
+        console.error("Error clearing form inputs:", e);
+    }
+
+    try {
+        if (userProfile && userProfile.isLeader) {
+            document.getElementById("joinDisplayLeader").textContent = "👑 You are the Team Leader";
+        } else {
+            getDoc(doc(db, "teams", userProfile.teamId)).then(teamDoc => {
+                const leaderName = teamDoc.exists() ? teamDoc.data().leaderName : "Unknown";
+                document.getElementById("joinDisplayLeader").textContent = `👤 Leader: ${leaderName}`;
+            }).catch(e => {
+                document.getElementById("joinDisplayLeader").textContent = "👤 Team Member";
+            });
+        }
+    } catch (e) {
+        console.error("Error setting leader status:", e);
     }
 };
 
@@ -894,6 +935,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
 
                 const regData = {
+                    userId:       auth.currentUser.uid, // 🔒 EXPLICIT UID INJECTION
                     teamId:       userProfile.teamId,
                     teamName:     userProfile.teamName,
                     teamCode:     userProfile.teamCode,
@@ -946,6 +988,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 }
 
                 const verifData = {
+                    userId:      auth.currentUser.uid, // 🔒 EXPLICIT UID INJECTION
                     teamId:      userProfile.teamId,
                     teamName:    userProfile.teamName,
                     teamCode:    userProfile.teamCode,
