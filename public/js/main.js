@@ -903,7 +903,10 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
        try {
-            const userId = currentUser.uid;
+            if (!auth.currentUser) {
+                throw new Error("User not authenticated");
+            }
+            const userId = auth.currentUser.uid;
             const teamIdToCheck = userProfile.teamId;
             
             // Determine if this is a brand new application or an edit of a rejected one
@@ -942,8 +945,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 
                 // Smart Logic for Upcoming
                 if (paymentChoice === "pay_now" || teamVerificationHistory) {
-                    // Provisional Slot Granted
-                    registrationStatus = "approved"; // Automatically approved for payment
+                    // Provisional Slot Granted, but keep 'pending' for security rules
+                    registrationStatus = "pending";
                 }
 
                 const regData = {
@@ -967,11 +970,12 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (isEditing) {
                     // ✅ FIX: Update existing document safely
                     regData.rejectedFields = []; // Clear old errors
+                    console.log("Submitting Live Payload (Update):", regData);
                     await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), regData);
                 } else {
                     // Create new document
-                    regData.userId = userId;
                     regData.registeredAt = serverTimestamp();
+                    console.log("Submitting Live Payload (New):", regData);
                     await setDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), regData);
                 }
 
@@ -995,8 +999,8 @@ document.addEventListener("DOMContentLoaded", function() {
                 
                 // Smart Logic for Ongoing
                 if (paymentChoice === "pay_now" || teamVerificationHistory) {
-                    // Provisional Slot Granted
-                    registrationStatus = "approved"; // Automatically approved for payment
+                    // Provisional Slot Granted, but keep 'pending' for security rules
+                    registrationStatus = "pending";
                 }
 
                 const verifData = {
@@ -1018,11 +1022,12 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (isEditing) {
                     // ✅ FIX: Update existing document safely
                     verifData.rejectedFields = []; // Clear old errors
+                    console.log("Submitting Live Payload (Update):", verifData);
                     await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), verifData);
                 } else {
                     // Create new document
-                    verifData.userId = userId;
                     verifData.submittedAt = serverTimestamp();
+                    console.log("Submitting Live Payload (New):", verifData);
                     await setDoc(doc(db, "tournaments", tournamentId, "verifications", userId), verifData);
                 }
 
