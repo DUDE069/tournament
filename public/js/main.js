@@ -1079,24 +1079,6 @@ document.addEventListener("DOMContentLoaded", function() {
             
             // If they chose pay_now or got instant approval, open payment stage immediately
             if (paymentChoice === "pay_now" || teamVerificationHistory) {
-                // Write 3: Provisional Slot (Hard Lock)
-                try {
-                    const path3 = `tournaments/${tournamentId}/slots/${userProfile.teamId}`;
-                    console.log(`Path 3: ${path3}`);
-                    const slotPayload = {
-                        teamId: userProfile.teamId,
-                        teamName: userProfile.teamName,
-                        assignedAt: serverTimestamp(),
-                        paymentStatus: "pending",
-                        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()
-                    };
-                    console.log("Payload 3:", JSON.stringify(slotPayload));
-                    await setDoc(doc(db, "tournaments", tournamentId, "slots", userProfile.teamId), slotPayload);
-                    console.log("Write 3: SUCCESS");
-                } catch (e) {
-                    console.error("Write 3 FAILED:", e.message);
-                }
-
                 if (paymentChoice === "pay_now") {
                     showPopup(
                         "success", 
@@ -2100,16 +2082,7 @@ window.processUpcomingPayment = async function(tournamentId) {
             );
         } catch (_) {}
 
-        // 4. Sync to Slot Management — best effort
-        if (userProfile?.teamId) {
-            try {
-                await updateDoc(
-                    doc(db, "tournaments", tournamentId, "slots", userProfile.teamId),
-                    { paymentStatus: "Payment Submitted", updatedAt: serverTimestamp() }
-                );
-            } catch (_) {}
-        }
-
+        // 4. Sync to Slot Management removed for security (handled by admin)
         // 5. Notify admin for manual verification
         await addDoc(collection(db, "adminNotifications"), {
             title:        "\uD83D\uDD14 Pre-Payment Submitted \u2014 Verification Required",
