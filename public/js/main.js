@@ -1123,12 +1123,33 @@ document.addEventListener("DOMContentLoaded", function() {
 // ===============================
 // PAYMENT INTERFACE
 // ===============================
-window.showPaymentInterface = async function(tournamentId) {
+window.showPaymentInterface = async function(tournamentId, btnElement = null) {
     if (!tournamentId) { showMessage("Tournament ID missing"); return; }
     
+    // UI Feedback: Loading State
+    const loaderId = 'paymentRedirectLoader';
+    const loader = document.createElement('div');
+    loader.id = loaderId;
+    loader.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:9999;display:flex;align-items:center;justify-content:center;color:#00ff88;font-size:18px;font-weight:bold;font-family:"Rajdhani", sans-serif;flex-direction:column;';
+    loader.innerHTML = `
+        <div style="width:50px;height:50px;border:4px solid #333;border-top:4px solid #00ff88;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:20px;"></div>
+        Wait a minute... Redirecting to payment
+    `;
+    document.body.appendChild(loader);
+
+    if (btnElement) {
+        btnElement.dataset.originalText = btnElement.textContent;
+        btnElement.textContent = "Wait a minute... Redirecting to payment";
+        btnElement.disabled = true;
+    }
+
     const tournament = tournaments.find(t => t.id === tournamentId);
     
-    import('../paymentStage.js').then(module => {
+    try {
+        // Fix 404 Endpoint Mismatch: Use absolute path to root + cache buster
+        const module = await import('/paymentStage.js?v=' + new Date().getTime());
+        document.getElementById(loaderId)?.remove();
+        
         module.enterPaymentStage(
             currentUser.uid, 
             tournamentId, 
@@ -1136,7 +1157,17 @@ window.showPaymentInterface = async function(tournamentId) {
             tournament?.entryFee || 0, 
             window.currentTournamentCategory === 'upcoming' // Pass isUpcoming flag
         );
-    });
+    } catch (error) {
+        console.error("[PAYMENT] 404 or Load Error:", error);
+        document.getElementById(loaderId)?.remove();
+        
+        if (btnElement) {
+            btnElement.textContent = btnElement.dataset.originalText || "Pay Now";
+            btnElement.disabled = false;
+        }
+        
+        showMessage("❌ Failed to connect to the secure payment server (404). Please try again later or contact support.");
+    }
 };
 
 window.openPaymentInterface = async function(tournamentId) {
@@ -4243,7 +4274,7 @@ if (submitBtn) {
                 showPopup("success", 
                     "🎉 Congratulations! Your registration has been verified.\n\nYou can pay now to secure your slot, or choose to pay later. Remember — your slot is confirmed, but payment must be completed before the match starts. If payment is not received in time, your slot will be given to another team.", 
                     "💳 Pay Now & Secure Slot", 
-                    () => { document.getElementById('customPopup').remove(); showPaymentInterface(tournamentId); }
+                    (btnElement) => { document.getElementById('customPopup').remove(); showPaymentInterface(tournamentId, btnElement); }
                 );
                 // Append Pay Later button dynamically to the popup
                 const popupBody = document.querySelector('#customPopup > div');
@@ -6756,7 +6787,7 @@ window.showPayLaterPopup = function(tournamentId, tournamentName, entryFee) {
                 <p style="color:#9ca3af; margin-bottom:6px; font-size:14px; line-height:1.6;">Your team has been approved for<br><strong style="color:#fff;">${tournamentName}</strong></p>
                 <p style="color:#9ca3af; margin-bottom:24px; font-size:13px;">Entry Fee: <strong style="color:#22c55e;">₹${entryFee}</strong></p>
                 <div style="display:flex; flex-direction:column; gap:12px;">
-                    <button onclick="document.getElementById('payLaterModal').remove(); window.showPaymentInterface('${tournamentId}')" style="background:#22c55e; color:#000; font-weight:bold; padding:14px; border:none; border-radius:10px; cursor:pointer;">💳 Pay Now — Secure Slot</button>
+                    <button onclick="document.getElementById('payLaterModal').remove(); window.showPaymentInterface('${tournamentId}', this)" style="background:#22c55e; color:#000; font-weight:bold; padding:14px; border:none; border-radius:10px; cursor:pointer;">💳 Pay Now — Secure Slot</button>
                     <button onclick="document.getElementById('payLaterModal').remove(); window._addPayLaterNotification('${tournamentId}', '${tournamentName.replace(/'/g, "\\'")}', ${entryFee}); showMessage('Reminder saved.');" style="background:transparent; color:#9ca3af; border:1px solid #374151; padding:12px; border-radius:10px; cursor:pointer;">Pay Later — Remind Me</button>
                     <button onclick="document.getElementById('payLaterModal').remove();" style="background:transparent; color:#555; border:none; padding:8px; cursor:pointer;">Close</button>
                 </div>
