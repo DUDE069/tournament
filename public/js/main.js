@@ -451,9 +451,20 @@ function renderTournaments() {
                 isApproved = true;
             }
 
-            if (isApproved) {
+            // Check if user has a pending payment verification
+            const isVerificationPending = window.userPendingPayments && 
+                (window.userPendingPayments[t.id]?.paymentStatus === 'pending_verification' || 
+                 window.userPendingPayments[t.id]?.paymentStatus === 'submitted');
+
+            if (isVerificationPending) {
                 buttonHTML = `
-                    <button class="join-btn" onclick="showPaymentInterface('${t.id}')"
+                    <button class="join-btn" disabled
+                        style="background: #374151; border-color: #374151; color: #9ca3af; cursor: not-allowed;">
+                        ⏳ Verification Pending (Admin Reviewing)
+                    </button>`;
+            } else if (isApproved) {
+                buttonHTML = `
+                    <button class="join-btn" onclick="showPaymentInterface('${t.id}', this)"
                         style="background: #00ff88; border-color: #00ff88; color: #000; box-shadow: 0 0 15px rgba(0,255,136,0.4);">
                         💳 Pay Now
                     </button>`;
@@ -1627,6 +1638,54 @@ onAuthStateChanged(auth, async (user) => {
 
         // Load wallet and private listeners
         await loadUserWallet();
+
+        // ✅ URL PARSING: Capture Payment Gateway Return
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('payment') === 'success' && urlParams.get('utr')) {
+            const utr = urlParams.get('utr');
+            let tId = urlParams.get('tournamentId');
+            
+            // If tournamentId isn't in URL, infer from pendingPayments
+            if (!tId) {
+                try {
+                    const pendingSnap = await getDocs(collection(db, "users", user.uid, "pendingPayment"));
+                    if (!pendingSnap.empty) {
+                        tId = pendingSnap.docs[0].id; // Fallback to first pending payment
+                    }
+                } catch(e) {}
+            }
+            
+            if (tId) {
+                try {
+                    // Write to verifications (Admin queue)
+                    await setDoc(doc(db, "tournaments", tId, "verifications", user.uid), {
+                        teamId: userProfile?.teamId || user.uid,
+                        userId: user.uid,
+                        utr: utr,
+                        status: 'pending',
+                        timestamp: serverTimestamp()
+                    });
+                    
+                    // Update user's personal pending status to lock UI
+                    await updateDoc(doc(db, "users", user.uid, "pendingPayment", tId), {
+                        paymentStatus: 'pending_verification',
+                        updatedAt: serverTimestamp()
+                    });
+                    
+                    showMessage("✅ Payment verified! Admin is reviewing your UTR.", "success");
+                } catch (e) {
+                    console.error("[PAYMENT SYNC ERROR]:", e);
+                }
+            }
+            
+            // Strip parameters to prevent double-sync on refresh
+            const cleanUrl = new URL(window.location);
+            cleanUrl.searchParams.delete('payment');
+            cleanUrl.searchParams.delete('utr');
+            cleanUrl.searchParams.delete('tournamentId');
+            window.history.replaceState({}, document.title, cleanUrl);
+        }
+
         // Only start PRIVATE listeners here
         
         // NEW: Safely call setupNotifications on login
@@ -1648,6 +1707,14 @@ onAuthStateChanged(auth, async (user) => {
         initNotifications();
 
         // Sync local registration state and manage Participant Listeners
+        window.userPendingPayments = {};
+        onSnapshot(collection(db, "users", user.uid, "pendingPayment"), (snap) => {
+            snap.forEach(docSnap => {
+                window.userPendingPayments[docSnap.id] = docSnap.data();
+            });
+            renderTournaments(); // Re-render to update UI locks
+        });
+
         onSnapshot(collection(db, "users", user.uid, "upcomingRegistrations"), (snap) => {
             window.userUpcomingRegs = {};
             const currentTournamentIds = new Set();
@@ -3633,6 +3700,31 @@ function initNotifications() {
                         showPopup("success", notif.message, "Open Match Room", () => {
                             document.getElementById('customPopup')?.remove();
                             if (typeof showMatchRoom === 'function') showMatchRoom(notif.tournamentId);
+                        });
+                    }
+                } else if (notif.type === "global_alert") {
+                    // Global Admin Notification Logic
+                    // Check if already dismissed via localStorage
+                    let readAlerts = [];
+                    try {
+                        readAlerts = JSON.parse(localStorage.getItem('read_alerts') || '[]');
+                    } catch (e) {}
+
+                    if (!readAlerts.includes(notifId)) {
+                        console.log("🚀 Firing Global Alert Popup:", notifId);
+                        showPopup("info", notif.message || notif.title, "Dismiss", () => {
+                            document.getElementById('customPopup')?.remove();
+                            
+                            // Save to read_alerts in localStorage when dismissed
+                            let currentAlerts = [];
+                            try { currentAlerts = JSON.parse(localStorage.getItem('read_alerts') || '[]'); } catch (e) {}
+                            if (!currentAlerts.includes(notifId)) {
+                                currentAlerts.push(notifId);
+                                localStorage.setItem('read_alerts', JSON.stringify(currentAlerts));
+                            }
+                            
+                            // Mark as read in DB if possible
+                            try { updateDoc(change.doc.ref, { popupShown: true, read: true }); } catch (e) {}
                         });
                     }
                 }
@@ -7439,3 +7531,49 @@ window.openDashboard = window._newOpenDashboard = async function(type) {
 
 // Call checkDashboardUpdates occasionally (e.g. on load)
 setTimeout(() => { if (window.checkDashboardUpdates) window.checkDashboardUpdates(); }, 5000);
+
+// =============================================================================
+// PART 5: DEVELOPER TOOLS (Zero-Cost Payment Bypass)
+// =============================================================================
+window.addEventListener('keydown', async (e) => {
+    // Ctrl + Shift + B (Bypass)
+    if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        
+        if (!currentUser) {
+            showMessage("❌ Must be logged in to use Dev Bypass.");
+            return;
+        }
+
+        const tId = prompt("🛠️ DEV BYPASS\nEnter the Tournament ID to simulate a successful payment for:");
+        if (!tId) return;
+
+        const fakeUtr = `DEV-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+
+        try {
+            // Write to verifications (Admin queue)
+            await setDoc(doc(db, "tournaments", tId, "verifications", currentUser.uid), {
+                teamId: userProfile?.teamId || currentUser.uid,
+                userId: currentUser.uid,
+                utr: fakeUtr,
+                status: 'pending',
+                timestamp: serverTimestamp(),
+                isDevBypass: true
+            });
+            
+            // Update user's personal pending status to lock UI
+            await updateDoc(doc(db, "users", currentUser.uid, "pendingPayment", tId), {
+                paymentStatus: 'pending_verification',
+                updatedAt: serverTimestamp()
+            });
+
+            showMessage(`✅ Dev Bypass Success! Mock UTR [${fakeUtr}] submitted.`, "success");
+            
+            // Re-render UI to apply lock
+            renderTournaments();
+        } catch (error) {
+            console.error("[DEV BYPASS ERROR]:", error);
+            showMessage("❌ Dev Bypass failed. Check console.", "error");
+        }
+    }
+});
