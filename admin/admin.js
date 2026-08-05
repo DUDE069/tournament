@@ -189,6 +189,8 @@ window.showTab = function(tabName) {
     tournaments:   "tournamentsSection",
     calendar:      "calendarSection",
     verifications: "verificationsSection",
+    transactions:  "transactionsSection",
+    withdrawals:   "withdrawalsSection",
     registrations: "registrationsSection",
   };
   document.getElementById(sectionMap[tabName])?.classList.add("active");
@@ -198,12 +200,220 @@ window.showTab = function(tabName) {
   } else {
     if (_listeners.verifications) { _listeners.verifications(); _listeners.verifications = null; }
   }
+
+  if (tabName === "transactions") {
+    loadTransactions();
+  } else {
+    if (_listeners.transactions) { _listeners.transactions(); _listeners.transactions = null; }
+  }
+
+  if (tabName === "withdrawals") {
+    loadWithdrawals();
+  } else {
+    if (_listeners.withdrawals) { _listeners.withdrawals(); _listeners.withdrawals = null; }
+  }
+
   if (tabName === "registrations") {
     loadUpcomingRegistrations();
   } else {
     if (_listeners.registrations) { _listeners.registrations(); _listeners.registrations = null; }
   }
 };
+
+let _allTransactions = [];
+
+function loadTransactions() {
+  if (_listeners.transactions) { _listeners.transactions(); _listeners.transactions = null; }
+
+  const container = document.getElementById("transactionList");
+  if (!container) return;
+  container.innerHTML = '<p class="loading-text">Loading transactions...</p>';
+
+  const q = query(collectionGroup(db, "verifications"), where("status", "==", "pending"), orderBy("timestamp", "asc"));
+  _listeners.transactions = onSnapshot(q, (snap) => {
+    _allTransactions = snap.docs.map(doc => ({ id: doc.id, ...doc.data(), tournamentId: doc.ref.parent.parent.id }));
+    filterTransactions();
+  }, (err) => {
+    console.error("Transactions load error:", err);
+    container.innerHTML = '<p style="color:red;">Error loading transactions. Make sure index exists.</p>';
+  });
+}
+
+window.filterTransactions = function() {
+  const container = document.getElementById("transactionList");
+  const searchVal = (document.getElementById("transactionSearch")?.value || "").toLowerCase();
+  
+  const filtered = _allTransactions.filter(t => {
+    // Only show ones with UTR
+    if (!t.utr) return false;
+    
+    if (!searchVal) return true;
+    return (t.teamId && t.teamId.toLowerCase().includes(searchVal)) || 
+           (t.utr && t.utr.toLowerCase().includes(searchVal));
+  });
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<p style="color:#888;">No pending transactions found.</p>';
+    document.getElementById("transactionBadge").style.display = "none";
+    return;
+  }
+
+  document.getElementById("transactionBadge").textContent = filtered.length;
+  document.getElementById("transactionBadge").style.display = "inline-block";
+
+  container.innerHTML = filtered.map(t => {
+    return `
+      <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #333; margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <p style="margin:0 0 5px; color:#fff;"><strong>Team ID:</strong> ${t.teamId}</p>
+            <p style="margin:0 0 5px; color:#888;"><strong>Tournament ID:</strong> ${t.tournamentId}</p>
+            <p style="margin:0 0 5px; color:#00ff88; font-size:18px;"><strong>UTR:</strong> ${t.utr}</p>
+            <p style="margin:0 0 5px; color:#ffd700;"><strong>Amount:</strong> ₹${t.expectedAmount || 0}</p>
+            ${t.screenshotUrl ? `<a href="${t.screenshotUrl}" target="_blank" style="color:#3b82f6;">View Screenshot</a>` : ''}
+          </div>
+          <div>
+            <button onclick="approveTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', '${t.utr}', ${t.expectedAmount || 0})" style="background:#00ff88; color:#000; padding:10px 20px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; margin-bottom:5px; width:100%;">Approve</button>
+            <button onclick="walletRefundTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', ${t.expectedAmount || 0})" style="background:#3b82f6; color:#fff; padding:10px 20px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">Refund to Wallet (Waitlist)</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+};
+
+window.approveTransaction = async function(tournamentId, docId, teamId, userId, utr, amount) {
+  if (!confirm("Are you sure you want to approve this transaction? This will confirm their slot.")) return;
+  try {
+    const docRef = doc(db, "tournaments", tournamentId, "verifications", docId);
+    
+    // 1. Mark verification as approved
+    await updateDoc(docRef, { status: "approved", approvedAt: serverTimestamp() });
+    
+    // 2. Mark slot as verified (prevent cron from deleting it)
+    await updateDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
+      paymentStatus: "Payment Verified", // Set to verified
+      updatedAt: serverTimestamp()
+    });
+
+    // 3. Mark team history as verified so they get trust score
+    await setDoc(doc(db, "team_verification_history", teamId), {
+      isVerified: true,
+      lastVerifiedAt: serverTimestamp()
+    }, { merge: true });
+    
+    // 4. Update the actual participant record
+    await setDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+      paymentStatus: 'verified',
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    
+    // 5. Update user's personal pendingPayment record
+    await setDoc(doc(db, "users", userId, "pendingPayment", tournamentId), {
+      paymentStatus: 'verified',
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    showToast("Transaction approved successfully!");
+  } catch (e) {
+    console.error("Error approving transaction:", e);
+    alert("Error: " + e.message);
+  }
+};
+
+window.walletRefundTransaction = async function(tournamentId, docId, teamId, userId, amount) {
+  if (!confirm(`Are you sure you want to refund ₹${amount} to their wallet and move them to waitlist?`)) return;
+  try {
+    const docRef = doc(db, "tournaments", tournamentId, "verifications", docId);
+    
+    // 1. Mark verification as waitlisted
+    await updateDoc(docRef, { status: "waitlisted", waitlistedAt: serverTimestamp() });
+    
+    // 2. Mark slot as waitlisted (this moves them to the waitlist queue in slot management)
+    await setDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
+      teamId: teamId,
+      paymentStatus: "Waitlist",
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    // 3. Refund to Wallet
+    const walletRef = doc(db, "users", userId, "wallet", "main");
+    const walletSnap = await getDoc(walletRef);
+    let currentBalance = 0;
+    if (walletSnap.exists()) {
+      currentBalance = walletSnap.data().balance || 0;
+    }
+    await setDoc(walletRef, {
+      balance: currentBalance + Number(amount),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    // 4. Add Transaction History
+    await addDoc(collection(db, "users", userId, "transactions"), {
+      amount: Number(amount),
+      type: "refund",
+      description: `Refund for Tournament Waitlist (${tournamentId})`,
+      timestamp: serverTimestamp()
+    });
+
+    showToast("Refunded to Wallet and Waitlisted!");
+  } catch (e) {
+    console.error("Error refunding to wallet:", e);
+    alert("Error: " + e.message);
+  }
+};
+
+function loadWithdrawals() {
+  if (_listeners.withdrawals) { _listeners.withdrawals(); _listeners.withdrawals = null; }
+
+  const container = document.getElementById("withdrawalList");
+  if (!container) return;
+  container.innerHTML = '<p class="loading-text">Loading withdrawals...</p>';
+
+  const q = query(collection(db, "withdrawal_requests"), where("status", "==", "pending"), orderBy("requestedAt", "asc"));
+  
+  _listeners.withdrawals = onSnapshot(q, (snap) => {
+    if (snap.empty) {
+      container.innerHTML = '<p style="color:#888;">No pending withdrawals.</p>';
+      document.getElementById("withdrawalBadge").style.display = "none";
+      return;
+    }
+
+    document.getElementById("withdrawalBadge").textContent = snap.size;
+    document.getElementById("withdrawalBadge").style.display = "inline-block";
+
+    container.innerHTML = snap.docs.map(doc => {
+      const w = doc.data();
+      return `
+        <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #3b82f6; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <p style="margin:0 0 5px; color:#fff;"><strong>User ID:</strong> ${w.userId}</p>
+            <p style="margin:0 0 5px; color:#00ff88; font-size:18px;"><strong>Amount:</strong> ₹${w.amount}</p>
+            <p style="margin:0 0 5px; color:#3b82f6;"><strong>UPI ID:</strong> ${w.upiId}</p>
+          </div>
+          <div>
+            <button onclick="resolveWithdrawal('${doc.id}')" style="background:#00ff88; color:#000; padding:10px 20px; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Mark Paid</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  });
+}
+
+window.resolveWithdrawal = async function(docId) {
+  if (!confirm("Did you successfully send the money via UPI?")) return;
+  try {
+    await updateDoc(doc(db, "withdrawal_requests", docId), {
+      status: "completed",
+      completedAt: serverTimestamp()
+    });
+    showToast("Withdrawal marked as completed!");
+  } catch (e) {
+    console.error("Error resolving withdrawal:", e);
+    alert("Error: " + e.message);
+  }
+};
+
 
 // ============================================================================
 //  4. ONGOING APPLICATIONS

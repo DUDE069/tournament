@@ -820,6 +820,22 @@ document.addEventListener("DOMContentLoaded", function() {
         submitBtn.textContent = isUpcoming ? "Registering..." : "Sending...";
         if (processing) processing.style.display = "flex";
 
+        // Read Payment Choice
+        const paymentChoiceNode = document.querySelector('input[name="paymentChoice"]:checked');
+        const paymentChoice = paymentChoiceNode ? paymentChoiceNode.value : "pay_now";
+
+        let teamVerificationHistory = false;
+        try {
+            if (userProfile?.teamId) {
+                const historySnap = await getDoc(doc(db, "team_verification_history", userProfile.teamId));
+                if (historySnap.exists() && historySnap.data().isVerified === true) {
+                    teamVerificationHistory = true;
+                }
+            }
+        } catch (e) {
+            console.warn("Could not fetch team history", e);
+        }
+
        try {
             const userId = currentUser.uid;
             const teamIdToCheck = userProfile.teamId;
@@ -856,6 +872,14 @@ document.addEventListener("DOMContentLoaded", function() {
                 // ========================================
                 // UPCOMING TOURNAMENT
                 // ========================================
+                let registrationStatus = "pending";
+                
+                // Smart Logic for Upcoming
+                if (paymentChoice === "pay_now" || teamVerificationHistory) {
+                    // Provisional Slot Granted
+                    registrationStatus = "approved"; // Automatically approved for payment
+                }
+
                 const regData = {
                     teamId:       userProfile.teamId,
                     teamName:     userProfile.teamName,
@@ -866,7 +890,9 @@ document.addEventListener("DOMContentLoaded", function() {
                     playersData:  playersData,         
                     phone:        formattedPhone,
                     backupEmail:  backupEmail,
-                    status:       "pending",
+                    status:       registrationStatus,
+                    paymentChoice: paymentChoice,
+                    paymentStatus: "pending",
                     category:     "upcoming",
                     eventDate:    tournament.eventDate || null,
                 };
@@ -898,6 +924,14 @@ document.addEventListener("DOMContentLoaded", function() {
                 // ========================================
                 // ONGOING TOURNAMENT
                 // ========================================
+                let registrationStatus = "pending";
+                
+                // Smart Logic for Ongoing
+                if (paymentChoice === "pay_now" || teamVerificationHistory) {
+                    // Provisional Slot Granted
+                    registrationStatus = "approved"; // Automatically approved for payment
+                }
+
                 const verifData = {
                     teamId:      userProfile.teamId,
                     teamName:    userProfile.teamName,
@@ -908,7 +942,9 @@ document.addEventListener("DOMContentLoaded", function() {
                     playersData: playersData,         
                     phone:       formattedPhone,
                     backupEmail: backupEmail,
-                    status:      "pending",
+                    status:      registrationStatus,
+                    paymentChoice: paymentChoice,
+                    paymentStatus: "pending",
                 };
 
                 if (isEditing) {
@@ -946,13 +982,43 @@ document.addEventListener("DOMContentLoaded", function() {
             window.originalApplicationData = null; // Clear edit tracking
             closeJoinModal();
             
+            // If they chose pay_now or got instant approval, open payment stage immediately
+            if (paymentChoice === "pay_now" || teamVerificationHistory) {
+                // Assign Provisional Slot (Hard Lock) by pushing to slots collection
+                try {
+                    await setDoc(doc(db, "tournaments", tournamentId, "slots", userProfile.teamId), {
+                        teamId: userProfile.teamId,
+                        teamName: userProfile.teamName,
+                        assignedAt: serverTimestamp(),
+                        paymentStatus: "pending",
+                        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString() // 15 mins from now
+                    });
+                } catch (e) {
+                    console.warn("Could not allocate provisional slot", e);
+                }
+
+                if (paymentChoice === "pay_now") {
+                    showPopup(
+                        "success", 
+                        "Provisional Slot Granted! You have 15 minutes to submit your payment UTR.", 
+                        "Pay Now", 
+                        () => {
+                            if (window.renderPaymentUI) {
+                                window.renderPaymentUI({ paymentStatus: 'pending' }, tournament.title, tournamentId, tournament.entryFee);
+                            }
+                        }
+                    );
+                    return;
+                }
+            }
+
             showPopup(
                 "success", 
                 isUpcoming 
-                    ? `Successfully registered for "${tournament.title}"!\n\nYour application is under review.` 
-                    : `Application Submitted! Your team "${userProfile.teamName}" is now under review.`, 
-                "Got it", 
-                () => document.getElementById('customPopup')?.remove()
+                    ? (teamVerificationHistory ? `Slot granted for "${tournament.title}"! You can pay later.` : `Successfully registered for "${tournament.title}"!\n\nYour application is under review.`) 
+                    : `Details sent for "${tournament.title}"!\n\nCheck 'Status' tab for updates.`, 
+                "Awesome!", 
+                () => {}
             );
 
             // Reset button
@@ -1622,6 +1688,9 @@ onAuthStateChanged(auth, async (user) => {
 
     const loginBtn = document.getElementById("loginBtn");
     if (loginBtn) loginBtn.innerText = user ? "Profile" : "Login";
+
+    const walletBtn = document.getElementById("walletNavBtn");
+    if (walletBtn) walletBtn.style.display = user ? "inline-block" : "none";
 });
 
 

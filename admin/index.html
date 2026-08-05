@@ -495,8 +495,16 @@
     <button class="tab active" onclick="showTab('tournaments')">🏆 Tournaments</button>
     <button class="tab" onclick="showTab('calendar')">📅 Calendar</button>
     <button class="tab" onclick="showTab('verifications')">
-      📋 Ongoing Applications
+      👥 Verifications
       <span class="tab-badge" id="verificationBadge" style="display:none">0</span>
+    </button>
+    <button class="tab" onclick="showTab('transactions')">
+      💸 Transactions
+      <span class="tab-badge" id="transactionBadge" style="display:none">0</span>
+    </button>
+    <button class="tab" onclick="showTab('withdrawals')">
+      🏦 Withdrawals
+      <span class="tab-badge" id="withdrawalBadge" style="display:none">0</span>
     </button>
     <button class="tab" onclick="showTab('registrations')">
       📝 Registrations
@@ -654,6 +662,25 @@
       <h2>Upcoming Tournament Registrations</h2>
       <div id="upcomingRegistrationsList">
         <p class="loading-text">Loading…</p>
+      </div>
+    </div>
+
+    <!-- ══ TRANSACTION VERIFICATION ═══ -->
+    <div class="section" id="transactionsSection">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h2>Transaction Verification</h2>
+        <input type="text" id="transactionSearch" placeholder="Search by Team ID or UTR" oninput="filterTransactions()" style="padding:10px; background:#0f0f0f; color:#fff; border:1px solid #333; border-radius:4px; width:250px;">
+      </div>
+      <div id="transactionList">
+        <p class="loading-text">Loading…</p>
+      </div>
+    </div>
+
+    <!-- ══ WITHDRAWAL REQUESTS ═══ -->
+    <div class="section" id="withdrawalsSection">
+      <h2>Wallet Withdrawals</h2>
+      <div id="withdrawalList">
+        <p class="loading-text">Loading withdrawals…</p>
       </div>
     </div>
 

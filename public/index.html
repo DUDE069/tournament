@@ -438,6 +438,7 @@
       <a href="#" onclick="scrollToSection('tournaments', this)">Tournaments</a>
       <a href="#" onclick="scrollToSection('leaderboard', this)">Leaderboard</a>
       <a href="#dashboard" onclick="scrollToDashboard(event)">Dashboard</a>
+      <a href="javascript:void(0)" id="walletNavBtn" onclick="openWalletModal()" style="display:none; color:#00ff88;">Wallet</a>
       <a href="#footer" onclick="scrollToSection('footer', this)">About Us</a>
 
       <a href="/NPC-Esport.apk" download style="text-decoration: none;"><button style="padding: 10px 20px; font-size: 16px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 5px;">Download Our Android App</button></a>
@@ -473,6 +474,34 @@
         <button onclick="requestPushFromInfo()" style="width:100%; background:#3b82f6; color:#fff; border:none; padding:10px; border-radius:6px; cursor:pointer; font-weight:bold;">Manage Permissions</button>
       </div>
     </div>
+  </div>
+</div>
+
+<div id="walletModal" class="modal-overlay">
+  <div class="modal-card" style="max-width: 400px; text-align: center;">
+    <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+      <h2 style="color:#00ff88; margin:0;">My Wallet</h2>
+      <button class="close-modal" onclick="closeWalletModal()">×</button>
+    </div>
+    
+    <div style="background:#0f0f0f; border:1px solid #333; padding:20px; border-radius:8px; margin-bottom:20px;">
+      <p style="color:#888; margin:0 0 10px; font-size:14px;">Available Balance</p>
+      <h1 id="walletBalanceDisplay" style="color:#00ff88; margin:0; font-size:36px; font-weight:900;">₹0</h1>
+    </div>
+
+    <div style="text-align:left; margin-bottom:15px;">
+      <label style="color:#aaa; font-size:12px; margin-bottom:4px; display:block;">Amount to Withdraw (₹)</label>
+      <input type="number" id="withdrawAmount" placeholder="e.g. 50" style="width:100%; padding:12px; border-radius:8px; border:1px solid #333; background:#0f0f0f; color:#fff; font-size:16px; box-sizing:border-box;">
+    </div>
+    
+    <div style="text-align:left; margin-bottom:20px;">
+      <label style="color:#aaa; font-size:12px; margin-bottom:4px; display:block;">Your UPI ID (For Transfer)</label>
+      <input type="text" id="withdrawUpi" placeholder="e.g. name@upi" style="width:100%; padding:12px; border-radius:8px; border:1px solid #333; background:#0f0f0f; color:#fff; font-size:16px; box-sizing:border-box;">
+    </div>
+
+    <button onclick="requestWalletWithdrawal()" style="width:100%; padding:14px; background:#3b82f6; color:#fff; border:none; border-radius:8px; font-weight:bold; font-size:16px; cursor:pointer;">
+      Request Withdrawal
+    </button>
   </div>
 </div>
 
@@ -1016,6 +1045,23 @@
 
        <div style="background:#0f0f0f;padding:15px;border-radius:8px;border:1px solid #444;margin-top:10px;">
               
+              <div id="paymentChoiceContainer" style="margin-bottom:15px; padding:12px; background:#1a1a1a; border-radius:6px; border:1px solid #00ff88;">
+                <label style="color:#00ff88;font-size:14px;display:block;margin-bottom:8px;font-weight:bold;">Payment Preference *</label>
+                <div style="display:flex;gap:15px;align-items:center;">
+                  <label style="color:#fff;font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="radio" name="paymentChoice" value="pay_now" checked style="accent-color:#00ff88;cursor:pointer;">
+                    Pay Now (Instant Provisional Slot)
+                  </label>
+                  <label style="color:#fff;font-size:13px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+                    <input type="radio" name="paymentChoice" value="pay_later" style="accent-color:#00ff88;cursor:pointer;">
+                    Pay Later
+                  </label>
+                </div>
+                <p style="color:#888;font-size:11px;margin-top:6px;line-height:1.4;">
+                  <i>Note: If you have a verified history, 'Pay Later' grants a provisional slot. New teams must 'Pay Now' or wait for admin approval. Provisional slots are held for 15 minutes.</i>
+                </p>
+              </div>
+
               <div style="margin-bottom:15px;">
                 <label style="color:#fff;font-size:13px;display:block;margin-bottom:5px;">Phone Number *</label>
                 <div style="display:flex;gap:0;">
@@ -1204,8 +1250,8 @@
   </script>
 
   <!-- ══ MAIN JS (module) ══════════════════════════════════ -->
-<!-- Razorpay Script -->
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<!-- QRCode.js Library -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <!-- Your App Scripts -->
 <script type="module" src="./js/main.js"></script>

@@ -59,225 +59,78 @@ export function enterPaymentStage(userId, tournamentId, tournamentName, entryFee
 }
 
 // ============================================
-// PAY BUTTON CLICKED
+// UTR SUBMISSION & VERIFICATION (Replaces Razorpay)
 // ============================================
-async function startRazorpayPayment(tournamentId) {
-  payLog("[PAYMENT] Pay button clicked for:", tournamentId);
+async function submitUtrVerification(tournamentId, entryFee) {
+  payLog("[PAYMENT] Submit UTR clicked for:", tournamentId);
   
+  const utrInput = document.getElementById('utrInput').value.trim();
+  const UTR_REGEX = /^[0-9]{12}$/;
+
+  if (!UTR_REGEX.test(utrInput)) {
+    showToast("Invalid UTR! Must be exactly 12 numbers.", "error");
+    return;
+  }
+
   const btn = document.getElementById('payBtn');
   if (btn) {
     btn.disabled = true;
-    btn.textContent = "Please wait...";
-  }
-
-  try {
-    // Get tournament entry fee
-    const tSnap = await getDoc(doc(db, 'tournaments', tournamentId));
-    if (!tSnap.exists()) {
-      alert("Tournament not found!");
-      return;
-    }
-
-    const tournament = tSnap.data();
-    const entryFee = tournament.entryFee || 0;
-
-    payLog("[PAYMENT] Entry fee:", entryFee);
-
-    if (entryFee <= 0) {
-      alert("Invalid entry fee!");
-      return;
-    }
-
-    // STEP 1: Connect to your live Render Web Service to build a secure Order
-    payLog("[PAYMENT] Fetching secure order from Render backend...");
-    const response = await fetch('https://npc-secure-backend.onrender.com/create-razorpay-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: entryFee })
-    });
-
-    if (!response.ok) {
-        throw new Error("Backend failed to create order ID");
-    }
-
-    const backendOrder = await response.json();
-    payLog("[PAYMENT] Secure order received (order created)");
-
-    // STEP 2: Pass the secure server data into your checkout interface
-    openRazorpayCheckout(tournamentId, backendOrder.amount, tournament.title, backendOrder.orderId);
-
-  } catch (error) {
-    payError("[PAYMENT] Error:", error);
-    alert("Error preparing payment: " + error.message);
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Pay Securely with Razorpay";
-    }
-  }
-}
-
-// ============================================
-// OPEN RAZORPAY POPUP
-// ============================================
-function openRazorpayCheckout(tournamentId, calculatedAmount, tournamentName, secureOrderId) {
-  payLog("[PAYMENT] Opening Razorpay checkout...");
-
-  const options = {
-    key: RAZORPAY_KEY_ID,
-    amount: calculatedAmount, // Already multiplied by 100 on your Render server
-    currency: "INR",
-    order_id: secureOrderId,   // 🔥 THIS CRITICAL KEY FORCES UPI QR CODES TO APPEAR SMOOTHLY
-    name: "NPC Esports",
-    description: `Entry Fee: ${tournamentName}`,
-    prefill: {
-      email: auth.currentUser?.email || "",
-      contact: "",
-    },
-    theme: { color: "#00ff88" },
-    modal: {
-      confirmClose: true,
-      ondismiss: function() {
-        payLog("[PAYMENT] Payment popup closed");
-        showToast("Payment cancelled", "warning");
-      }
-    },
-    handler: async function(response) {
-      payLog("[PAYMENT] Payment success response received");
-      await handlePaymentSuccess(tournamentId, response);
-    }
-  };
-
-  try {
-    payLog("[PAYMENT] Creating Razorpay instance...");
-    const rzp = new Razorpay(options);
-    rzp.on("payment.failed", function(response) {
-      payError("[PAYMENT] Payment failed:", response.error);
-      showToast(`Payment failed: ${response.error.description}`, "error");
-    });
-    payLog("[PAYMENT] Opening popup...");
-    rzp.open();
-  } catch (error) {
-    payError("[PAYMENT] Razorpay error:", error);
-    showToast("Error opening payment: " + error.message, "error");
-  }
-}
-
-// ============================================
-// HANDLE PAYMENT SUCCESS
-// ============================================
-async function handlePaymentSuccess(tournamentId, response) {
-  payLog("[PAYMENT] Handling success flow");
-
-  const btn = document.getElementById('payBtn');
-  if (btn) {
     btn.textContent = "Verifying...";
-    btn.disabled = true;
   }
 
   try {
-    const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = response;
+    // We need the teamId. Let's try fetching it from participants or user profile.
+    let teamId = null;
+    let tSnap = await getDoc(doc(db, 'tournaments', tournamentId, 'participants', _currentUserId));
+    if (tSnap.exists() && tSnap.data().teamId) {
+      teamId = tSnap.data().teamId;
+    } else {
+      const uSnap = await getDoc(doc(db, 'users', _currentUserId));
+      if (uSnap.exists() && uSnap.data().teamId) {
+        teamId = uSnap.data().teamId;
+      }
+    }
+    
+    if (!teamId) {
+       // Fallback to userId if no teamId found
+       teamId = _currentUserId;
+    }
 
-    payLog("[PAYMENT] Sending verification request to backend...");
-    const verificationResponse = await fetch('https://npc-secure-backend.onrender.com/verify-payment', {
+    payLog("[PAYMENT] Sending UTR verification request to backend...");
+    // Hit the new Node.js express backend (Replace URL with deployed Render URL)
+    const verificationResponse = await fetch('https://npc-secure-backend.onrender.com/verify-utr', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        utr: utrInput,
         userId: _currentUserId,
         tournamentId: tournamentId,
-        razorpay_payment_id: razorpay_payment_id,
-        razorpay_order_id: razorpay_order_id,
-        razorpay_signature: razorpay_signature,
-        isUpcoming: _isUpcomingTournament
+        teamId: teamId,
+        expectedAmount: entryFee
       })
     });
 
     const verificationResult = await verificationResponse.json();
-    payLog("[PAYMENT] Backend verification completed");
-
+    
     if (!verificationResponse.ok || !verificationResult.success) {
-      payError("[PAYMENT] Backend verification failed:", verificationResult.message || "Unknown error");
-      showToast(`Payment verification failed: ${verificationResult.message || "Please contact support."}`, "error");
+      payError("[PAYMENT] Backend verification failed:", verificationResult.message);
+      showToast(verificationResult.message || "Invalid or Duplicate UTR.", "error");
+      if (btn) { btn.disabled = false; btn.textContent = "Submit UTR"; }
       return;
     }
 
-    showToast("✅ Payment Verified!", "success");
+    showToast("✅ UTR Submitted! Pending Admin Approval.", "success");
 
-    // ✅ FIX: Write verified status client-side immediately after backend confirms.
-    // This ensures admin panel (participants doc), slot management (slots doc),
-    // and user dashboard (upcomingRegistrations) ALL update instantly without
-    // waiting for the Firestore snapshot to propagate back.
-    if (_currentUserId && tournamentId) {
-      try {
-        // 1. Participants doc → admin status tracker reads this
-        await updateDoc(
-          doc(db, 'tournaments', tournamentId, 'participants', _currentUserId),
-          {
-            paymentStatus:        'verified',
-            razorpayPaymentId:    razorpay_payment_id,
-            paidAt:               serverTimestamp(),
-          }
-        );
-      } catch (e) { console.warn('[PAYMENT] participants sync:', e); }
-
-      try {
-        // 2. User's personal upcoming registrations doc → user dashboard reads this
-        await updateDoc(
-          doc(db, 'users', _currentUserId, 'upcomingRegistrations', tournamentId),
-          { paymentStatus: 'verified', paidAt: serverTimestamp() }
-        );
-      } catch (e) { /* doc may not exist for ongoing tournaments, that's fine */ }
-
-      try {
-        // 3. Slots doc → admin slot management reads this
-        let teamId = null;
-        // First try to get it from participants doc (for ongoing)
-        const partSnap = await getDoc(doc(db, 'tournaments', tournamentId, 'participants', _currentUserId));
-        if (partSnap.exists() && partSnap.data().teamId) {
-            teamId = partSnap.data().teamId;
-        } else {
-            // Fallback for upcoming tournaments: get from user's profile
-            const uSnap = await getDoc(doc(db, 'users', _currentUserId));
-            if (uSnap.exists() && uSnap.data().teamId) {
-                teamId = uSnap.data().teamId;
-            }
-        }
-        
-        if (teamId) {
-          await updateDoc(
-            doc(db, 'tournaments', tournamentId, 'slots', teamId),
-            { paymentStatus: 'Payment Verified', updatedAt: serverTimestamp() }
-          );
-        }
-      } catch (e) { console.warn('[PAYMENT] slots sync:', e); }
-      try {
-        // 4. Update the user's pendingPayment doc (for ongoing tournaments)
-        await updateDoc(
-          doc(db, 'users', _currentUserId, 'pendingPayment', tournamentId),
-          { paymentStatus: 'verified', paidAt: serverTimestamp() }
-        );
-      } catch (e) { /* doc may not exist if it was upcoming, that's fine */ }
-    }
-
-    // ✅ FIX: Stop the snapshot listener BEFORE showing the success screen.
-    // This prevents the Firestore update above from triggering onSnapshot →
-    // renderPaymentUI → renderSuccessScreen again, which would re-lock scroll.
-    if (unsubPayment) { unsubPayment(); unsubPayment = null; }
-
-    // Show success screen directly (not via closePaymentOverlay which removes the overlay)
-    document.getElementById('paymentOverlay')?.remove();
-    renderSuccessScreen(
-      verificationResult.tournamentName || 'Tournament',
-      verificationResult.roomId || null,
-      verificationResult.roomPassword || null,
-      razorpay_payment_id
-    );
+    // Close the overlay as it's now pending admin approval
+    closePaymentOverlay();
 
   } catch (error) {
     payError("[PAYMENT] Verification error:", error);
-    showToast("Payment recorded but verification pending. Contact support if issues persist.", "warning");
+    showToast("Error submitting UTR. Contact support.", "error");
+    if (btn) { btn.disabled = false; btn.textContent = "Submit UTR"; }
   }
 }
+
 
 // ============================================
 // RENDER PAYMENT UI
@@ -310,6 +163,8 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
     padding: 20px;
   `;
   
+  const upiUri = `upi://pay?pa=riaz-1@ptyes&pn=Riaz Mohammad&am=${entryFee || 0}&cu=INR`;
+
   overlay.innerHTML = `
     <div style="
       background: #111;
@@ -320,7 +175,10 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
       width: 100%;
       text-align: center;
       font-family: 'Rajdhani', sans-serif;
+      position: relative;
     ">
+      <button onclick="closePaymentOverlay()" style="position:absolute;top:10px;right:16px;background:transparent;border:none;color:#888;font-size:24px;cursor:pointer;">&times;</button>
+      
       <div style="
         display: inline-block;
         padding: 6px 18px;
@@ -351,8 +209,20 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
           ${entryFee ? `₹ ${entryFee}` : 'Loading...'}
         </span>
       </div>
+      
+      <p style="color:#aaa;font-size:14px;margin-bottom:8px;">Scan to Pay</p>
+      <div id="qrcodeContainer" style="background:#fff;padding:12px;border-radius:10px;display:inline-block;margin-bottom:16px;"></div>
 
-      <button id="payBtn" onclick="startRazorpayPayment('${tournamentId}')" style="
+      <a href="${upiUri}" style="display:block;background:#3b82f6;color:#fff;padding:12px;border-radius:8px;text-decoration:none;font-weight:bold;margin-bottom:20px;">
+        Open UPI App (Mobile)
+      </a>
+      
+      <div style="text-align:left;margin-bottom:16px;">
+        <label style="color:#aaa;font-size:12px;margin-bottom:4px;display:block;">12-Digit UTR / Ref No.</label>
+        <input type="text" id="utrInput" placeholder="e.g. 312345678901" maxlength="12" style="width:100%;padding:12px;border-radius:8px;border:1px solid #333;background:#0f0f0f;color:#fff;font-family:monospace;font-size:16px;box-sizing:border-box;">
+      </div>
+
+      <button id="payBtn" onclick="submitUtrVerification('${tournamentId}', ${entryFee || 0})" style="
         width: 100%;
         padding: 16px;
         background: linear-gradient(135deg, #00ff88, #00cc6a);
@@ -365,16 +235,48 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
         font-family: 'Rajdhani', sans-serif;
         transition: transform 0.1s, box-shadow 0.2s;
       " onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
-        Pay Securely with Razorpay
+        Submit UTR
       </button>
       
       <p style="color: #555; font-size: 12px; margin-top: 14px;">
-        🔒 Secured by Razorpay · Instant verification
+        Submit your UTR within <span id="countdownTimer" style="color:#ff4444; font-weight:bold;">15:00</span> minutes to secure your slot.
       </p>
     </div>
   `;
 
   document.body.appendChild(overlay);
+
+  // Start 15-minute countdown
+  let timeLeft = 15 * 60;
+  const timerEl = document.getElementById('countdownTimer');
+  const timerInterval = setInterval(() => {
+    if (!document.getElementById('paymentOverlay')) {
+      clearInterval(timerInterval);
+      return;
+    }
+    timeLeft--;
+    if (timeLeft <= 0) {
+      clearInterval(timerInterval);
+      timerEl.textContent = "00:00";
+      showToast("Time expired! Your slot may be revoked.", "error");
+    } else {
+      const m = Math.floor(timeLeft / 60).toString().padStart(2, '0');
+      const s = (timeLeft % 60).toString().padStart(2, '0');
+      timerEl.textContent = `${m}:${s}`;
+    }
+  }, 1000);
+
+  // Render QR Code
+  if (entryFee && window.QRCode) {
+    new QRCode(document.getElementById("qrcodeContainer"), {
+        text: upiUri,
+        width: 128,
+        height: 128,
+        colorDark : "#000000",
+        colorLight : "#ffffff",
+        correctLevel : QRCode.CorrectLevel.H
+    });
+  }
 
   if (!entryFee) {
     loadPaymentDetails(tournamentId);
@@ -624,6 +526,6 @@ function showToast(message, type = "success") {
 }
 
 // Attach to window so HTML onclick can find it
-window.startRazorpayPayment = startRazorpayPayment;
+window.submitUtrVerification = submitUtrVerification;
 
 payLog("[PAYMENT] Secured paymentStage.js v4.2 initialized.");

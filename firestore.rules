@@ -201,12 +201,29 @@ service cloud.firestore {
     // ==========================================
     // 7. PUSH NOTIFICATION QUEUE (NEW — Issue 1)
     // ==========================================
-    // 🔒 SECURITY FIX: The pushQueue collection was missing from rules.
-    // Client (admin.js) writes tasks here; Cloud Function reads via Admin SDK (bypasses rules).
-    // No client should be able to read this queue — only admin can write it.
     match /pushQueue/{userId}/tasks/{taskId} {
       allow read: if false;
       allow write: if isAdmin();
+    }
+    
+    // ==========================================
+    // 8. PAYMENT & WALLET SYSTEM
+    // ==========================================
+    match /submitted_utrs/{utr} {
+      // ONLY BACKEND (Admin SDK) CAN WRITE THIS.
+      // Prevents clients from spoofing or bypassing global duplicate check.
+      allow read, write: if false;
+    }
+    
+    match /team_verification_history/{teamId} {
+      allow read: if isLoggedIn();
+      allow write: if isAdmin();
+    }
+    
+    match /withdrawal_requests/{requestId} {
+      // User can create their own withdrawal requests
+      allow create: if isLoggedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isAdmin();
     }
     
   }
