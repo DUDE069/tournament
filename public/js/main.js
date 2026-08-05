@@ -970,11 +970,13 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (isEditing) {
                     // ✅ FIX: Update existing document safely
                     regData.rejectedFields = []; // Clear old errors
+                    regData.userId = auth.currentUser.uid; // 🔥 FORCED INJECTION FOR RULES
                     console.log("Submitting Live Payload (Update):", regData);
                     await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), regData);
                 } else {
                     // Create new document
                     regData.registeredAt = serverTimestamp();
+                    regData.userId = auth.currentUser.uid; // 🔥 FORCED INJECTION FOR RULES
                     console.log("Submitting Live Payload (New):", regData);
                     await setDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), regData);
                 }
@@ -1022,11 +1024,13 @@ document.addEventListener("DOMContentLoaded", function() {
                 if (isEditing) {
                     // ✅ FIX: Update existing document safely
                     verifData.rejectedFields = []; // Clear old errors
+                    verifData.userId = auth.currentUser.uid; // 🔥 FORCED INJECTION FOR RULES
                     console.log("Submitting Live Payload (Update):", verifData);
                     await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), verifData);
                 } else {
                     // Create new document
                     verifData.submittedAt = serverTimestamp();
+                    verifData.userId = auth.currentUser.uid; // 🔥 FORCED INJECTION FOR RULES
                     console.log("Submitting Live Payload (New):", verifData);
                     await setDoc(doc(db, "tournaments", tournamentId, "verifications", userId), verifData);
                 }
