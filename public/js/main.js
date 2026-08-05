@@ -913,6 +913,9 @@ document.addEventListener("DOMContentLoaded", function() {
             const isEditing = window.originalApplicationData !== undefined && window.originalApplicationData !== null;
 
             // ✅ FIX: Check for double registrations by the same team before creating a new one
+            // NOTE: Commented out because global queries across these collections trigger
+            // Firestore "Insufficient Permission" errors. Double-registration must be handled securely server-side.
+            /*
             if (!isEditing && teamIdToCheck) {
                 // Check upcomingRegistrations
                 const upQuery = query(collection(db, "tournaments", tournamentId, "upcomingRegistrations"), where("teamId", "==", teamIdToCheck));
@@ -936,6 +939,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     return;
                 }
             }
+            */
 
             if (isUpcoming) {
                 // ========================================
