@@ -98,6 +98,19 @@ function handleProfileClick() {
 if ('scrollRestoration' in history) {
     history.scrollRestoration = 'manual';
 }
+
+// ===============================
+// WEBVIEW DETECTION (Hide APK buttons in App)
+// ===============================
+document.addEventListener('DOMContentLoaded', () => {
+    const isWebView = /(wv|WebView|Android.*Version\/[\d.]+.*Chrome\/)/i.test(navigator.userAgent);
+    if (isWebView) {
+        document.querySelectorAll('.apk-download-btn, .apk-download-btn-container').forEach(el => {
+            el.style.display = 'none';
+        });
+        console.log("WebView detected. Hiding APK download buttons.");
+    }
+});
 // Force the page to start at the absolute top
 window.scrollTo(0, 0);
 
