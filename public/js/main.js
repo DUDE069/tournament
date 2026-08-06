@@ -5802,23 +5802,38 @@ let resendCooldown = 0;
 // 1. SEND SIGNUP OTP (Creates Auth User & Sends Email)
 // ==========================================
 window.sendSignupOTP = async function() {
-    const email = document.getElementById("regEmail").value.trim();
-    const pass = document.getElementById("regPass").value;
     const age = parseInt(document.getElementById("regAge").value);
     const nickname = document.getElementById("regNickname") ? document.getElementById("regNickname").value.trim() : "";
     const freeFireUid = document.getElementById("regUID") ? document.getElementById("regUID").value.trim() : "";
 
-    // Validations
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) { showMessage("Please enter a valid email address"); return; }
-    if (pass.length < 6) { showMessage("Password too short (min 6 characters)"); return; }
     if (isNaN(age) || age < 12 || age > 60) { showMessage("Age must be between 12 and 60"); return; }
-    if (pass !== document.getElementById("regConfirm")?.value) { showMessage("Passwords do not match"); return; }
+    if (!nickname) { showMessage("Nickname is required"); return; }
+    if (!freeFireUid) { showMessage("Game UID is required"); return; }
 
     const btn = document.getElementById("btnSendOTP");
     const originalText = btn.textContent;
-    
     btn.disabled = true;
+    
+    // 🚨 LIMBO GUARD BYPASS: If they already logged in via Google, skip creating an Auth account
+    if (auth.currentUser) {
+        document.getElementById("signupStep1").style.display = "none";
+        document.getElementById("roleSelectionArea").style.display = "block"; 
+        const finalBtn = document.querySelector('#createView button[onclick="createAccount()"]');
+        if (finalBtn) finalBtn.style.display = "block";
+        
+        btn.disabled = false;
+        return;
+    }
+
+    // --- STANDARD EMAIL/PASSWORD REGISTRATION ---
+    const email = document.getElementById("regEmail").value.trim();
+    const pass = document.getElementById("regPass").value;
+    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) { showMessage("Please enter a valid email address"); btn.disabled = false; return; }
+    if (pass.length < 6) { showMessage("Password too short (min 6 characters)"); btn.disabled = false; return; }
+    if (pass !== document.getElementById("regConfirm")?.value) { showMessage("Passwords do not match"); btn.disabled = false; return; }
+    
     btn.textContent = "Processing...";
     btn.style.opacity = "0.7";
     btn.style.cursor = "not-allowed";
