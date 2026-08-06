@@ -727,7 +727,7 @@ document.getElementById('player5Container').style.display = 'none';
     document.getElementById("prizeThird").textContent           = tournament.prize?.third || 0;
     document.getElementById("joinEntryFeeDisplay").textContent  = tournament.entryFee;
     const _d2a = document.getElementById("joinEntryFeeDisplay2"); if (_d2a) _d2a.textContent = tournament.entryFee;
-    document.getElementById("paymentAmount").textContent        = tournament.entryFee;
+    const _pa = document.getElementById("paymentAmount"); if (_pa) _pa.textContent = tournament.entryFee;
     document.getElementById("walletBalance").textContent        = "0";
 
     function updateHeaderTimer() {
@@ -851,6 +851,7 @@ window.closeGuidelines = function() {
 // FORM SUBMISSION (Handles BOTH Ongoing & Upcoming)
 // ===============================
 document.addEventListener("DOMContentLoaded", function() {
+    AppLog.info("[INIT] Successfully opened the website and loaded DOM.");
     const form = document.getElementById("tournamentJoinForm");
     if (!form) return;
 
@@ -1659,6 +1660,8 @@ startFirebaseListeners();
 // 2. Modify the auth state to only handle private data (notifications)
 onAuthStateChanged(auth, async (user) => {
     if (user) {
+        AppLog.success("[AUTH] Successfully switched to login account!");
+        AppLog.info("[AUTH] Browser remembered the user: " + (user.email || "Unknown"));
         currentUser = user;
         
         // ✅ GHOST FIX: Check if Firestore profile exists
@@ -1696,8 +1699,10 @@ onAuthStateChanged(auth, async (user) => {
                 return;
             }
             userProfile = retrySnap.data();
+            AppLog.success("[FIREBASE] All firebase rules are active. Profile data loaded.");
         } else {
             userProfile = snap.data();
+            AppLog.success("[FIREBASE] All firebase rules are active. Profile data loaded.");
         }
         
         sessionStorage.removeItem("npc_fresh_registration");
@@ -4320,9 +4325,9 @@ async function showApprovedReviewInterface(tournamentId, userId) {
         document.getElementById("prizeFirst").textContent = tournament.prize?.first || 0;
         document.getElementById("prizeSecond").textContent = tournament.prize?.second || 0;
         document.getElementById("prizeThird").textContent = tournament.prize?.third || 0;
-        document.getElementById("joinEntryFeeDisplay").textContent = tournament.entryFee;
+        const _jed = document.getElementById("joinEntryFeeDisplay"); if (_jed) _jed.textContent = tournament.entryFee;
         const _d2c = document.getElementById("joinEntryFeeDisplay2"); if (_d2c) _d2c.textContent = tournament.entryFee;
-        document.getElementById("paymentAmount").textContent = tournament.entryFee;
+        const _pa = document.getElementById("paymentAmount"); if (_pa) _pa.textContent = tournament.entryFee;
 
         // Consistent dynamic timing display
     const dateStr = tournament.eventDate ? new Date(tournament.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : "TBA";
@@ -4333,10 +4338,11 @@ async function showApprovedReviewInterface(tournamentId, userId) {
     }
         
         // Fill locked user data (NON-EDITABLE)
-        document.getElementById("joinDisplayEmail").textContent = userProfile.email;
-        document.getElementById("joinDisplayAge").textContent = userProfile.age + " years";
-        document.getElementById("joinDisplayTeam").textContent = regData.teamName || userProfile.teamName;
-        document.getElementById("joinDisplayCode").textContent = "Code: " + (userProfile.teamCode || "N/A");
+        const verifiedTick = regData.status === "approved" ? ' <span style="color:#00ff88;font-size:11px;margin-left:5px;">✓ Verified</span>' : '';
+        document.getElementById("joinDisplayEmail").innerHTML = userProfile.email + verifiedTick;
+        document.getElementById("joinDisplayAge").innerHTML = (userProfile.age + " years") + verifiedTick;
+        document.getElementById("joinDisplayTeam").innerHTML = (regData.teamName || userProfile.teamName) + verifiedTick;
+        document.getElementById("joinDisplayCode").innerHTML = ("Code: " + (userProfile.teamCode || "N/A")) + verifiedTick;
         
       // Inside showApprovedReviewInterface in main.js
         // Populate and lock player UID/Nickname fields
@@ -4357,7 +4363,7 @@ async function showApprovedReviewInterface(tournamentId, userId) {
                 uidInput.style.color = "#888";
                 if (playerLabel) {
                     playerLabel.innerHTML = playerLabel.innerHTML.split('<span')[0].trim(); // Clear old status
-                    if (verifiedStatus[`p${i}`]) {
+                    if (verifiedStatus[`p${i}`] || regData.status === "approved") {
                         playerLabel.innerHTML += ` <span style="color:#00ff88;font-size:11px;">✓ Verified</span>`;
                     } else {
                         playerLabel.innerHTML += ` <span style="color:#ffd700;font-size:11px;">(Pending Verification)</span>`;
@@ -4385,6 +4391,10 @@ async function showApprovedReviewInterface(tournamentId, userId) {
             phoneInput.readOnly = true;
             phoneInput.style.background = "#2a2a2a";
             phoneInput.style.color = "#888";
+            const pLabel = phoneInput.previousElementSibling;
+            if (pLabel && regData.status === "approved") {
+                pLabel.innerHTML = pLabel.innerHTML.split('<span')[0].trim() + ` <span style="color:#00ff88;font-size:11px;margin-left:5px;">✓ Verified</span>`;
+            }
         }
         
         const emailInput = document.getElementById("joinBackupEmail");
@@ -4393,6 +4403,10 @@ async function showApprovedReviewInterface(tournamentId, userId) {
             emailInput.readOnly = true;
             emailInput.style.background = "#2a2a2a";
             emailInput.style.color = "#888";
+            const eLabel = emailInput.previousElementSibling;
+            if (eLabel && regData.status === "approved") {
+                eLabel.innerHTML = eLabel.innerHTML.split('<span')[0].trim() + ` <span style="color:#00ff88;font-size:11px;margin-left:5px;">✓ Verified</span>`;
+            }
         }
         
        document.getElementById('player5Container').style.display = 'none';
@@ -6348,7 +6362,7 @@ window.editRejectedApplication = async function(tournamentId) {
         document.getElementById("prizeSecond").textContent = tournament.prize?.second || 0;
         document.getElementById("prizeThird").textContent = tournament.prize?.third || 0;
         document.getElementById("joinEntryFeeDisplay").textContent = tournament.entryFee || 0;
-        document.getElementById("paymentAmount").textContent = tournament.entryFee || 0;
+        const _pa = document.getElementById("paymentAmount"); if (_pa) _pa.textContent = tournament.entryFee || 0;
         document.getElementById("walletBalance").textContent = userWallet?.balance || 0;
     }
 
