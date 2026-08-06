@@ -5832,66 +5832,12 @@ window.sendSignupOTP = async function() {
             showMessage("Error: " + err.message.replace("Firebase: ", ""));
         }
     } finally {
-            timerEl.style.pointerEvents = "none";
-            timerEl.style.color = "#888";
-            timerEl.style.cursor = "not-allowed";
-        }
-    }, 1000);
-};
-// ==========================================
-// 2. VERIFY AND PROCEED (Checks Email Status)
-// ==========================================
-window.verifyAndCreate = async function() {
-    const btn = document.querySelector('#signupStep2 button');
-    if (!btn) return;
-    
-    const originalText = btn.textContent;
-    btn.disabled = true;
-    btn.textContent = "Verifying...";
-
-    try {
-        const user = auth.currentUser;
-        if (!user) {
-            showMessage("❌ Session expired. Please sign up again.");
-            btn.disabled = false;
-            btn.textContent = originalText;
-            return;
-        }
-
-       // WITH THIS
-        // Fetch fresh verification status
-        await user.reload();
-        
-        if (!user.emailVerified) {
-            showMessage("⚠️ Please click the link in your Gmail FIRST!");
-            btn.disabled = false;
-            btn.textContent = "✅ I've Verified My Email";
-            return;
-        }
-
-        // ✅ THE FIX: Force Firebase to instantly refresh the backend Security Token!
-        // Without this line, Firestore rules will permanently think the email is unverified.
-        await user.getIdToken(true);
-
-        // Email is verified! Unlock the final step (Roles/Teams)
-
-        // Email is verified! Unlock the final step (Roles/Teams)
-        document.getElementById("signupStep2").style.display = "none";
-        document.getElementById("roleSelectionArea").style.display = "block";
-        
-        const finalCreateBtn = document.querySelector('#createView button[onclick="createAccount()"]');
-        if (finalCreateBtn) finalCreateBtn.style.display = "block";
-        
-        showMessage("✅ Verified! Choose your role below.");
-
-    } catch (err) {
-        showMessage("Error: " + err.message);
         btn.disabled = false;
         btn.textContent = originalText;
+        btn.style.opacity = "1";
+        btn.style.cursor = "pointer";
     }
 };
-
-
 
 
 // ==========================================
