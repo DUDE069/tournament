@@ -5822,9 +5822,8 @@ window.verifyAndCreate = async function() {
        // WITH THIS
         // Fetch fresh verification status
         await user.reload();
-        const isBypassActive = localStorage.getItem("BYPASS_EMAIL") === "true";
         
-        if (!user.emailVerified && !isBypassActive) {
+        if (!user.emailVerified) {
             showMessage("⚠️ Please click the link in your Gmail FIRST!");
             btn.disabled = false;
             btn.textContent = "✅ I've Verified My Email";
@@ -6116,9 +6115,7 @@ window.resendSignupOTP = async function() {
 // ==========================================
 window.createAccount = async function() {
     const user = auth.currentUser;
-    const isBypassActive = localStorage.getItem("BYPASS_EMAIL") === "true";
-    
-    if (!user || (!user.emailVerified && !isBypassActive)) {
+    if (!user || !user.emailVerified) {
         showMessage("Please verify your email first.");
         return;
     }
