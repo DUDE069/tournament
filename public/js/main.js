@@ -727,15 +727,15 @@ document.getElementById('player5Container').style.display = 'none';
     document.getElementById("joinTournamentModal").style.display   = "block";
     document.body.style.overflow = "hidden";
 
-    document.getElementById("joinTournamentTitle").textContent  = tournament.title;
-    document.getElementById("joinPrizeFirst").textContent       = tournament.prize?.first || 0;
-    document.getElementById("prizeFirst").textContent           = tournament.prize?.first || 0;
-    document.getElementById("prizeSecond").textContent          = tournament.prize?.second || 0;
-    document.getElementById("prizeThird").textContent           = tournament.prize?.third || 0;
-    document.getElementById("joinEntryFeeDisplay").textContent  = tournament.entryFee;
+    const jtt = document.getElementById("joinTournamentTitle"); if(jtt) jtt.textContent = tournament.title;
+    const jpf = document.getElementById("joinPrizeFirst"); if(jpf) jpf.textContent = tournament.prize?.first || 0;
+    const pf = document.getElementById("prizeFirst"); if(pf) pf.textContent = tournament.prize?.first || 0;
+    const ps = document.getElementById("prizeSecond"); if(ps) ps.textContent = tournament.prize?.second || 0;
+    const pt = document.getElementById("prizeThird"); if(pt) pt.textContent = tournament.prize?.third || 0;
+    const jef = document.getElementById("joinEntryFeeDisplay"); if(jef) jef.textContent = tournament.entryFee;
     const _d2a = document.getElementById("joinEntryFeeDisplay2"); if (_d2a) _d2a.textContent = tournament.entryFee;
     const _pa = document.getElementById("paymentAmount"); if (_pa) _pa.textContent = tournament.entryFee;
-    document.getElementById("walletBalance").textContent        = "0";
+    const wb = document.getElementById("walletBalance"); if(wb) wb.textContent = "0";
 
     function updateHeaderTimer() {
         const distance = tournament.endTime - Date.now();
