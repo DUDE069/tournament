@@ -1709,65 +1709,89 @@ startFirebaseListeners();
 window.googleSignIn = async function() {
     try {
         const provider = new GoogleAuthProvider();
+        
+        // 🚨 CRITICAL FIX: WebViews (APK) block Popups. Desktop/Web blocks Redirects.
+        if (document.body.classList.contains("native-app")) {
+            await signInWithRedirect(auth, provider);
+            return; // Execution stops here, page redirects
+        }
+        
+        // --- BROWSER / DESKTOP FLOW ---
         const result = await signInWithPopup(auth, provider);
         
         if (result) {
-            const user = result.user;
-            const userRef = doc(db, "users", user.uid);
-            const snap = await getDoc(userRef);
-            
-            if (!snap.exists()) {
-                // New Google User - Needs to complete profile
-                sessionStorage.setItem("npc_fresh_registration", "true");
-                document.getElementById("loginModal").style.display = "flex";
-                document.getElementById("loginView").style.display = "none";
-                document.getElementById("createView").style.display = "block";
-                
-                // Hide the Email/Password fields since Google handles auth
-                document.getElementById("regEmail").style.display = "none";
-                const passEl = document.getElementById("regPass");
-                if(passEl) passEl.parentNode.style.display = "none";
-                document.getElementById("strengthBar").style.display = "none";
-                const confEl = document.getElementById("regConfirm");
-                if(confEl) confEl.parentNode.style.display = "none";
-                
-                document.getElementById("signupStep1").style.display = "block";
-                document.getElementById("roleSelectionArea").style.display = "none";
-                
-                const verifyBtn = document.getElementById("btnSendOTP");
-                if(verifyBtn) verifyBtn.textContent = "Continue to Role Selection";
-                
-                showMessage("Google account linked! Please complete your profile details.");
-            }
+            await handleGoogleLoginResult(result);
         }
     } catch (error) {
-        console.error("Google Sign-in error:", error);
-        
-        // Handle Account Collision (Email already exists with password)
-        if (error.code === 'auth/account-exists-with-different-credential') {
-            const email = error.customData.email;
-            const pendingCred = GoogleAuthProvider.credentialFromError(error);
-            
-            // Find which providers are linked to this email
-            try {
-                const methods = await fetchSignInMethodsForEmail(auth, email);
-                if (methods.includes("password")) {
-                    showMessage("Email already registered! Please login with your password to link your Google account.");
-                    
-                    // Save the pending credential to a global variable so we can link it after they login
-                    window.pendingGoogleCred = pendingCred;
-                    
-                    document.getElementById("loginModal").style.display = "flex";
-                    document.getElementById("loginEmail").value = email;
-                }
-            } catch (linkErr) {
-                console.error("Linking error:", linkErr);
-            }
-        } else {
-            showMessage("Login failed: " + error.message.replace("Firebase: ", ""));
-        }
+        handleGoogleError(error);
     }
 };
+
+// Handle both Popup and Redirect successful logins
+async function handleGoogleLoginResult(result) {
+    const user = result.user;
+    const userRef = doc(db, "users", user.uid);
+    const snap = await getDoc(userRef);
+    
+    if (!snap.exists()) {
+        // New Google User - Needs to complete profile
+        sessionStorage.setItem("npc_fresh_registration", "true");
+        document.getElementById("loginModal").style.display = "flex";
+        document.getElementById("loginView").style.display = "none";
+        document.getElementById("createView").style.display = "block";
+        
+        // Hide the Email/Password fields since Google handles auth
+        document.getElementById("regEmail").style.display = "none";
+        const passEl = document.getElementById("regPass");
+        if(passEl) passEl.parentNode.style.display = "none";
+        document.getElementById("strengthBar").style.display = "none";
+        const confEl = document.getElementById("regConfirm");
+        if(confEl) confEl.parentNode.style.display = "none";
+        
+        document.getElementById("signupStep1").style.display = "block";
+        document.getElementById("roleSelectionArea").style.display = "none";
+        
+        const verifyBtn = document.getElementById("btnSendOTP");
+        if(verifyBtn) verifyBtn.textContent = "Continue to Role Selection";
+        
+        showMessage("Google account linked! Please complete your profile details.");
+    }
+}
+
+// Handle Google Auth Errors
+async function handleGoogleError(error) {
+    console.error("Google Sign-in error:", error);
+    
+    // Handle Account Collision (Email already exists with password)
+    if (error.code === 'auth/account-exists-with-different-credential') {
+        const email = error.customData.email;
+        const pendingCred = GoogleAuthProvider.credentialFromError(error);
+        
+        try {
+            const methods = await fetchSignInMethodsForEmail(auth, email);
+            if (methods.includes("password")) {
+                showMessage("Email already registered! Please login with your password to link your Google account.");
+                window.pendingGoogleCred = pendingCred;
+                
+                document.getElementById("loginModal").style.display = "flex";
+                document.getElementById("loginEmail").value = email;
+            }
+        } catch (linkErr) {
+            console.error("Linking error:", linkErr);
+        }
+    } else {
+        showMessage("Login failed: " + error.message.replace("Firebase: ", ""));
+    }
+}
+
+// --- APK / WEBVIEW REDIRECT CATCHER ---
+getRedirectResult(auth).then(async (result) => {
+    if (result) {
+        await handleGoogleLoginResult(result);
+    }
+}).catch((error) => {
+    handleGoogleError(error);
+});
 
 
 // 2. Modify the auth state to only handle private data (notifications)
