@@ -1725,17 +1725,25 @@ getRedirectResult(auth).then(async (result) => {
         
         if (!snap.exists()) {
             // New Google User - Needs to complete profile
+            sessionStorage.setItem("npc_fresh_registration", "true");
             document.getElementById("loginModal").style.display = "flex";
             document.getElementById("loginView").style.display = "none";
             document.getElementById("createView").style.display = "block";
             
             // Hide the Email/Password fields since Google handles auth
             document.getElementById("regEmail").style.display = "none";
-            document.getElementById("regPass").parentNode.style.display = "none";
+            const passEl = document.getElementById("regPass");
+            if(passEl) passEl.parentNode.style.display = "none";
             document.getElementById("strengthBar").style.display = "none";
-            document.getElementById("regConfirm").parentNode.style.display = "none";
+            const confEl = document.getElementById("regConfirm");
+            if(confEl) confEl.parentNode.style.display = "none";
             
-            // Show role selection early or let them fill out details first
+            document.getElementById("signupStep1").style.display = "block";
+            document.getElementById("roleSelectionArea").style.display = "none";
+            
+            const verifyBtn = document.getElementById("btnSendOTP");
+            if(verifyBtn) verifyBtn.textContent = "Continue to Role Selection";
+            
             showMessage("Google account linked! Please complete your profile details.");
         }
     }
@@ -1793,7 +1801,9 @@ onAuthStateChanged(auth, async (user) => {
         // ==========================================
         // 🚨 STRICT LIMBO GUARD (Profile Completeness)
         // ==========================================
-        if (!userProfile || !userProfile.nickname || !userProfile.age || !userProfile.freeFireUid) {
+        const isFreshReg = sessionStorage.getItem("npc_fresh_registration") === "true";
+        
+        if (!isFreshReg && (!userProfile || !userProfile.nickname || !userProfile.age || !userProfile.freeFireUid)) {
             console.warn("🚨 [AUTH] Limbo Profile Detected! Routing to setup...");
             document.getElementById("loginModal").style.display = "flex";
             document.getElementById("loginView").style.display = "none";
@@ -1813,6 +1823,9 @@ onAuthStateChanged(auth, async (user) => {
             // Change button text to reflect completing profile
             const verifyBtn = document.getElementById("btnSendOTP");
             if(verifyBtn) verifyBtn.textContent = "Continue to Role Selection";
+            
+            // Set flag so they don't get trapped in a loop
+            sessionStorage.setItem("npc_fresh_registration", "true");
             
             showMessage("Almost there! Please complete your profile details.");
             
@@ -5793,6 +5806,9 @@ window.sendSignupOTP = async function() {
 
     try {
         console.log("[SIGNUP] Creating auth account for:", email);
+        
+        // Block the Limbo Guard from breaking the UI flow
+        sessionStorage.setItem("npc_fresh_registration", "true");
         
         // Step 1: Create Auth user
         await createUserWithEmailAndPassword(auth, email, pass);

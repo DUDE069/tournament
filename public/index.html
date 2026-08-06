@@ -395,7 +395,7 @@
       /* ✅ FIX: Enable absolute full-viewport scrolling for the modal box on mobile screens */
       #loginModal.modal-overlay.active {
         display: flex !important;
-        align-items: center;
+        align-items: flex-start; /* Changed from center to flex-start to prevent top clipping on overflow */
         justify-content: center;
         min-height: 100vh;
         overflow-y: auto !important;
@@ -1249,7 +1249,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <!-- Your App Scripts -->
-<script type="module" src="./js/main.js?v=999997"></script>
+<script type="module" src="./js/main.js?v=999998"></script>
 
 
 </body>
