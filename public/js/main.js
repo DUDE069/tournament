@@ -272,7 +272,7 @@ window.handleUpcomingRegister = async function(tournamentId) {
     // Fill user data safely
     try {
         if (userProfile) {
-            document.getElementById("joinDisplayEmail").textContent = userProfile.email || "N/A";
+            document.getElementById("joinDisplayEmail").textContent = userProfile.email || currentUser?.email || "N/A";
             document.getElementById("joinDisplayAge").textContent   = (userProfile.age || "N/A") + " years";
             document.getElementById("joinDisplayTeam").textContent  = userProfile.teamName || "N/A";
             document.getElementById("joinDisplayCode").textContent  = "Code: " + (userProfile.teamCode || "N/A");
@@ -338,20 +338,21 @@ function renderTournaments() {
                 // Room ID Check (Hash-based to allow updates from admin)
                 if (data.roomId && data.roomPassword && data.roomPopupShown !== true) {
                     const roomHash = String(data.roomId) + String(data.roomPassword);
-                    if (sessionStorage.getItem("room_seen_" + t.id) !== roomHash) {
-                        sessionStorage.setItem("room_seen_" + t.id, roomHash);
+                    if (localStorage.getItem("room_seen_" + t.id) !== roomHash) {
+                        localStorage.setItem("room_seen_" + t.id, roomHash);
                         if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
                         
-                        // FIX: Save permanently to Notification Inbox
+                        // FIX: Save permanently to Notification Inbox without duplicates
                         try {
-                            await addDoc(collection(db, "users", currentUser.uid, "notifications"), {
+                            const notifRef = doc(db, "users", currentUser.uid, "notifications", "room_" + t.id);
+                            await setDoc(notifRef, {
                                 type: "room_details",
                                 title: "🔑 Match Room Details",
                                 message: `Room ID: ${data.roomId}\nPassword: ${data.roomPassword}`,
                                 read: false,
                                 popupShown: true, // Prevents a duplicate popup from firing
                                 createdAt: serverTimestamp()
-                            });
+                            }, { merge: true });
                         } catch(e) { console.error("Error saving notification:", e); }
 
                         showPopup("success", `🔑 Room ID: ${data.roomId} | Pass: ${data.roomPassword}`, "Copy Details", async () => {
@@ -366,20 +367,21 @@ function renderTournaments() {
                 // Status Message Check (Specific Admin Messages)
                 if (data.statusMessage && data.statusMessageShown !== true) {
                     const msgHash = String(data.statusMessage);
-                    if (sessionStorage.getItem("status_seen_" + t.id) !== msgHash) {
-                        sessionStorage.setItem("status_seen_" + t.id, msgHash);
+                    if (localStorage.getItem("status_seen_" + t.id) !== msgHash) {
+                        localStorage.setItem("status_seen_" + t.id, msgHash);
                         if (typeof window.playCustomSound === 'function') window.playCustomSound('room_id');
                         
-                        // FIX: Save permanently to Notification Inbox
+                        // FIX: Save permanently to Notification Inbox without duplicates
                         try {
-                            await addDoc(collection(db, "users", currentUser.uid, "notifications"), {
+                            const notifRef = doc(db, "users", currentUser.uid, "notifications", "status_" + t.id);
+                            await setDoc(notifRef, {
                                 type: "status_message",
                                 title: "💬 Message from Admin",
                                 message: data.statusMessage,
                                 read: false,
                                 popupShown: true, // Prevents a duplicate popup from firing
                                 createdAt: serverTimestamp()
-                            });
+                            }, { merge: true });
                         } catch(e) { console.error("Error saving notification:", e); }
 
                         showPopup("success", data.statusMessage, "Got it", () => {
@@ -730,7 +732,7 @@ document.getElementById('player5Container').style.display = 'none';
     // Fill user data safely
     try {
         if (userProfile) {
-            document.getElementById("joinDisplayEmail").textContent = userProfile.email || "N/A";
+            document.getElementById("joinDisplayEmail").textContent = userProfile.email || currentUser?.email || "N/A";
             document.getElementById("joinDisplayAge").textContent   = (userProfile.age || "N/A") + " years";
             document.getElementById("joinDisplayTeam").textContent  = userProfile.teamName || "N/A";
             document.getElementById("joinDisplayCode").textContent  = "Code: " + (userProfile.teamCode || "N/A");
@@ -1668,24 +1670,29 @@ onAuthStateChanged(auth, async (user) => {
             
             if (tId) {
                 try {
-                    // Write to verifications (Admin queue)
+                    // Write to verifications (Admin review queue)
+                    // Using setDoc with merge:true so it works for both new docs (create) and updates
                     await setDoc(doc(db, "tournaments", tId, "verifications", user.uid), {
-                        teamId: userProfile?.teamId || user.uid,
-                        userId: user.uid,
-                        utr: utr,
-                        status: 'pending',
-                        timestamp: serverTimestamp()
-                    });
+                        teamId:   userProfile?.teamId || user.uid,
+                        userId:   user.uid,           // Required by Firestore rules
+                        utr:      utr,
+                        status:   'pending',          // Not 'approved' — satisfies the rule condition
+                        paymentStatus: 'pending_verification',
+                        submittedAt: serverTimestamp()
+                    }, { merge: true });
                     
                     // Update user's personal pending status to lock UI
-                    await updateDoc(doc(db, "users", user.uid, "pendingPayment", tId), {
+                    await setDoc(doc(db, "users", user.uid, "pendingPayment", tId), {
                         paymentStatus: 'pending_verification',
+                        tournamentId: tId,
+                        utr: utr,
                         updatedAt: serverTimestamp()
-                    });
+                    }, { merge: true });
                     
-                    showMessage("✅ Payment verified! Admin is reviewing your UTR.", "success");
+                    showMessage("\u2705 Payment verified! Admin is reviewing your UTR.", "success");
                 } catch (e) {
                     console.error("[PAYMENT SYNC ERROR]:", e);
+                    // Don't block user — localStorage lock already applied
                 }
             }
             
@@ -6223,8 +6230,14 @@ window.checkUpcomingAlreadyApplied = async function(tournamentId, tournament) {
 
 function showAlreadyAppliedModal(data, tournamentId, tournament, category) {
     const isPaid = (data.paymentStatus === 'verified' || data.paymentStatus === 'paid' || data.paymentStatus === 'Payment Verified');
+    const isPending = (data.paymentStatus === 'pending_verification' || data.paymentStatus === 'submitted');
     const statusColor = data.status === "approved" ? "#00ff88" : data.status === "rejected" ? "#ff4444" : "#ffd700";
-    const statusLabel = data.status === "approved" ? (isPaid ? "✅ Payment Verified — Waiting for Room ID" : "✅ Approved — Awaiting Payment") : data.status === "rejected" ? `❌ Rejected — Reason: ${data.rejectionNote || "Check details"}` : "⏳ Under Review";
+    const statusLabel = data.status === "approved" 
+        ? (isPaid ? "✅ Payment Verified — Waiting for Room ID" : "✅ Approved — Awaiting Payment") 
+        : data.status === "rejected" 
+        ? `❌ Rejected — Reason: ${data.rejectionNote || "Check details"}` 
+        : isPending ? "⏳ UTR Submitted — Admin is Verifying Payment"
+        : "⏳ Application Under Review";
     const uids = Array.isArray(data.uids) ? data.uids.join(", ") : "—";
 
     document.getElementById("alreadyAppliedModal")?.remove();
@@ -6246,6 +6259,15 @@ function showAlreadyAppliedModal(data, tournamentId, tournament, category) {
                         style="width:100%;padding:12px;background:#ff4444;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;margin-bottom:10px;">
                         ✏️ Edit & Resubmit Application
                     </button>` : ""}
+                ${(data.status === "approved" && !isPaid && !isPending) ? `
+                    <button onclick="document.getElementById('alreadyAppliedModal').remove(); window.showPaymentInterface('${tournamentId}', null);"
+                        style="width:100%;padding:12px;background:#00ff88;color:#000;border:none;border-radius:8px;font-weight:700;cursor:pointer;margin-bottom:10px;">
+                        💳 Pay Now
+                    </button>` : ""}
+                ${isPending ? `
+                    <div style="background:rgba(59,130,246,.1);border:1px solid #3b82f6;border-radius:8px;padding:12px;margin-bottom:10px;text-align:center;font-size:13px;color:#3b82f6;">
+                        🕐 Your UTR has been submitted. Admin is verifying your payment. This usually takes a few minutes.
+                    </div>` : ""}
                 <button onclick="document.getElementById('alreadyAppliedModal').remove()" style="width:100%;padding:10px;background:transparent;color:#666;border:1px solid #333;border-radius:8px;cursor:pointer;">Close</button>
             </div>
         </div>`);
