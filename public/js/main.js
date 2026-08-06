@@ -1151,11 +1151,15 @@ document.addEventListener("DOMContentLoaded", function() {
                     submittedAt:  serverTimestamp()
                 }, { merge: true });
 
-                await setDoc(
-                    doc(db, "tournaments", tournamentId, "lockedRegistrations", userId),
-                    { lockedAt: serverTimestamp(), editable: false },
-                    { merge: true }
-                );
+                try {
+                    await setDoc(
+                        doc(db, "tournaments", tournamentId, "lockedRegistrations", userId),
+                        { lockedAt: serverTimestamp(), editable: false },
+                        { merge: true }
+                    );
+                } catch (e) {
+                    console.warn("[SECURITY] Could not write to lockedRegistrations (requires admin permissions):", e.message);
+                }
 
                 listenToVerification(tournamentId, userId);
             }
