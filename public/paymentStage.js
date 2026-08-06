@@ -21,7 +21,7 @@ if (!PAYMENT_DEBUG_MODE) {
 
 // Safe payment logger — use this instead of console.log in this file
 function payLog(...args) { if (PAYMENT_DEBUG_MODE) console.log(...args); }
-function payError(...args) { if (PAYMENT_DEBUG_MODE) console.error(...args); }
+function payError(...args) { if (window.AppLog) AppLog.error(...args); else console.error(...args); }
 function payWarn(...args) { if (PAYMENT_DEBUG_MODE) console.warn(...args); }
 
 // Variables
@@ -284,7 +284,7 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
     try {
       const upiId = "riaz-1@ptyes"; // NPC Admin UPI
       const payeeName = "NPC Esports";
-      const amount = entryFeeFallback || 0;
+      const amount = entryFee || 0;
       
       const upiUri = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(payeeName)}&am=${amount}&cu=INR`;
       
