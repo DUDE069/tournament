@@ -35,7 +35,10 @@ service cloud.firestore {
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'wallet', 'bonusCredits']));
     }
 
-    match /users/{userId}/notifications/{notifId} { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/notifications/{notifId} { 
+      allow read, create, delete: if isOwner(userId) || isAdmin();
+      allow update: if (isOwner(userId) && request.resource.data.read == true) || isAdmin(); 
+    }
     match /users/{userId}/pendingPayment/{tournamentId} { allow read, write: if isOwner(userId) || isAdmin(); }
     match /users/{userId}/upcomingRegistrations/{docId} {
       allow read: if isOwner(userId) || isAdmin();
@@ -87,15 +90,13 @@ service cloud.firestore {
       }
       
       match /verifications/{docId} { 
-        allow read: if isOwner(docId) || isAdmin(); 
-        allow create: if isOwner(docId) && request.resource.data.get('status', '') != 'approved';
-        
-        // ✅ FIX: Allows user to update their document and change status ONLY to 'pending' (for resubmissions)
-        allow update: if isAdmin() || (isOwner(docId) && 
+        allow read: if isOwner(docId) || (isLoggedIn() && resource.data.userId == request.auth.uid) || isAdmin(); 
+        allow create: if (isOwner(docId) || (isLoggedIn() && request.resource.data.userId == request.auth.uid)) && request.resource.data.get('status', '') != 'approved';
+        allow update: if isAdmin() || ((isOwner(docId) || (isLoggedIn() && resource.data.userId == request.auth.uid)) && 
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['paymentStatus']) &&
           (request.resource.data.status == resource.data.status || request.resource.data.status == 'pending')
         );
-        allow delete: if isOwner(docId) || isAdmin();
+        allow delete: if isOwner(docId) || (isLoggedIn() && resource.data.userId == request.auth.uid) || isAdmin();
       }
       
       match /teamSessions/{teamId} { 

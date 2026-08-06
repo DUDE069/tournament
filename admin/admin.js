@@ -1729,6 +1729,21 @@ window.deleteTournament = async function(id) {
 
 
 
+window.markTournamentCompleted = async function(tournamentId) {
+    if (!confirm("Mark tournament as Completed? It will move to the Results tab.")) return;
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId), {
+            status: "completed",
+            category: "ongoing", // Keep in ongoing structure but completed status
+            completedAt: serverTimestamp()
+        });
+        showToast("Tournament marked as completed!", "success");
+        window.renderAdminLeaderboardGrid(tournamentId);
+    } catch (e) {
+        showToast("Error updating status: " + e.message, "error");
+    }
+};
+
 function loadTournaments() {
   if (_listeners.tournaments) return;
   const q = query(tournamentsRef, orderBy("createdAt", "desc"));
@@ -1768,7 +1783,10 @@ function loadTournaments() {
         ? `<button class="btn-delete" disabled title="Cannot delete: tournament is active or ongoing" style="opacity:0.35;cursor:not-allowed;" onclick="event.preventDefault();">🔒 Delete</button>`
         : `<button class="btn-delete" onclick="deleteTournament('${d.id}')">Delete</button>`;
 
-      
+      const completeBtn = (t.status !== 'completed')
+        ? `<button class="btn-status" onclick="markTournamentCompleted('${d.id}')" style="background:#3b82f6;color:#fff;border:none;">🏆 Publish Results</button>`
+        : `<button class="btn-status" onclick="window.renderAdminLeaderboardGrid('${d.id}')" style="background:#00ff88;color:#000;border:none;">🏆 Edit Leaderboard</button>`;
+
       div.innerHTML = `
         <div>
           <strong>${escHtml(t.title)}</strong><br>
@@ -1778,6 +1796,7 @@ function loadTournaments() {
           <button class="btn-status" onclick="manageTournamentSlots('${d.id}')" style="background:var(--gold);color:#000;border:none;">
             🎯 Manage Slots
           </button>
+          ${completeBtn}
           ${deleteBtn}
         </div>`;
       box.appendChild(div);

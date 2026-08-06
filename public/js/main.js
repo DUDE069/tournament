@@ -317,10 +317,11 @@ function renderTournaments() {
     const ongoing  = document.getElementById("ongoingContainer");
     const upcoming = document.getElementById("upcomingContainer");
     const limited  = document.getElementById("limitedContainer");
+    const results  = document.getElementById("resultsContainer");
 
     if (!ongoing || !upcoming || !limited) return;
 
-    const sections = { ongoing: '', upcoming: '', limited: '' };
+    const sections = { ongoing: '', upcoming: '', limited: '', results: '' };
     const now = Date.now();
 
     tournaments.forEach((t) => {
@@ -552,14 +553,21 @@ function renderTournaments() {
                 </div>
             </div>`;
 
-        if (t.category === "ongoing") sections.ongoing += card;
-        else if (t.category === "upcoming") sections.upcoming += card;
-        else if (t.category === "limited") sections.limited += card;
+        if (t.status === 'completed' || t.status === 'match_started') {
+            sections.results += card;
+        } else if (t.category === "ongoing") {
+            sections.ongoing += card;
+        } else if (t.category === "upcoming") {
+            sections.upcoming += card;
+        } else if (t.category === "limited") {
+            sections.limited += card;
+        }
     });
 
     ongoing.innerHTML  = sections.ongoing  || `<p class="empty-msg">No active tournaments</p>`;
     upcoming.innerHTML = sections.upcoming || `<p class="empty-msg">No upcoming tournaments</p>`;
     limited.innerHTML  = sections.limited  || `<p class="empty-msg">No limited tournaments</p>`;
+    if (results) results.innerHTML = sections.results || `<p class="empty-msg">No completed tournaments</p>`;
 
     handleScrollVisibility();
     startTimers();
