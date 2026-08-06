@@ -278,34 +278,28 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
     }
   }, 1000);
 
-  // ── Fetch secure QR + confirmed amount from server ──────────────────────────
+  // ── GENERATE SECURE QR CLIENT-SIDE (INSTANT) ──────────────────────────
   (async () => {
     try {
-      const qrRes = await fetch('https://npc-secure-backend.onrender.com/generate-qr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tournamentId })
-      });
-      const qrData = await qrRes.json();
-
-      if (qrData.success) {
-        // Render server-generated QR image
-        const qrContainer = document.getElementById('qrcodeContainer');
-        if (qrContainer) {
-          qrContainer.innerHTML = `<img src="${qrData.qrDataUrl}" width="200" height="200" alt="UPI QR Code" style="display:block;border-radius:8px;">`;
-        }
-        // Update amount display with server-confirmed fee
-        const amountEl = document.getElementById('paymentAmount');
-        if (amountEl) amountEl.textContent = `\u20b9 ${qrData.entryFee}`;
-        // Update the Open UPI App link with secure URI
-        const upiLink = document.getElementById('openUpiLink');
-        if (upiLink) upiLink.href = qrData.upiUri;
-      } else {
-        const qrContainer = document.getElementById('qrcodeContainer');
-        if (qrContainer) qrContainer.innerHTML = '<p style="color:#ff4444;font-size:12px;">QR load failed. Use UPI ID: riaz-1@ptyes</p>';
+      const upiId = "riaz-1@ptyes"; // NPC Admin UPI
+      const payeeName = "NPC Esports";
+      const amount = entryFeeFallback || 0;
+      
+      const upiUri = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(payeeName)}&am=${amount}&cu=INR`;
+      
+      const amountEl = document.getElementById('paymentAmount');
+      if (amountEl) amountEl.textContent = `₹ ${amount}`;
+      
+      const upiLink = document.getElementById('openUpiLink');
+      if (upiLink) upiLink.href = upiUri;
+      
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiUri)}`;
+      const qrContainer = document.getElementById('qrcodeContainer');
+      if (qrContainer) {
+        qrContainer.innerHTML = `<img src="${qrUrl}" width="200" height="200" alt="UPI QR Code" style="display:block;border-radius:8px;background:#fff;padding:5px;">`;
       }
     } catch (err) {
-      payError('[QR] Failed to load server QR:', err);
+      payError('[QR] Failed to generate QR:', err);
       const qrContainer = document.getElementById('qrcodeContainer');
       if (qrContainer) qrContainer.innerHTML = '<p style="color:#ff4444;font-size:12px;">QR unavailable. Use UPI ID: riaz-1@ptyes</p>';
     }
