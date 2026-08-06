@@ -35,10 +35,11 @@ const originalConsole = {
     info: console.info
 };
 
-console.log = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.log(...args); };
-console.error = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.error(...args); };
-console.warn = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.warn(...args); };
-console.info = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.info(...args); };
+// Removed custom overrides so native browser console logs work without getting hidden/filtered
+// console.log = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.log(...args); };
+// console.error = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.error(...args); };
+// console.warn = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.warn(...args); };
+// console.info = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.info(...args); };
 
 window.AppLog = {
     info: (...args) => console.log(...args),
@@ -5224,47 +5225,66 @@ window.renderProfileContent = async function(content) {
         const sortedMembers = rawSorted.filter(uid => uid && typeof uid === 'string' && uid.trim().length > 0);
 
         for (const uid of sortedMembers) {
+            let mData = null;
+            let isPrivate = false;
+
             try {
                 const mDoc = await getDoc(doc(db, "users", uid));
-                if (!mDoc.exists()) continue;
+                if (mDoc.exists()) {
+                    mData = mDoc.data();
+                } else {
+                    continue; // document doesn't exist
+                }
+            } catch (err) {
+                // If Firestore throws "Missing or insufficient permissions" because rules block reading other users
+                console.warn(`[Team Profile] Blocked from reading user ${uid}. Using fallback.`, err.message);
+                mData = { 
+                    nickname: "Teammate (Private)", 
+                    gameRole: "Unknown", 
+                    age: "—",
+                    createdAt: new Date()
+                };
+                isPrivate = true;
+            }
 
-                const mData    = mDoc.data();
-                const isLeader = uid === leaderId;
+            if (!mData) continue;
 
-                // Aggregate stats
-                totalWins    += mData.stats?.tournamentsWon  || 0;
-                totalMatches += mData.stats?.tournamentsJoined || 0;
+            const isLeader = uid === leaderId;
 
-                // Join date
-                let joinDateStr = "—";
-                try {
-                    if (mData.createdAt) {
-                        const d = mData.createdAt.toDate ? mData.createdAt.toDate() : new Date(mData.createdAt);
-                        joinDateStr = d.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" });
-                    }
-                } catch (_) {}
+            // Aggregate stats (if available)
+            totalWins    += mData.stats?.tournamentsWon  || 0;
+            totalMatches += mData.stats?.tournamentsJoined || 0;
 
-                const nickname  = mData.nickname  || mData.email?.split("@")[0] || "Unknown";
-                const age       = mData.age       || "—";
-                const gameRole  = mData.gameRole  || "All-Rounder";
-                const gameEmoji = roleEmoji[gameRole] || "🎮";
-                
-                const teamRoleLabel = isLeader
-                    ? (uid === currentUser.uid ? "👑 You are the Team Leader" : "👑 Team Leader")
-                    : "👥 Team Member"; // Simplified, removed memberNum++
-                const borderColor   = isLeader ? "#ffd700"            : "#222";
-                const bgColor       = isLeader ? "rgba(255,215,0,0.06)" : "#111";
-                const accentColor   = isLeader ? "#ffd700"            : "#00ff88";
+            // Join date
+            let joinDateStr = "—";
+            try {
+                if (mData.createdAt) {
+                    const d = mData.createdAt.toDate ? mData.createdAt.toDate() : new Date(mData.createdAt);
+                    joinDateStr = d.toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" });
+                }
+            } catch (_) {}
 
-                rosterHtml += `
-                    <div style="background:${bgColor};padding:14px 16px;border-radius:10px;
-                                border:1px solid ${borderColor};position:relative;">
-                        ${isLeader ? `
-                            <span style="position:absolute;top:10px;right:10px;background:#ffd700;
-                                         color:#000;font-size:9px;font-weight:800;padding:2px 8px;
-                                         border-radius:10px;text-transform:uppercase;letter-spacing:.5px;">
-                                Leader
-                            </span>` : ''}
+            const nickname  = mData.nickname  || mData.email?.split("@")[0] || "Unknown";
+            const age       = mData.age       || "—";
+            const gameRole  = mData.gameRole  || "All-Rounder";
+            const gameEmoji = roleEmoji[gameRole] || "🎮";
+            
+            const teamRoleLabel = isLeader
+                ? (uid === currentUser.uid ? "👑 You are the Team Leader" : "👑 Team Leader")
+                : (isPrivate ? "👥 Team Member (Private Profile)" : "👥 Team Member");
+            const borderColor   = isLeader ? "#ffd700"            : "#222";
+            const bgColor       = isLeader ? "rgba(255,215,0,0.06)" : "#111";
+            const accentColor   = isLeader ? "#ffd700"            : "#00ff88";
+
+            rosterHtml += `
+                <div style="background:${bgColor};padding:14px 16px;border-radius:10px;
+                            border:1px solid ${borderColor};position:relative;">
+                    ${isLeader ? `
+                        <span style="position:absolute;top:10px;right:10px;background:#ffd700;
+                                     color:#000;font-size:9px;font-weight:800;padding:2px 8px;
+                                     border-radius:10px;text-transform:uppercase;letter-spacing:.5px;">
+                            Leader
+                        </span>` : ''}
 
                         <!-- Role badge (team position: leader/member) -->
                         <div style="color:${accentColor};font-size:10px;font-weight:700;
@@ -5290,10 +5310,7 @@ window.renderProfileContent = async function(content) {
                             <span style="background:#1a1a1a;color:#ccc;font-size:12px;padding:4px 10px;
                                          border-radius:20px;border:1px solid #2a2a2a;">
                                 📅 Since: ${joinDateStr}
-                            </span>
-                        </div>
                     </div>`;
-            } catch (_) {}
         }
 
         // Update aggregated stats display
