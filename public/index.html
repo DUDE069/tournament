@@ -1265,8 +1265,13 @@
 <!-- QRCode.js Library -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-<!-- Your App Scripts -->
-<script type="module" src="./js/main.js?v=99999"></script>
+<!-- Your App Scripts (Dynamic Cache Buster for APK) -->
+<script>
+    const script = document.createElement('script');
+    script.type = 'module';
+    script.src = './js/main.js?v=' + new Date().getTime();
+    document.body.appendChild(script);
+</script>
 
 
 </body>

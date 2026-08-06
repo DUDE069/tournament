@@ -507,7 +507,7 @@ function renderTournaments() {
                     </button>`;
             } else if (isApproved) {
                 buttonHTML = `
-                    <button class="join-btn" onclick="showPaymentInterface('${t.id}', this)"
+                    <button class="join-btn" onclick="showTeamPaymentWarning('${t.id}')"
                         style="background: #00ff88; border-color: #00ff88; color: #000; box-shadow: 0 0 15px rgba(0,255,136,0.4);">
                         💳 Pay Now
                     </button>`;
@@ -689,7 +689,7 @@ document.getElementById('player5Container').style.display = 'none';
                         </div>
 
                         ${existing.status === "approved" ? `
-                        <button onclick="document.getElementById('alreadyAppliedModal').remove(); showPaymentInterface('${tournamentId}');"
+                        <button onclick="document.getElementById('alreadyAppliedModal').remove(); showTeamPaymentWarning('${tournamentId}');"
                             style="width:100%;padding:12px;background:#00ff88;color:#000;border:none;
                                    border-radius:8px;font-weight:700;cursor:pointer;font-size:15px;
                                    margin-bottom:10px;">
@@ -1206,6 +1206,33 @@ document.addEventListener("DOMContentLoaded", function() {
     });
 });
 // ===============================
+// PAYMENT INTERFACE WARNING
+// ===============================
+window.showTeamPaymentWarning = function(tournamentId) {
+    document.getElementById("teamPaymentWarningModal")?.remove();
+    document.body.insertAdjacentHTML("beforeend", `
+        <div id="teamPaymentWarningModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.92);display:flex;align-items:center;justify-content:center;z-index:99999;padding:20px;">
+            <div style="background:#1a1a1a;width:100%;max-width:400px;padding:28px;border-radius:14px;border:1px solid #333;text-align:center;">
+                <div style="font-size:40px;margin-bottom:10px;">⚠️</div>
+                <h2 style="color:#ffd700;margin-bottom:10px;">Team Already Applied</h2>
+                <p style="color:#ccc;font-size:14px;line-height:1.5;margin-bottom:20px;">
+                    Your team has already applied for registration. The verified marks are applied because the application was accepted.<br><br>
+                    Do you want to continue to pay the amount, or do you want to consult with your teammates first?
+                </p>
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                    <button onclick="document.getElementById('teamPaymentWarningModal').remove(); showPaymentInterface('${tournamentId}');" style="padding:12px;background:#00ff88;color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">
+                        Continue to Pay Now
+                    </button>
+                    <button onclick="document.getElementById('teamPaymentWarningModal').remove();" style="padding:12px;background:transparent;color:#888;border:1px solid #444;border-radius:8px;font-weight:bold;cursor:pointer;">
+                        Consult Teammates (Cancel)
+                    </button>
+                </div>
+            </div>
+        </div>
+    `);
+};
+
+// ===============================
 // PAYMENT INTERFACE
 // ===============================
 window.showPaymentInterface = async function(tournamentId, btnElement = null) {
@@ -1219,13 +1246,16 @@ window.showPaymentInterface = async function(tournamentId, btnElement = null) {
     loader.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.95);z-index:9999;display:flex;align-items:center;justify-content:center;color:#00ff88;font-size:18px;font-weight:bold;font-family:"Rajdhani", sans-serif;flex-direction:column;';
     loader.innerHTML = `
         <div style="width:50px;height:50px;border:4px solid #333;border-top:4px solid #00ff88;border-radius:50%;animation:spin 1s linear infinite;margin-bottom:20px;"></div>
-        Wait a minute... Redirecting to payment
+        <div style="text-align:center;">
+            <div style="margin-bottom:5px;">Please wait a moment (approx 15 seconds)...</div>
+            <div style="font-size:14px;color:#888;">We're enabling the payment integration for you.</div>
+        </div>
     `;
     document.body.appendChild(loader);
 
     if (btnElement) {
         btnElement.dataset.originalText = btnElement.textContent;
-        btnElement.textContent = "Wait a minute... Redirecting to payment";
+        btnElement.textContent = "Please wait... enabling payment";
         btnElement.disabled = true;
     }
 
@@ -5188,8 +5218,10 @@ window.renderProfileContent = async function(content) {
             "All-Rounder": "🌟"
         };
 
-        // Leader always first
-        const sortedMembers = [leaderId, ...members.filter(u => u !== leaderId)];
+        // Leader always first, filter out any missing/undefined UIDs securely
+        const safeMembers = Array.isArray(members) ? members : [];
+        const rawSorted = [leaderId, ...safeMembers.filter(u => u !== leaderId)];
+        const sortedMembers = rawSorted.filter(uid => uid && typeof uid === 'string' && uid.trim().length > 0);
 
         for (const uid of sortedMembers) {
             try {
