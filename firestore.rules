@@ -28,7 +28,7 @@ service cloud.firestore {
     // 3. USERS COLLECTION
     // ==========================================
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if isLoggedIn();
       allow create: if isOwner(userId);
       allow update: if isAdmin() || (isOwner(userId) && 
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'wallet', 'bonusCredits']));
