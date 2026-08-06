@@ -989,7 +989,15 @@ window.viewApplicationDetails = async function(tournamentId, userId) {
     modal.innerHTML = `
       <div style="background:var(--bg2);width:100%;max-width:580px;padding:28px;border-radius:14px;border:1px solid var(--border);max-height:92vh;overflow-y:auto;">
         <h2 style="color:var(--green);margin-bottom:6px;">Review Application</h2>
-        <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">Team: <b style="color:#fff;">${escHtml(v.teamName ?? "—")}</b></p>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">Team: <b style="color:#fff;">${escHtml(v.teamName ?? "—")}</b></p>
+
+        <div style="background:rgba(0,255,136,0.08);border:2px solid var(--green);border-radius:10px;padding:12px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <p style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">Team Code</p>
+            <h3 style="color:var(--green);font-size:24px;font-weight:900;letter-spacing:2px;margin:0;font-family:monospace;">${escHtml(v.teamCode ?? "N/A")}</h3>
+          </div>
+          <span style="font-size:28px;">🏷️</span>
+        </div>
 
         <div style="display:grid;gap:8px;margin-bottom:16px;">
           <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
@@ -1000,9 +1008,6 @@ window.viewApplicationDetails = async function(tournamentId, userId) {
           </div>
           <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
             <span style="color:var(--muted);font-size:13px;">Entry Fee: <b style="color:var(--gold);margin-left:6px;">${entryFee}</b></span>
-          </div>
-          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
-            <span style="color:var(--muted);font-size:13px;">Team Code: <b style="color:#fff;margin-left:6px;">${escHtml(v.teamCode ?? "—")}</b></span>
           </div>
         </div>
 

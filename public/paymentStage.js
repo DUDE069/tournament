@@ -170,7 +170,8 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
     padding: 20px;
   `;
   
-  const upiUri = `upi://pay?pa=riaz-1@ptyes&pn=Riaz Mohammad&am=${entryFee || 0}&cu=INR`;
+  // upiUri and QR are now generated SERVER-SIDE in renderPaymentUI (after overlay appended)
+  const upiUri = ''; // Placeholder — real URI injected after server response
 
   overlay.innerHTML = `
     <div style="
@@ -220,7 +221,7 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
       <p style="color:#aaa;font-size:14px;margin-bottom:8px;">Scan to Pay</p>
       <div id="qrcodeContainer" style="background:#fff;padding:12px;border-radius:10px;display:inline-block;margin-bottom:16px;"></div>
 
-      <a href="${upiUri}" style="display:block;background:#3b82f6;color:#fff;padding:12px;border-radius:8px;text-decoration:none;font-weight:bold;margin-bottom:20px;">
+      <a id="openUpiLink" href="#" style="display:block;background:#3b82f6;color:#fff;padding:12px;border-radius:8px;text-decoration:none;font-weight:bold;margin-bottom:20px;">
         Open UPI App (Mobile)
       </a>
       
@@ -277,21 +278,38 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
     }
   }, 1000);
 
-  // Render QR Code
-  if (entryFee && window.QRCode) {
-    new QRCode(document.getElementById("qrcodeContainer"), {
-        text: upiUri,
-        width: 128,
-        height: 128,
-        colorDark : "#000000",
-        colorLight : "#ffffff",
-        correctLevel : QRCode.CorrectLevel.H
-    });
-  }
+  // ── Fetch secure QR + confirmed amount from server ──────────────────────────
+  (async () => {
+    try {
+      const qrRes = await fetch('https://npc-secure-backend.onrender.com/generate-qr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tournamentId })
+      });
+      const qrData = await qrRes.json();
 
-  if (!entryFee) {
-    loadPaymentDetails(tournamentId);
-  }
+      if (qrData.success) {
+        // Render server-generated QR image
+        const qrContainer = document.getElementById('qrcodeContainer');
+        if (qrContainer) {
+          qrContainer.innerHTML = `<img src="${qrData.qrDataUrl}" width="200" height="200" alt="UPI QR Code" style="display:block;border-radius:8px;">`;
+        }
+        // Update amount display with server-confirmed fee
+        const amountEl = document.getElementById('paymentAmount');
+        if (amountEl) amountEl.textContent = `\u20b9 ${qrData.entryFee}`;
+        // Update the Open UPI App link with secure URI
+        const upiLink = document.getElementById('openUpiLink');
+        if (upiLink) upiLink.href = qrData.upiUri;
+      } else {
+        const qrContainer = document.getElementById('qrcodeContainer');
+        if (qrContainer) qrContainer.innerHTML = '<p style="color:#ff4444;font-size:12px;">QR load failed. Use UPI ID: riaz-1@ptyes</p>';
+      }
+    } catch (err) {
+      payError('[QR] Failed to load server QR:', err);
+      const qrContainer = document.getElementById('qrcodeContainer');
+      if (qrContainer) qrContainer.innerHTML = '<p style="color:#ff4444;font-size:12px;">QR unavailable. Use UPI ID: riaz-1@ptyes</p>';
+    }
+  })();
 }
 
 // ============================================

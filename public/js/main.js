@@ -695,6 +695,7 @@ document.getElementById('player5Container').style.display = 'none';
     document.getElementById("prizeSecond").textContent          = tournament.prize?.second || 0;
     document.getElementById("prizeThird").textContent           = tournament.prize?.third || 0;
     document.getElementById("joinEntryFeeDisplay").textContent  = tournament.entryFee;
+    const _d2a = document.getElementById("joinEntryFeeDisplay2"); if (_d2a) _d2a.textContent = tournament.entryFee;
     document.getElementById("paymentAmount").textContent        = tournament.entryFee;
     document.getElementById("walletBalance").textContent        = "0";
 
@@ -833,6 +834,25 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         const submitBtn  = document.getElementById("joinSubmitBtn");
+
+        // Fix 4: Show blocking "Please Wait" overlay immediately on click
+        const existingWait = document.getElementById('submitWaitOverlay');
+        if (existingWait) existingWait.remove();
+        const waitOverlay = document.createElement('div');
+        waitOverlay.id = 'submitWaitOverlay';
+        waitOverlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;';
+        waitOverlay.innerHTML = `
+          <div style="width:50px;height:50px;border:4px solid #333;border-top-color:#00ff88;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+          <p style="color:#fff;font-size:17px;font-weight:600;text-align:center;max-width:280px;line-height:1.5;">Please wait a moment while we verify your details.<br><span style='color:#888;font-size:13px;'>You will be notified shortly.</span></p>
+        `;
+        if (!document.getElementById('spinKeyframe')) {
+            const s = document.createElement('style'); s.id='spinKeyframe';
+            s.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+            document.head.appendChild(s);
+        }
+        document.body.appendChild(waitOverlay);
+        if (submitBtn) { submitBtn.disabled = true; }
+
         const processing = document.getElementById("processingOverlay");
 
         // Get tournament type
@@ -1101,6 +1121,7 @@ document.addEventListener("DOMContentLoaded", function() {
             }
 
             // Cleanup and UI Feedback
+            document.getElementById('submitWaitOverlay')?.remove();
             if (processing) processing.style.display = "none";
             window.originalApplicationData = null; // Clear edit tracking
             closeJoinModal();
@@ -1137,6 +1158,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
         } catch (err) {
             console.error("Submit error:", err);
+            document.getElementById('submitWaitOverlay')?.remove();
             if (processing) processing.style.display = "none";
             showMessage("Error submitting: " + err.message);
             submitBtn.disabled = false;
@@ -3721,30 +3743,26 @@ function initNotifications() {
                         });
                     }
                 } else if (notif.type === "global_alert") {
-                    // Global Admin Notification Logic
-                    // Check if already dismissed via localStorage
-                    let readAlerts = [];
-                    try {
-                        readAlerts = JSON.parse(localStorage.getItem('read_alerts') || '[]');
-                    } catch (e) {}
+                    // Ghost Loop Fix: Skip if EITHER popupShown (DB flag) OR read (DB flag) is true.
+                    // This ensures cross-device dismissals are respected even after APK reinstall.
+                    if (notif.popupShown === true || notif.read === true) return;
 
-                    if (!readAlerts.includes(notifId)) {
-                        console.log("🚀 Firing Global Alert Popup:", notifId);
-                        showPopup("info", notif.message || notif.title, "Dismiss", () => {
-                            document.getElementById('customPopup')?.remove();
-                            
-                            // Save to read_alerts in localStorage when dismissed
-                            let currentAlerts = [];
-                            try { currentAlerts = JSON.parse(localStorage.getItem('read_alerts') || '[]'); } catch (e) {}
-                            if (!currentAlerts.includes(notifId)) {
-                                currentAlerts.push(notifId);
-                                localStorage.setItem('read_alerts', JSON.stringify(currentAlerts));
-                            }
-                            
-                            // Mark as read in DB if possible
-                            try { updateDoc(change.doc.ref, { popupShown: true, read: true }); } catch (e) {}
-                        });
-                    }
+                    // Secondary guard: localStorage per-device
+                    let readAlerts = [];
+                    try { readAlerts = JSON.parse(localStorage.getItem('read_alerts') || '[]'); } catch (e) {}
+                    if (readAlerts.includes(notifId)) return;
+
+                    console.log("\uD83D\uDE80 Firing Global Alert Popup:", notifId);
+                    window.shownPopupIds.add(notifId); // In-memory guard for same session
+                    showPopup("info", notif.message || notif.title, "Got it", () => {
+                        document.getElementById('customPopup')?.remove();
+                        // 1. Permanent DB flag — works across all devices/APK reinstalls
+                        try { updateDoc(change.doc.ref, { popupShown: true, read: true }); } catch (e) {}
+                        // 2. localStorage flag for this device
+                        let cur = [];
+                        try { cur = JSON.parse(localStorage.getItem('read_alerts') || '[]'); } catch (e) {}
+                        if (!cur.includes(notifId)) { cur.push(notifId); localStorage.setItem('read_alerts', JSON.stringify(cur)); }
+                    });
                 }
 
                 // Mark the popup as shown in the database securely for ALL notification types
@@ -4271,6 +4289,7 @@ async function showApprovedReviewInterface(tournamentId, userId) {
         document.getElementById("prizeSecond").textContent = tournament.prize?.second || 0;
         document.getElementById("prizeThird").textContent = tournament.prize?.third || 0;
         document.getElementById("joinEntryFeeDisplay").textContent = tournament.entryFee;
+        const _d2c = document.getElementById("joinEntryFeeDisplay2"); if (_d2c) _d2c.textContent = tournament.entryFee;
         document.getElementById("paymentAmount").textContent = tournament.entryFee;
 
         // Consistent dynamic timing display
