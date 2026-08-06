@@ -40,6 +40,12 @@ console.error = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalCons
 console.warn = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.warn(...args); };
 console.info = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.info(...args); };
 
+window.AppLog = {
+    info: (...args) => console.log(...args),
+    success: (...args) => console.log(...args),
+    error: (...args) => console.error(...args)
+};
+
 window.addEventListener('error', e => console.error("Global JS Error:", e.message, "at", e.filename, "line", e.lineno));
 window.addEventListener('unhandledrejection', e => console.error("Unhandled Promise Rejection:", e.reason));
 
