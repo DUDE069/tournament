@@ -20,7 +20,12 @@ import {
     sendEmailVerification,
     sendPasswordResetEmail,
     reauthenticateWithCredential,
-    EmailAuthProvider
+    EmailAuthProvider,
+    GoogleAuthProvider,
+    signInWithRedirect,
+    getRedirectResult,
+    linkWithCredential,
+    fetchSignInMethodsForEmail
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 // ===============================
@@ -1699,6 +1704,69 @@ setupUI();
 
 startFirebaseListeners();
 
+// Google Sign-In Function
+window.googleSignIn = async function() {
+    try {
+        const provider = new GoogleAuthProvider();
+        // Set custom parameters if needed
+        await signInWithRedirect(auth, provider);
+    } catch (error) {
+        console.error("Google Sign-in error:", error);
+        showMessage("Error starting Google Sign-in: " + error.message);
+    }
+};
+
+// Check for redirect result on load
+getRedirectResult(auth).then(async (result) => {
+    if (result) {
+        const user = result.user;
+        const userRef = doc(db, "users", user.uid);
+        const snap = await getDoc(userRef);
+        
+        if (!snap.exists()) {
+            // New Google User - Needs to complete profile
+            document.getElementById("loginModal").style.display = "flex";
+            document.getElementById("loginView").style.display = "none";
+            document.getElementById("createView").style.display = "block";
+            
+            // Hide the Email/Password fields since Google handles auth
+            document.getElementById("regEmail").style.display = "none";
+            document.getElementById("regPass").parentNode.style.display = "none";
+            document.getElementById("strengthBar").style.display = "none";
+            document.getElementById("regConfirm").parentNode.style.display = "none";
+            
+            // Show role selection early or let them fill out details first
+            showMessage("Google account linked! Please complete your profile details.");
+        }
+    }
+}).catch(async (error) => {
+    console.error("Redirect Error:", error);
+    
+    // Handle Account Collision (Email already exists with password)
+    if (error.code === 'auth/account-exists-with-different-credential') {
+        const email = error.customData.email;
+        const pendingCred = GoogleAuthProvider.credentialFromError(error);
+        
+        // Find which providers are linked to this email
+        try {
+            const methods = await fetchSignInMethodsForEmail(auth, email);
+            if (methods.includes("password")) {
+                showMessage("Email already registered! Please login with your password to link your Google account.");
+                
+                // Save the pending credential to a global variable so we can link it after they login
+                window.pendingGoogleCred = pendingCred;
+                
+                document.getElementById("loginModal").style.display = "flex";
+                document.getElementById("loginEmail").value = email;
+            }
+        } catch (linkErr) {
+            console.error("Linking error:", linkErr);
+        }
+    } else {
+        showMessage("Login failed: " + error.message.replace("Firebase: ", ""));
+    }
+});
+
 // 2. Modify the auth state to only handle private data (notifications)
 onAuthStateChanged(auth, async (user) => {
     if (user) {
@@ -1717,36 +1785,42 @@ onAuthStateChanged(auth, async (user) => {
         }
         
         if (!snap.exists()) {
-            // User is authenticated but has NO Firestore profile — ghost!
-            const isFreshReg = sessionStorage.getItem("npc_fresh_registration") === user.uid;
-            
-            // WITH THIS
-            if (!isFreshReg) {
-                // This is a returning ghost — trigger recovery
-                console.warn("[GHOST] Ghost account detected for:", user.uid);
-                userProfile = null;
-                isLoggedIn  = true;
-                const loginBtn = document.getElementById("loginBtn");
-                if (loginBtn) loginBtn.innerText = "Profile";
-                // Recovery is triggered via handleProfileClick or openDashboard
-                return;
-            }
-            // If fresh registration, the setDoc is still in progress — wait a tick
-            await new Promise(r => setTimeout(r, 800));
-            const retrySnap = await getDoc(userRef);
-            if (!retrySnap.exists()) {
-                userProfile = null;
-                const loginBtn = document.getElementById("loginBtn");
-                if (loginBtn) loginBtn.innerText = "Profile";
-                return;
-            }
-            userProfile = retrySnap.data();
-            AppLog.success("[FIREBASE] All firebase rules are active. Profile data loaded.");
+            userProfile = null;
         } else {
             userProfile = snap.data();
-            AppLog.success("[FIREBASE] All firebase rules are active. Profile data loaded.");
         }
         
+        // ==========================================
+        // 🚨 STRICT LIMBO GUARD (Profile Completeness)
+        // ==========================================
+        if (!userProfile || !userProfile.nickname || !userProfile.age || !userProfile.freeFireUid) {
+            console.warn("🚨 [AUTH] Limbo Profile Detected! Routing to setup...");
+            document.getElementById("loginModal").style.display = "flex";
+            document.getElementById("loginView").style.display = "none";
+            document.getElementById("createView").style.display = "block";
+            
+            // Hide the Email/Password fields since they are authed via Google or old flow
+            document.getElementById("regEmail").style.display = "none";
+            const passEl = document.getElementById("regPass");
+            if(passEl) passEl.parentNode.style.display = "none";
+            document.getElementById("strengthBar").style.display = "none";
+            const confEl = document.getElementById("regConfirm");
+            if(confEl) confEl.parentNode.style.display = "none";
+            
+            document.getElementById("signupStep1").style.display = "block";
+            document.getElementById("roleSelectionArea").style.display = "none";
+            
+            // Change button text to reflect completing profile
+            const verifyBtn = document.getElementById("btnSendOTP");
+            if(verifyBtn) verifyBtn.textContent = "Continue to Role Selection";
+            
+            showMessage("Almost there! Please complete your profile details.");
+            
+            // Wait for user to complete setup; do NOT load dashboard or set isLoggedIn true
+            return;
+        }
+
+        AppLog.success("[FIREBASE] All firebase rules are active. Profile data loaded.");
         sessionStorage.removeItem("npc_fresh_registration");
         isLoggedIn = true;
 
@@ -3104,7 +3178,20 @@ async function login() {
     if (!email || !pass) { showMessage("Enter email and password"); return; }
 
     try {
-        await signInWithEmailAndPassword(auth, email, pass);
+        const userCred = await signInWithEmailAndPassword(auth, email, pass);
+        
+        // Handle pending Google Credential linking
+        if (window.pendingGoogleCred) {
+            try {
+                await linkWithCredential(userCred.user, window.pendingGoogleCred);
+                showMessage("Google Account successfully linked!");
+            } catch (linkErr) {
+                console.error("Failed to link credential:", linkErr);
+            } finally {
+                window.pendingGoogleCred = null;
+            }
+        }
+        
         closeModal();
         showMessage("Login successful");
 
@@ -5661,7 +5748,7 @@ document.addEventListener("DOMContentLoaded", function() {
     document.querySelectorAll(".dash-card[data-popup]").forEach(card => {
         card.addEventListener("click", function() {
             const type = this.getAttribute("data-popup");
-            window.openDashboard(type); // ✅ FIXED: Forces the NEW synced dashboard!
+            window.openDashboard(type);
         });
     });
     
@@ -5689,7 +5776,7 @@ window.sendSignupOTP = async function() {
     const nickname = document.getElementById("regNickname") ? document.getElementById("regNickname").value.trim() : "";
     const freeFireUid = document.getElementById("regUID") ? document.getElementById("regUID").value.trim() : "";
 
-    // Validations — accept any valid email (not just @gmail.com)
+    // Validations
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) { showMessage("Please enter a valid email address"); return; }
     if (pass.length < 6) { showMessage("Password too short (min 6 characters)"); return; }
@@ -5699,9 +5786,8 @@ window.sendSignupOTP = async function() {
     const btn = document.getElementById("btnSendOTP");
     const originalText = btn.textContent;
     
-    // UI Feedback: Disable button to prevent double-clicks
     btn.disabled = true;
-    btn.textContent = "Sending Verification...";
+    btn.textContent = "Processing...";
     btn.style.opacity = "0.7";
     btn.style.cursor = "not-allowed";
 
@@ -5709,21 +5795,16 @@ window.sendSignupOTP = async function() {
         console.log("[SIGNUP] Creating auth account for:", email);
         
         // Step 1: Create Auth user
-        const userCred = await createUserWithEmailAndPassword(auth, email, pass);
+        await createUserWithEmailAndPassword(auth, email, pass);
         
-        // Step 2: Send the verification link
-        await sendEmailVerification(userCred.user);
-        
-        // Step 3: Setup UI for Email Verification phase
+        // Step 2: Skip Email Verification and proceed directly to Role Selection
         document.getElementById("signupStep1").style.display = "none";
-        document.getElementById("signupStep2").style.display = "block";
-        document.getElementById("roleSelectionArea").style.display = "none"; 
+        document.getElementById("roleSelectionArea").style.display = "block"; 
         
         const finalBtn = document.querySelector('#createView button[onclick="createAccount()"]');
-        if (finalBtn) finalBtn.style.display = "none";
+        if (finalBtn) finalBtn.style.display = "block";
         
-        showMessage("📧 Check your Gmail! Click the verification link.");
-        startResendTimer();
+        showMessage("Account created! Please finalize your profile below.");
         
     } catch (err) {
         console.error("[SIGNUP] Error:", err.code || err.message);
@@ -5731,30 +5812,15 @@ window.sendSignupOTP = async function() {
         // Ghost Account Recovery Flow
         if (err.code === 'auth/email-already-in-use') {
             try {
-                const userCred = await signInWithEmailAndPassword(auth, email, pass);
-                const user = userCred.user;
+                await signInWithEmailAndPassword(auth, email, pass);
                 
-                if (!user.emailVerified) {
-                    await sendEmailVerification(user);
-                    
-                    document.getElementById("signupStep1").style.display = "none";
-                    document.getElementById("signupStep2").style.display = "block";
-                    document.getElementById("roleSelectionArea").style.display = "none";
-                    const finalBtn = document.querySelector('#createView button[onclick="createAccount()"]');
-                    if (finalBtn) finalBtn.style.display = "none";
-                    
-                    showMessage("⚠️ Unverified account found. New link sent to Gmail!");
-                    startResendTimer();
-                } else {
-                    // Account already verified! Skip to role selection
-                    document.getElementById("signupStep1").style.display = "none";
-                    document.getElementById("signupStep2").style.display = "none";
-                    document.getElementById("roleSelectionArea").style.display = "block";
-                    const finalBtn = document.querySelector('#createView button[onclick="createAccount()"]');
-                    if (finalBtn) finalBtn.style.display = "block";
-                    
-                    showMessage("Account already verified! Please finalize your profile below.");
-                }
+                // Account already exists! Skip to role selection
+                document.getElementById("signupStep1").style.display = "none";
+                document.getElementById("roleSelectionArea").style.display = "block";
+                const finalBtn = document.querySelector('#createView button[onclick="createAccount()"]');
+                if (finalBtn) finalBtn.style.display = "block";
+                
+                showMessage("Account found! Please finalize your profile below.");
             } catch (loginErr) {
                 showMessage("⚠️ Email already registered. Please login instead.");
                 setTimeout(() => { 
@@ -5763,36 +5829,9 @@ window.sendSignupOTP = async function() {
                 }, 1500);
             }
         } else {
-            // General Error Handling
-            showMessage("Error: " + (err.message.replace("Firebase: ", "") || "Unknown error"));
+            showMessage("Error: " + err.message.replace("Firebase: ", ""));
         }
     } finally {
-        // ALWAYS restore the button state if they are still on step 1
-        if (document.getElementById("signupStep1").style.display !== "none") {
-            btn.disabled = false; 
-            btn.textContent = originalText;
-            btn.style.opacity = "1";
-            btn.style.cursor = "pointer";
-        }
-    }
-};
-
-// Start Resend Timer
-window.startResendTimer = function() {
-    let resendCooldown = 60;
-    const timerEl = document.getElementById("resendTimer");
-    if (!timerEl) return;
-    
-    const interval = setInterval(() => {
-        resendCooldown--;
-        if (resendCooldown <= 0) {
-            clearInterval(interval);
-            timerEl.innerText = "Resend Email";
-            timerEl.style.pointerEvents = "auto";
-            timerEl.style.color = "#3b82f6";
-            timerEl.style.cursor = "pointer";
-        } else {
-            timerEl.innerText = `Resend in ${resendCooldown}s`;
             timerEl.style.pointerEvents = "none";
             timerEl.style.color = "#888";
             timerEl.style.cursor = "not-allowed";
@@ -6077,46 +6116,14 @@ window.updateUserPassword = async function(isForgotFlow = false) {
 
 
 
-
-window.resendSignupOTP = async function() {
-    const user = auth.currentUser;
-    
-    if (!user) {
-        showMessage("❌ Session expired. Please sign up again.");
-        return;
-    }
-
-    const timerEl = document.getElementById("resendTimer");
-    if (timerEl && timerEl.style.pointerEvents === "none") {
-        showMessage("Please wait before resending.");
-        return;
-    }
-
-    try {
-        console.log("[RESEND] Sending verification email...");
-        
-        // THE FIX: Use Firebase v10 syntax
-        await sendEmailVerification(user);
-        
-        console.log("✅ Verification email resent!");
-        showMessage("📧 New verification email sent!");
-        startResendTimer();
-    } catch (err) {
-        console.error("[RESEND] Error:", err.code, err.message);
-        if (err.code === 'auth/too-many-requests') {
-            showMessage("Too many requests. Try again later.");
-        } else {
-            showMessage("Failed to resend. Try again.");
-        }
-    }
-};
+// Removed resendSignupOTP
 // ==========================================
 // 3. FINAL CREATE ACCOUNT (Writes to Firestore)
 // ==========================================
 window.createAccount = async function() {
     const user = auth.currentUser;
-    if (!user || !user.emailVerified) {
-        showMessage("Please verify your email first.");
+    if (!user) {
+        showMessage("Session expired. Please log in again.");
         return;
     }
 
