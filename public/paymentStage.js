@@ -143,6 +143,7 @@ async function submitUtrVerification(tournamentId, entryFee) {
 // RENDER PAYMENT UI
 // ============================================
 function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
+  if (window.AppLog) AppLog.success("[PAYMENT] Successfully opened the payment interface");
   // ✅ FIX: Don't re-render if success screen is already showing
   if (_successScreenShowing) return;
   document.getElementById('paymentOverlay')?.remove();
@@ -294,9 +295,12 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
       if (upiLink) upiLink.href = upiUri;
       
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiUri)}`;
+      if (window.AppLog) AppLog.info("[PAYMENT] QR code generated locally");
+      
       const qrContainer = document.getElementById('qrcodeContainer');
       if (qrContainer) {
         qrContainer.innerHTML = `<img src="${qrUrl}" width="200" height="200" alt="UPI QR Code" style="display:block;border-radius:8px;background:#fff;padding:5px;">`;
+        if (window.AppLog) AppLog.success("[PAYMENT] QR code shown to user");
       }
     } catch (err) {
       payError('[QR] Failed to generate QR:', err);

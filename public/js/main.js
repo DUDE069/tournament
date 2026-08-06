@@ -1209,6 +1209,7 @@ document.addEventListener("DOMContentLoaded", function() {
 // PAYMENT INTERFACE
 // ===============================
 window.showPaymentInterface = async function(tournamentId, btnElement = null) {
+    AppLog.info("[PAYMENT] Trying to open the payment interface...");
     if (!tournamentId) { showMessage("Tournament ID missing"); return; }
     
     // UI Feedback: Loading State
