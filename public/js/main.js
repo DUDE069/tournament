@@ -3235,8 +3235,22 @@ async function login() {
             }, 1000);
         }
     } catch (err) {
-        error("Login error:", err);
-        showMessage("Invalid credentials: " + err.message);
+        console.error("Login error:", err);
+        
+        // Help Google users who accidentally try to use a password
+        if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+            try {
+                const methods = await fetchSignInMethodsForEmail(auth, email);
+                if (methods.includes("google.com") && !methods.includes("password")) {
+                    showMessage("This email is registered via Google Sign-In. Please click the Google button below!");
+                    return;
+                }
+            } catch (e) {
+                // Ignore fetch errors
+            }
+        }
+        
+        showMessage("Invalid credentials: " + err.message.replace("Firebase: ", ""));
     }
 }
 
