@@ -23,6 +23,26 @@ import {
     EmailAuthProvider
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
+// ===============================
+// GLOBAL LOGGING SYSTEM
+// ===============================
+window.ENABLE_CONSOLE_LOGS = true; // Master Switch (Set to false to hide all logs)
+
+const originalConsole = {
+    log: console.log,
+    error: console.error,
+    warn: console.warn,
+    info: console.info
+};
+
+console.log = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.log(...args); };
+console.error = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.error(...args); };
+console.warn = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.warn(...args); };
+console.info = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.info(...args); };
+
+window.addEventListener('error', e => console.error("Global JS Error:", e.message, "at", e.filename, "line", e.lineno));
+window.addEventListener('unhandledrejection', e => console.error("Unhandled Promise Rejection:", e.reason));
+
 import { setupNotifications } from './notificationService.js'; // NEW: Import notification setup
 
 
@@ -279,6 +299,9 @@ window.handleUpcomingRegister = async function(tournamentId) {
             
             // Clear previous values
             document.getElementById("uidPlayer1").value     = userProfile.freeFireUid || "";
+            if (document.getElementById("nickPlayer1")) {
+                document.getElementById("nickPlayer1").value = userProfile.nickname || "";
+            }
         }
     } catch (e) {
         console.error("Error setting user profile details in UI:", e);
@@ -852,6 +875,7 @@ document.addEventListener("DOMContentLoaded", function() {
         waitOverlay.innerHTML = `
           <div style="width:50px;height:50px;border:4px solid #333;border-top-color:#00ff88;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
           <p style="color:#fff;font-size:17px;font-weight:600;text-align:center;max-width:280px;line-height:1.5;">Please wait a moment while we verify your details.<br><span style='color:#888;font-size:13px;'>You will be notified shortly.</span></p>
+          <button onclick="document.getElementById('submitWaitOverlay')?.remove(); document.getElementById('joinSubmitBtn').disabled=false;" style="margin-top:20px;padding:10px 20px;background:#333;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">Cancel Verification</button>
         `;
         if (!document.getElementById('spinKeyframe')) {
             const s = document.createElement('style'); s.id='spinKeyframe';

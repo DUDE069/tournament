@@ -48,6 +48,26 @@
 
 import { db, auth } from "./firebase.js";
 
+// ===============================
+// GLOBAL LOGGING SYSTEM
+// ===============================
+window.ENABLE_CONSOLE_LOGS = true; // Master Switch (Set to false to hide all logs)
+
+const originalConsole = {
+    log: console.log,
+    error: console.error,
+    warn: console.warn,
+    info: console.info
+};
+
+console.log = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.log(...args); };
+console.error = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.error(...args); };
+console.warn = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.warn(...args); };
+console.info = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.info(...args); };
+
+window.addEventListener('error', e => console.error("Global JS Error:", e.message, "at", e.filename, "line", e.lineno));
+window.addEventListener('unhandledrejection', e => console.error("Unhandled Promise Rejection:", e.reason));
+
 import {
     getFirestore, collection, doc, getDocs, getDoc, updateDoc, setDoc, deleteDoc,
     query, where, orderBy, onSnapshot, writeBatch, serverTimestamp, addDoc, limit, collectionGroup, increment
