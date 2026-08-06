@@ -23,6 +23,7 @@ import {
     EmailAuthProvider,
     GoogleAuthProvider,
     signInWithRedirect,
+    signInWithPopup,
     getRedirectResult,
     linkWithCredential,
     fetchSignInMethodsForEmail
