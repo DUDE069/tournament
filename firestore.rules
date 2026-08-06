@@ -18,12 +18,11 @@ service cloud.firestore {
     // ==========================================
     // 2. GLOBAL ADMIN OVERRIDES
     // ==========================================
-    // Admin can read/write ANY document in ANY subcollection via collection-group queries
-    match /{path=**}/verifications/{docId} { allow read, write: if isAdmin(); }
+    match /{path=**}/verifications/{docId}         { allow read, write: if isAdmin(); }
     match /{path=**}/upcomingRegistrations/{docId} { allow read, write: if isAdmin(); }
-    match /{path=**}/participants/{docId} { allow read, write: if isAdmin(); }
-    match /{path=**}/transactions/{docId} { allow read, write: if isAdmin(); }
-    match /{path=**}/notifications/{docId} { allow read, write: if isAdmin(); }
+    match /{path=**}/participants/{docId}           { allow read, write: if isAdmin(); }
+    match /{path=**}/transactions/{docId}           { allow read, write: if isAdmin(); }
+    match /{path=**}/notifications/{docId}          { allow read, write: if isAdmin(); }
 
     // ==========================================
     // 3. USERS COLLECTION
@@ -35,42 +34,25 @@ service cloud.firestore {
         !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'wallet', 'bonusCredits']));
     }
 
-    match /users/{userId}/notifications/{notifId} { 
-      allow read, create, delete: if isOwner(userId) || isAdmin();
-      allow update: if (isOwner(userId) && request.resource.data.read == true) || isAdmin(); 
-    }
-    match /users/{userId}/pendingPayment/{tournamentId} { allow read, write: if isOwner(userId) || isAdmin(); }
-    match /users/{userId}/upcomingRegistrations/{docId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId) && request.resource.data.get('paymentStatus', '') != 'verified';
-      // ✅ SECURITY FIX (Patch 2): A user can update their own registration but can NEVER
-      //    self-promote paymentStatus to "verified". Only admins can write that value.
-      allow update: if isAdmin() || (
-        isOwner(userId) &&
-        request.resource.data.get('paymentStatus', '') != 'verified'
-      );
-      allow delete: if isOwner(userId) || isAdmin();
-    }
-    match /users/{userId}/confirmedRegistrations/{docId} { allow read, write: if isOwner(userId) || isAdmin(); }
-    match /users/{userId}/performanceHistory/{docId} { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/notifications/{notifId}           { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/pendingPayment/{tournamentId}     { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/upcomingRegistrations/{docId}     { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/confirmedRegistrations/{docId}    { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/performanceHistory/{docId}        { allow read, write: if isOwner(userId) || isAdmin(); }
     
     match /users/{userId}/wallet/{walletId} {
       allow read: if isOwner(userId) || isAdmin();
-      // ✅ SECURITY FIX (Patch 3): Allow owner to create their wallet doc (on first load)
-      //    and to credit their balance via the referral runTransaction.
-      //    Direct arbitrary balance sets are constrained by the transaction pattern
-      //    in applyReferral (which re-reads the doc inside a server-locked transaction).
-      //    Admins retain full write access for manual adjustments.
+      // Users can create their own wallet doc (first load / referral credits)
       allow create: if isOwner(userId) || isAdmin();
+      // Users can only update balance fields; admins have full access
       allow update: if isAdmin() || (
         isOwner(userId) &&
         request.resource.data.keys().hasOnly(['balance', 'updatedAt', 'createdAt'])
       );
     }
-    match /users/{userId}/transactions/{transId} {
-      allow read: if isOwner(userId) || isAdmin();
-      // ✅ SECURITY FIX (Patch 3): Allow users to CREATE transaction audit records
-      //    (referral credits, deduction logs). History is immutable — no update/delete.
+    match /users/{userId}/transactions/{transId} { 
+      allow read: if isOwner(userId) || isAdmin(); 
+      // Users can create transaction audit records (referral credits, deductions)
       allow create: if isOwner(userId) || isAdmin();
       allow update, delete: if isAdmin();
     }
@@ -84,19 +66,20 @@ service cloud.firestore {
 
       match /participants/{docId} {
         allow read: if isOwner(docId) || isAdmin();
-        // ✅ FIX: Use .get() to prevent crashes if the field is missing
-        allow create: if isOwner(docId) && request.resource.data.get('paymentStatus', '') != 'verified';
+        allow create: if (isOwner(docId) || (isLoggedIn() && request.resource.data.userId == request.auth.uid)) 
+                      && request.resource.data.get('paymentStatus', '') != 'verified';
         allow update: if isAdmin() || (isOwner(docId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmationReceived', 'confirmedAt']));
       }
       
       match /verifications/{docId} { 
-        allow read: if isOwner(docId) || (isLoggedIn() && resource.data.userId == request.auth.uid) || isAdmin(); 
-        allow create: if (isOwner(docId) || (isLoggedIn() && request.resource.data.userId == request.auth.uid)) && request.resource.data.get('status', '') != 'approved';
-        allow update: if isAdmin() || ((isOwner(docId) || (isLoggedIn() && resource.data.userId == request.auth.uid)) && 
+        allow read: if isOwner(docId) || isAdmin(); 
+        allow create: if (isOwner(docId) || (isLoggedIn() && request.resource.data.userId == request.auth.uid)) 
+                      && request.resource.data.get('status', '') != 'approved';
+        allow update: if isAdmin() || (isOwner(docId) && 
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['paymentStatus']) &&
           (request.resource.data.status == resource.data.status || request.resource.data.status == 'pending')
         );
-        allow delete: if isOwner(docId) || (isLoggedIn() && resource.data.userId == request.auth.uid) || isAdmin();
+        allow delete: if isOwner(docId) || isAdmin();
       }
       
       match /teamSessions/{teamId} { 
@@ -120,21 +103,16 @@ service cloud.firestore {
 
       match /upcomingRegistrations/{docId} {
         allow read: if isOwner(docId) || isAdmin();
-        allow create: if isOwner(docId) 
+        allow create: if (isOwner(docId) || (isLoggedIn() && request.resource.data.userId == request.auth.uid)) 
                       && request.resource.data.get('paymentStatus', '') != 'verified' 
                       && request.resource.data.get('status', '') != 'approved';
-        
-        // ✅ FIX: Ensure users can ALSO resubmit upcoming registrations without permission errors
         allow update: if isAdmin() || (isOwner(docId) && 
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['paymentStatus']) &&
           (request.resource.data.status == resource.data.status || request.resource.data.status == 'pending')
         );
-          
         allow delete: if isOwner(docId) || isAdmin();
       }
 
-      // 🔒 SECURITY FIX (Issue 8): lockedRegistrations write is now admin-only.
-      // Users should never be able to lock their own slot — this is an admin action.
       match /lockedRegistrations/{docId} {
         allow read: if isOwner(docId) || isAdmin();
         allow write: if isAdmin();
@@ -148,26 +126,23 @@ service cloud.firestore {
       allow read, create: if isLoggedIn();
       allow delete: if isAdmin();
       
-      // 🔒 SECURITY FIX (Issue 2): Tightened team update rule to prevent self-injection.
-      // A non-admin user can only update a team if they are ALREADY the leader or ALREADY in members.
-      // This prevents a random user who knows a teamId from adding themselves.
-      allow update: if isAdmin() || (isLoggedIn() && (
-        resource.data.leaderId == request.auth.uid || 
-        request.auth.uid in resource.data.members
-      ));
+      allow update: if isAdmin() 
+        || (isLoggedIn() && resource.data.leaderId == request.auth.uid)
+        || (isLoggedIn() && request.auth.uid in resource.data.members)
+        || (isLoggedIn() 
+            && request.auth.uid in request.resource.data.members
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']));
       
       match /wallet/{walletId} { 
         allow read: if isLoggedIn(); 
         allow write: if isAdmin(); 
       }
       
-      // ✅ FIX 1: Allow team members to read their Financial Ledger
       match /transactions/{txId} {
         allow read: if isAdmin() || (isLoggedIn() && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members);
         allow write: if isAdmin();
       }
       
-      // ✅ FIX 2: Allow anyone to read team tournament histories
       match /tournamentHistory/{docId} {
         allow read: if true;
         allow write: if isAdmin();
@@ -177,16 +152,11 @@ service cloud.firestore {
     // ==========================================
     // 6. SYSTEM & ADMIN DATA
     // ==========================================
-
-    // 🔒 SECURITY FIX (Issue 3 & 5): refundRequests require userId field to match caller.
-    // Prevents creating ghost refund docs on behalf of other users.
     match /refundRequests/{requestId} {
       allow create: if isLoggedIn() && request.resource.data.userId == request.auth.uid;
       allow read, update, delete: if isAdmin();
     }
-    
-    // 🔒 SECURITY FIX (Issue 4): adminNotifications require userId field to match caller.
-    // A user can only create a notification that identifies themselves as the sender.
+
     match /adminNotifications/{notifId} { 
       allow create: if isLoggedIn() && request.resource.data.userId == request.auth.uid;
       allow read, update, delete: if isAdmin(); 
@@ -203,19 +173,18 @@ service cloud.firestore {
     }
 
     // ==========================================
-    // 7. PUSH NOTIFICATION QUEUE (NEW — Issue 1)
+    // 7. PUSH NOTIFICATION QUEUE
     // ==========================================
     match /pushQueue/{userId}/tasks/{taskId} {
       allow read: if false;
       allow write: if isAdmin();
     }
-    
+
     // ==========================================
     // 8. PAYMENT & WALLET SYSTEM
     // ==========================================
     match /submitted_utrs/{utr} {
-      // ONLY BACKEND (Admin SDK) CAN WRITE THIS.
-      // Prevents clients from spoofing or bypassing global duplicate check.
+      // Backend Admin SDK only — prevents clients from spoofing UTR duplicates
       allow read, write: if false;
     }
     
@@ -223,11 +192,11 @@ service cloud.firestore {
       allow read: if isLoggedIn();
       allow write: if isAdmin();
     }
-    
+
+    // ⚠️ CRITICAL: This is the correct collection name used by admin.js
     match /withdrawal_requests/{requestId} {
-      // User can create their own withdrawal requests
       allow create: if isLoggedIn() && request.resource.data.userId == request.auth.uid;
-      // Admin has FULL unrestricted access (read, update, delete) — required for snapshot listeners
+      // Full admin access required for real-time snapshot listeners
       allow read, update, delete: if isAdmin();
     }
     
