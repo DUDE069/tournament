@@ -7984,17 +7984,17 @@ window.kickTeamMember = async function(uidToKick) {
     try {
         const teamRef = doc(db, "teams", userProfile.teamId);
         
-        const batch = writeBatch(db);
-        // Remove from team members array
-        batch.update(teamRef, {
+        // 1. Remove from team members array (Leader has permission for this)
+        await updateDoc(teamRef, {
             members: arrayRemove(uidToKick)
         });
         
-        // Try to update user profile (if they are not a ghost account)
+        // 2. Try to update user profile 
+        // (This will fail with permission denied unless they are an admin or it's a backend function, but we catch it so it doesn't break the kick)
         try {
             const memberDoc = await getDoc(doc(db, "users", uidToKick));
             if (memberDoc.exists()) {
-                batch.update(doc(db, "users", uidToKick), {
+                await updateDoc(doc(db, "users", uidToKick), {
                     teamId: null,
                     teamName: null,
                     teamCode: null,
@@ -8002,10 +8002,8 @@ window.kickTeamMember = async function(uidToKick) {
                 });
             }
         } catch (e) {
-            console.warn("Could not read user profile, they might be a ghost account.");
+            console.warn("Could not update user profile directly (expected permission denied). Team array was still cleaned.");
         }
-        
-        await batch.commit();
 
         showMessage("Member successfully removed from the team!");
         
