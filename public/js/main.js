@@ -1179,28 +1179,9 @@ document.addEventListener("DOMContentLoaded", function() {
             window.originalApplicationData = null; // Clear edit tracking
             closeJoinModal();
             
-            // If they chose pay_now or got instant approval, open payment stage immediately
-            if (paymentChoice === "pay_now" || teamVerificationHistory) {
-                if (paymentChoice === "pay_now") {
-                    showPopup(
-                        "success", 
-                        "Provisional Slot Granted! You have 15 minutes to submit your payment UTR.", 
-                        "Pay Now", 
-                        () => {
-                            if (window.renderPaymentUI) {
-                                window.renderPaymentUI({ paymentStatus: 'pending' }, tournament.title, tournamentId, tournament.entryFee);
-                            }
-                        }
-                    );
-                    return;
-                }
-            }
-
             showPopup(
                 "success", 
-                isUpcoming 
-                    ? (teamVerificationHistory ? `Slot granted for "${tournament.title}"! You can pay later.` : `Successfully registered for "${tournament.title}"!\n\nYour application is under review.`) 
-                    : `Details sent for "${tournament.title}"!\n\nCheck 'Status' tab for updates.`, 
+                `Successfully registered for "${tournament.title}"!\n\nYour application has been sent for verification. Please wait for our notification in your inbox before proceeding with payment.`, 
                 "Awesome!", 
                 () => {}
             );
