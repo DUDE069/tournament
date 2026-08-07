@@ -182,6 +182,8 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
       padding: 32px;
       max-width: 420px;
       width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
       text-align: center;
       font-family: 'Rajdhani', sans-serif;
       position: relative;
@@ -203,6 +205,13 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
       <h2 style="color: #fff; margin: 0 0 8px; font-size: 24px;">Complete Registration</h2>
       <p style="color: #888; margin-bottom: 24px;">${escapeHtml(tournamentName)}</p>
 
+      ${paymentStatus === 'payment_rejected' ? `
+        <div style="background: rgba(255, 68, 68, 0.1); border: 1px solid #ff4444; border-radius: 10px; padding: 14px; margin-bottom: 18px;">
+          <p style="color: #ff4444; font-size: 14px; font-weight: bold; margin: 0 0 4px;">❌ Payment Verification Failed</p>
+          <p style="color: #ffcccc; font-size: 12px; margin: 0;">We couldn't verify the UTR you provided. Please enter the correct UTR.</p>
+        </div>
+      ` : ''}
+
       <div style="
         background: #0f0f0f;
         border: 1px solid #2a2a2a;
@@ -219,18 +228,23 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
         </span>
       </div>
       
-      <p style="color:#aaa;font-size:14px;margin-bottom:8px;">Scan to Pay</p>
-      <div id="qrcodeContainer" style="background:#fff;padding:12px;border-radius:10px;display:inline-block;margin-bottom:16px;"></div>
+      <div id="paymentQrSection" style="display: ${paymentStatus === 'payment_rejected' ? 'none' : 'block'};">
+        <p style="color:#aaa;font-size:14px;margin-bottom:8px;">Scan to Pay</p>
+        <div id="qrcodeContainer" style="background:#fff;padding:12px;border-radius:10px;display:inline-block;margin-bottom:16px;"></div>
 
-      <a id="openUpiLink" href="#" style="display:block;background:#3b82f6;color:#fff;padding:12px;border-radius:8px;text-decoration:none;font-weight:bold;margin-bottom:20px;">
-        Open UPI App (Mobile)
-      </a>
+        <a id="openUpiLink" href="#" style="display:block;background:#3b82f6;color:#fff;padding:12px;border-radius:8px;text-decoration:none;font-weight:bold;margin-bottom:20px;">
+          Open UPI App (Mobile)
+        </a>
+      </div>
       
       <div style="text-align:left;margin-bottom:16px;">
-        <label style="color:#fff;font-size:14px;margin-bottom:6px;display:block;font-weight:bold;">📋 Enter UTR / Transaction Reference Number</label>
+        <label style="color:#fff;font-size:14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;font-weight:bold;">
+          <span>📋 Enter UTR Number</span>
+          ${paymentStatus === 'payment_rejected' ? `<a href="#" onclick="document.getElementById('paymentQrSection').style.display='block'; this.style.display='none'; return false;" style="color:#3b82f6; font-size:12px; text-decoration:none;">Pay again</a>` : ''}
+        </label>
         <p style="color:#888;font-size:12px;margin-bottom:8px;line-height:1.5;">
-          After completing your UPI payment, enter the 12-digit UTR number below to verify your payment. 
-          <strong style="color:#fbbf24;">This must be completed within the time limit shown below.</strong>
+          ${paymentStatus === 'payment_rejected' ? 'Please enter the correct 12-digit UTR from your successful payment.' : 'After completing your UPI payment, enter the 12-digit UTR number below to verify your payment.'}
+          <strong style="color:#fbbf24;">This must be completed within the time limit.</strong>
         </p>
         <input type="text" id="utrInput" placeholder="e.g. 312345678901" maxlength="12" style="width:100%;padding:12px;border-radius:8px;border:1px solid #333;background:#0f0f0f;color:#fff;font-family:monospace;font-size:16px;box-sizing:border-box;">
       </div>
@@ -391,6 +405,8 @@ function renderSuccessScreen(tournamentName, roomId, roomPassword, paymentId) {
       padding: 32px;
       max-width: 420px;
       width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
       text-align: center;
       font-family: 'Rajdhani', sans-serif;
     ">

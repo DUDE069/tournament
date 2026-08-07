@@ -496,11 +496,26 @@ function renderTournaments() {
             // Check if user has a pending payment verification
             // Priority 1: Real-time Firestore listener (window.userPendingPayments)
             // Priority 2: Instant localStorage lock (written by paymentStage.js on submit)
-            let isVerificationPending = window.userPendingPayments && 
-                (window.userPendingPayments[t.id]?.paymentStatus === 'pending_verification' || 
-                 window.userPendingPayments[t.id]?.paymentStatus === 'submitted');
+            let isVerificationPending = false;
+            let isRejected = false;
+            
+            if (window.userPendingPayments && window.userPendingPayments[t.id]) {
+                const status = window.userPendingPayments[t.id].paymentStatus;
+                if (status === 'payment_rejected') {
+                    isRejected = true;
+                    try {
+                        const localPending = JSON.parse(localStorage.getItem('npc_pending_payments') || '{}');
+                        if (localPending[t.id]) {
+                            delete localPending[t.id];
+                            localStorage.setItem('npc_pending_payments', JSON.stringify(localPending));
+                        }
+                    } catch (e) {}
+                } else if (status === 'pending_verification' || status === 'submitted') {
+                    isVerificationPending = true;
+                }
+            }
 
-            if (!isVerificationPending) {
+            if (!isVerificationPending && !isRejected) {
                 try {
                     const localPending = JSON.parse(localStorage.getItem('npc_pending_payments') || '{}');
                     if (localPending[t.id]?.status === 'pending_verification') {
@@ -514,6 +529,12 @@ function renderTournaments() {
                     <button class="join-btn" disabled
                         style="background: #374151; border-color: #374151; color: #9ca3af; cursor: not-allowed;">
                         ⏳ Verification Pending (Admin Reviewing)
+                    </button>`;
+            } else if (isRejected) {
+                buttonHTML = `
+                    <button class="join-btn" onclick="showTeamPaymentWarning('${t.id}')"
+                        style="background: #ff4444; border-color: #ff4444; color: #fff; box-shadow: 0 0 15px rgba(255,68,68,0.4);">
+                        ❌ Re-verify Payment
                     </button>`;
             } else if (isApproved) {
                 buttonHTML = `
@@ -1295,6 +1316,25 @@ window.openPaymentInterface = async function(tournamentId) {
     const pendingSnap = await getDoc(pendingRef);
 
     if (!pendingSnap.exists()) {
+        // Teammate synchronization check
+        const userSnap = await getDoc(doc(db, "users", currentUser.uid));
+        if (userSnap.exists() && userSnap.data().teamId) {
+            const teamId = userSnap.data().teamId;
+            // Check if team is in verifications (ongoing payment process)
+            const vQuery = query(collectionGroup(db, "verifications"), where("teamId", "==", teamId));
+            const vDocs = await getDocs(vQuery);
+            if (!vDocs.empty) {
+                showMessage("Your team's payment is currently being processed or verified by the team leader.");
+                return;
+            }
+            // Check if team is registered but payment not started by leader yet
+            const uQuery = query(collection(db, "tournaments", tournamentId, "upcomingRegistrations"), where("teamId", "==", teamId));
+            const uDocs = await getDocs(uQuery);
+            if (!uDocs.empty) {
+                showMessage("Your team is registered! Only the team leader who registered can complete the payment.");
+                return;
+            }
+        }
         showMessage("Registration data not found. Please register again.");
         return;
     }

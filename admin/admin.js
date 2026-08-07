@@ -281,25 +281,49 @@ window.filterTransactions = function() {
   document.getElementById("transactionBadge").textContent = filtered.length;
   document.getElementById("transactionBadge").style.display = "inline-block";
 
-  container.innerHTML = filtered.map(t => {
-    return `
-      <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #333; margin-bottom:10px;">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div>
-            <p style="margin:0 0 5px; color:#fff;"><strong>Team ID:</strong> ${t.teamId}</p>
-            <p style="margin:0 0 5px; color:#888;"><strong>Tournament ID:</strong> ${t.tournamentId}</p>
-            <p style="margin:0 0 5px; color:#00ff88; font-size:18px;"><strong>UTR:</strong> ${t.utr}</p>
-            <p style="margin:0 0 5px; color:#ffd700;"><strong>Amount:</strong> ₹${t.expectedAmount || 0}</p>
-            ${t.screenshotUrl ? `<a href="${t.screenshotUrl}" target="_blank" style="color:#3b82f6;">View Screenshot</a>` : ''}
-          </div>
-          <div>
-            <button onclick="approveTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', '${t.utr}', ${t.expectedAmount || 0})" style="background:#00ff88; color:#000; padding:10px 20px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; margin-bottom:5px; width:100%;">Approve</button>
-            <button onclick="walletRefundTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', ${t.expectedAmount || 0})" style="background:#3b82f6; color:#fff; padding:10px 20px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">Refund to Wallet (Waitlist)</button>
+  // Group by tournamentId
+  const grouped = {};
+  filtered.forEach(t => {
+    if (!grouped[t.tournamentId]) grouped[t.tournamentId] = [];
+    grouped[t.tournamentId].push(t);
+  });
+
+  let html = '';
+  for (const [tId, txs] of Object.entries(grouped)) {
+    html += `<div style="margin-bottom: 24px; padding: 16px; background: var(--bg2); border: 1px solid #333; border-radius: 8px;">`;
+    html += `<h3 style="color: var(--blue); margin-top: 0; margin-bottom: 12px; font-size: 16px; border-bottom: 1px solid #333; padding-bottom: 8px;">🏆 Tournament: ${tId}</h3>`;
+    
+    html += txs.map(t => {
+      // Extra info from the new backend merge
+      const leaderName = t.teamName ? `${t.teamName} (Leader: ${t.nickPlayer1 || 'Unknown'})` : 'Unknown';
+      const phone = t.phone ? `Phone: ${t.phone}` : '';
+      const backupEmail = t.backupEmail ? `Backup Email: ${t.backupEmail}` : '';
+      
+      return `
+        <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #444; margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap: wrap; gap: 10px;">
+            <div style="flex: 1; min-width: 250px;">
+              <p style="margin:0 0 5px; color:#fff;"><strong>Team ID:</strong> ${t.teamId}</p>
+              <p style="margin:0 0 5px; color:#ccc;"><strong>Team Info:</strong> ${leaderName}</p>
+              ${phone ? `<p style="margin:0 0 5px; color:#ccc;"><strong>${phone}</strong></p>` : ''}
+              ${backupEmail ? `<p style="margin:0 0 5px; color:#ccc;"><strong>${backupEmail}</strong></p>` : ''}
+              <p style="margin:10px 0 5px; color:#00ff88; font-size:18px;"><strong>UTR:</strong> <span style="letter-spacing:1px;">${t.utr}</span></p>
+              <p style="margin:0 0 5px; color:#ffd700;"><strong>Amount:</strong> ₹${t.expectedAmount || 0}</p>
+              ${t.screenshotUrl ? `<a href="${t.screenshotUrl}" target="_blank" style="color:#3b82f6; display:inline-block; margin-top:5px;">View Screenshot</a>` : ''}
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; min-width: 200px;">
+              <button onclick="approveTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', '${t.utr}', ${t.expectedAmount || 0})" style="background:#00ff88; color:#000; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">✅ Approve Payment</button>
+              <button onclick="rejectPaymentTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}')" style="background:#ff4444; color:#fff; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">❌ Reject (Invalid UTR)</button>
+              <button onclick="walletRefundTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', ${t.expectedAmount || 0})" style="background:transparent; color:#888; border:1px solid #444; padding:8px 15px; border-radius:4px; cursor:pointer; font-size: 12px; width:100%;">Refund to Wallet (Waitlist)</button>
+            </div>
           </div>
         </div>
-      </div>
-    `;
-  }).join("");
+      `;
+    }).join("");
+    html += `</div>`;
+  }
+  
+  container.innerHTML = html;
 };
 
 window.approveTransaction = async function(tournamentId, docId, teamId, userId, utr, amount) {
@@ -337,6 +361,48 @@ window.approveTransaction = async function(tournamentId, docId, teamId, userId, 
     showToast("Transaction approved successfully!");
   } catch (e) {
     console.error("Error approving transaction:", e);
+    alert("Error: " + e.message);
+  }
+};
+
+window.rejectPaymentTransaction = async function(tournamentId, docId, teamId, userId) {
+  if (!confirm("Are you sure you want to REJECT this payment? The user will be notified to enter the correct UTR.")) return;
+  try {
+    const docRef = doc(db, "tournaments", tournamentId, "verifications", docId);
+    
+    // 1. Mark verification as rejected
+    await updateDoc(docRef, { status: "payment_rejected", rejectedAt: serverTimestamp(), paymentStatus: "payment_rejected" });
+    
+    // 2. Mark slot as rejected
+    await updateDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
+      paymentStatus: "Payment Rejected",
+      updatedAt: serverTimestamp()
+    });
+    
+    // 3. Update the actual participant record
+    await setDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+      paymentStatus: 'payment_rejected',
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    
+    // 4. Update user's personal pendingPayment record
+    await setDoc(doc(db, "users", userId, "pendingPayment", tournamentId), {
+      paymentStatus: 'payment_rejected',
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    // 5. Send Notification
+    await sendDualNotification(userId, {
+        type:       "payment_rejected",
+        title:      "❌ Payment Verification Failed",
+        message:    "We could not verify your payment UTR. Please click here to enter the correct UTR or pay again.",
+        extra:      { tournamentId },
+        actionLink: `tournament=${tournamentId}`,
+    });
+
+    showToast("Payment rejected and user notified.", "warning");
+  } catch (e) {
+    console.error("Error rejecting transaction:", e);
     alert("Error: " + e.message);
   }
 };
