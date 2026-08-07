@@ -27,7 +27,9 @@ import {
     browserPopupRedirectResolver,
     getRedirectResult,
     linkWithCredential,
-    fetchSignInMethodsForEmail
+    fetchSignInMethodsForEmail,
+    setPersistence,
+    browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 // ===============================
@@ -1737,7 +1739,17 @@ function startFirebaseListeners() {
 // Startup
 setupUI();
 
-startFirebaseListeners();
+// 🚨 BROWSER LOCAL PERSISTENCE FIX FOR APK/WEBVIEWS
+// By default, signInWithRedirect uses sessionStorage, which WebViews often destroy during OAuth jumps.
+// We explicitly set it to localStorage persistence so the pending redirect survives the jump.
+setPersistence(auth, browserLocalPersistence)
+    .then(() => {
+        startFirebaseListeners();
+    })
+    .catch((error) => {
+        console.error("Auth Persistence Error:", error);
+        startFirebaseListeners(); // fallback
+    });
 
 // Google Sign-In Function
 window.googleSignIn = async function() {
