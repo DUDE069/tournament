@@ -1739,50 +1739,73 @@ function startFirebaseListeners() {
 // Startup
 setupUI();
 
-// 🚨 BROWSER LOCAL PERSISTENCE FIX FOR APK/WEBVIEWS
-// By default, signInWithRedirect uses sessionStorage, which WebViews often destroy during OAuth jumps.
-// We explicitly set it to localStorage persistence so the pending redirect survives the jump.
-setPersistence(auth, browserLocalPersistence)
-    .then(() => {
-        // MUST call getRedirectResult AFTER setPersistence so it reads from localStorage, not sessionStorage!
-        getRedirectResult(auth, browserPopupRedirectResolver).then(async (result) => {
-            if (result) {
+// ============================================================
+// 🚨 AUTH PERSISTENCE & REDIRECT ROUTER
+// Smart routing: only use redirect flow in APK/WebView,
+// use popup flow in standard browsers. This stops the
+// "INTERNAL ASSERTION FAILED" crash from getRedirectResult
+// being called unnecessarily in popup-based desktop flows.
+// ============================================================
+const isNativeApp = document.body.classList.contains("native-app");
+
+if (isNativeApp) {
+    // --- APK / WEBVIEW FLOW ---
+    // sessionStorage is wiped during OAuth redirects in WebViews.
+    // We switch to localStorage so the pending redirect state survives.
+    setPersistence(auth, browserLocalPersistence)
+        .then(() => {
+            // Only call getRedirectResult in the APK context.
+            // This resolves the pending redirect state stored in localStorage.
+            return getRedirectResult(auth, browserPopupRedirectResolver);
+        })
+        .then(async (result) => {
+            if (result && result.user) {
                 await handleGoogleLoginResult(result);
             }
-        }).catch((error) => {
-            // Only show error if it's not a generic popup-closed-by-user or similar
-            if (error.code !== 'auth/popup-closed-by-user') {
+            startFirebaseListeners();
+        })
+        .catch((error) => {
+            // "missing-initial-state" just means no redirect is pending — this is safe to ignore.
+            if (error.code !== 'auth/missing-initial-state' && error.code !== 'auth/popup-closed-by-user') {
                 handleGoogleError(error);
             }
+            startFirebaseListeners();
         });
-
-        startFirebaseListeners();
-    })
-    .catch((error) => {
-        console.error("Auth Persistence Error:", error);
-        startFirebaseListeners(); // fallback
-    });
+} else {
+    // --- BROWSER / DESKTOP FLOW ---
+    // Use default (session) persistence. Popup flow returns immediately
+    // as a Promise — no redirect state is ever written, so getRedirectResult
+    // must NEVER be called here. Calling it is what causes the
+    // "INTERNAL ASSERTION FAILED: Pending promise was never set" crash.
+    startFirebaseListeners();
+}
 
 // Google Sign-In Function
 window.googleSignIn = async function() {
     try {
         const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
         
-        // 🚨 CRITICAL FIX: WebViews (APK) hand popups off to the external browser, losing context.
-        // We MUST use Redirect here, but the APK must have DOM Storage enabled in Android Studio!
-        if (document.body.classList.contains("native-app")) {
+        if (isNativeApp) {
+            // APK: Use redirect. The result is caught by getRedirectResult above on next page load.
+            // We pass browserPopupRedirectResolver so the APK's WebChromeClient can open a
+            // custom tab instead of a full external browser, preserving session context.
             await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
-            return; 
+            return;
         }
         
         // --- BROWSER / DESKTOP FLOW ---
-        const result = await signInWithPopup(auth, provider);
-        
-        if (result) {
+        // signInWithPopup returns the result directly as a Promise.
+        // No getRedirectResult needed. No redirect state written.
+        const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
+        if (result && result.user) {
             await handleGoogleLoginResult(result);
         }
     } catch (error) {
-        handleGoogleError(error);
+        // auth/popup-closed-by-user is normal (user dismissed the window) — don't show an error.
+        if (error.code !== 'auth/popup-closed-by-user') {
+            handleGoogleError(error);
+        }
     }
 };
 
