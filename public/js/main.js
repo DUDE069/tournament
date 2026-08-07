@@ -6278,7 +6278,28 @@ window.createAccount = async function() {
             }
 
             const teamData = teamSnap.docs[0].data();
-            if ((teamData.members || []).length >= (teamData.maxMembers || 5)) {
+            let currentMembers = teamData.members || [];
+            
+            // ── PROACTIVE GHOST CLEANUP ──
+            // Before checking if team is full, verify all current members exist
+            let activeMembers = [];
+            for (const memberUid of currentMembers) {
+                try {
+                    const mSnap = await getDoc(doc(db, "users", memberUid));
+                    if (mSnap.exists()) activeMembers.push(memberUid);
+                } catch (e) {
+                    console.warn("Failed to check member status:", e);
+                    activeMembers.push(memberUid); // Assume active on network error
+                }
+            }
+            
+            // If ghost accounts were found, purge them from the team document
+            if (activeMembers.length < currentMembers.length) {
+                 await updateDoc(doc(db, "teams", teamData.teamId), { members: activeMembers });
+                 currentMembers = activeMembers;
+            }
+
+            if (currentMembers.length >= (teamData.maxMembers || 5)) {
                 showMessage("Team is full.");
                 if (createBtn) { createBtn.disabled = false; createBtn.textContent = originalText; }
                 return;
