@@ -3917,6 +3917,15 @@ function initNotifications() {
                 // Stop right here if this notification has already fired a popup on this page load or another tab
                 if (window.shownPopupIds.has(notifId) || localStorage.getItem("popupShown_" + notifId) || notif.popupShown) return;
 
+                // Stop if notification is older than 24 hours (prevents ghost loops on old accounts)
+                if (notif.createdAt && notif.createdAt.toDate) {
+                    const ageMs = Date.now() - notif.createdAt.toDate().getTime();
+                    if (ageMs > 24 * 60 * 60 * 1000) {
+                        try { await updateDoc(change.doc.ref, { popupShown: true }); } catch(e){}
+                        return;
+                    }
+                }
+
                 // --- SOUND TRIGGER ---
                 if (notif.type === "approval" || notif.type === "upcoming_approved") {
                     playNotificationSound('success');
@@ -5361,32 +5370,38 @@ window.renderProfileContent = async function(content) {
         const rawSorted = [leaderId, ...safeMembers.filter(u => u !== leaderId)];
         const sortedMembers = rawSorted.filter(uid => uid && typeof uid === 'string' && uid.trim().length > 0);
 
+        rosterHtml = '<div class="team-roster-grid">';
+
         for (const uid of sortedMembers) {
             let mData = null;
-            let isPrivate = false;
+            let isDeletedGhost = false;
 
             try {
                 const mDoc = await getDoc(doc(db, "users", uid));
                 if (mDoc.exists()) {
                     mData = mDoc.data();
                 } else {
-                    continue; // document doesn't exist
+                    isDeletedGhost = true;
                 }
             } catch (err) {
-                // If Firestore throws "Missing or insufficient permissions" because rules block reading other users
-                console.warn(`[Team Profile] Blocked from reading user ${uid}. Using fallback.`, err.message);
-                mData = { 
-                    nickname: "Teammate (Private)", 
-                    gameRole: "Unknown", 
-                    age: "—",
-                    createdAt: new Date()
-                };
-                isPrivate = true;
+                console.warn(`[Team Profile] Blocked from reading user ${uid}.`, err.message);
+                isDeletedGhost = true;
             }
 
-            if (!mData) continue;
-
             const isLeader = uid === leaderId;
+
+            if (isDeletedGhost) {
+                rosterHtml += `
+                    <div class="premium-member-card ghost-card">
+                        ${isLeader ? `<span class="leader-badge">Leader</span>` : ''}
+                        <div class="role-label">👥 Deleted Account</div>
+                        <div class="member-nickname" style="color: #666;">Empty / Removed</div>
+                        <div class="member-details">
+                            <span class="detail-pill ghost-pill">⚠️ This user account was deleted from the system. Admin kick required to free slot.</span>
+                        </div>
+                    </div>`;
+                continue;
+            }
 
             // Aggregate stats (if available)
             totalWins    += mData.stats?.tournamentsWon  || 0;
@@ -5408,47 +5423,24 @@ window.renderProfileContent = async function(content) {
             
             const teamRoleLabel = isLeader
                 ? (uid === currentUser.uid ? "👑 You are the Team Leader" : "👑 Team Leader")
-                : (isPrivate ? "👥 Team Member (Private Profile)" : "👥 Team Member");
-            const borderColor   = isLeader ? "#ffd700"            : "#222";
-            const bgColor       = isLeader ? "rgba(255,215,0,0.06)" : "#111";
-            const accentColor   = isLeader ? "#ffd700"            : "#00ff88";
+                : "👥 Team Member";
+
+            const cardClass = isLeader ? "premium-member-card leader-card" : "premium-member-card";
 
             rosterHtml += `
-                <div style="background:${bgColor};padding:14px 16px;border-radius:10px;
-                            border:1px solid ${borderColor};position:relative;">
-                    ${isLeader ? `
-                        <span style="position:absolute;top:10px;right:10px;background:#ffd700;
-                                     color:#000;font-size:9px;font-weight:800;padding:2px 8px;
-                                     border-radius:10px;text-transform:uppercase;letter-spacing:.5px;">
-                            Leader
-                        </span>` : ''}
-
-                        <!-- Role badge (team position: leader/member) -->
-                        <div style="color:${accentColor};font-size:10px;font-weight:700;
-                                    text-transform:uppercase;letter-spacing:.8px;margin-bottom:5px;">
-                            ${teamRoleLabel}
-                        </div>
-
-                        <!-- Nickname big -->
-                        <div style="color:#fff;font-size:17px;font-weight:800;margin-bottom:8px;">
-                            ${nickname}
-                        </div>
-
-                        <!-- Details row -->
-                        <div style="display:flex;flex-wrap:wrap;gap:10px;">
-                            <span style="background:#1a1a1a;color:#ccc;font-size:12px;padding:4px 10px;
-                                         border-radius:20px;border:1px solid #2a2a2a;">
-                                ${gameEmoji} ${gameRole}
-                            </span>
-                            <span style="background:#1a1a1a;color:#ccc;font-size:12px;padding:4px 10px;
-                                         border-radius:20px;border:1px solid #2a2a2a;">
-                                🎂 Age: ${age}
-                            </span>
-                            <span style="background:#1a1a1a;color:#ccc;font-size:12px;padding:4px 10px;
-                                         border-radius:20px;border:1px solid #2a2a2a;">
-                                📅 Since: ${joinDateStr}
-                    </div>`;
+                <div class="${cardClass}">
+                    ${isLeader ? `<span class="leader-badge">Leader</span>` : ''}
+                    <div class="role-label">${teamRoleLabel}</div>
+                    <div class="member-nickname">${nickname}</div>
+                    <div class="member-details">
+                        <span class="detail-pill">${gameEmoji} ${gameRole}</span>
+                        <span class="detail-pill">🎂 Age: ${age}</span>
+                        <span class="detail-pill">📅 Since: ${joinDateStr}</span>
+                    </div>
+                </div>`;
         }
+        
+        rosterHtml += '</div>';
 
         // Update aggregated stats display
         const winsEl    = document.getElementById("statWins");
