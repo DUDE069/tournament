@@ -3849,3 +3849,16 @@ window.submitReward = async function(teamId, tournamentId) {
  } ; 
   
  
+ w i n d o w . d e l e t e U s e r D o c   =   a s y n c   f u n c t i o n ( u i d )   { 
+         i f   ( ! c o n f i r m ( " A r e   y o u   s u r e   y o u   w a n t   t o   d e l e t e   t h i s   F i r e s t o r e   d o c u m e n t ?   T h i s   i s   u s u a l l y   f o r   d e l e t i n g   G h o s t   a c c o u n t s . " ) )   r e t u r n ; 
+         t r y   { 
+                 a w a i t   d e l e t e D o c ( d o c ( d b ,   " u s e r s " ,   u i d ) ) ; 
+                 a l e r t ( " D o c u m e n t   d e l e t e d ! " ) ; 
+                 l o a d A n a l y t i c s D a t a ( ) ;   / /   R e f r e s h   t h e   t a b l e 
+         }   c a t c h   ( e )   { 
+                 c o n s o l e . e r r o r ( e ) ; 
+                 a l e r t ( " F a i l e d :   "   +   e . m e s s a g e ) ; 
+         } 
+ } ; 
+  
+ 

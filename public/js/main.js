@@ -5306,7 +5306,13 @@ window.renderProfileContent = async function(content) {
                             style="padding:2px 8px;background:#333;color:#aaa;border:none;border-radius:4px;
                                    cursor:pointer;font-size:11px;transition:all .2s;">Copy</button>
                     </div>
+                    </div>
                 </div>
+                <!-- EXIT TEAM BUTTON -->
+                <button onclick="exitTeam()" style="margin-left:auto; background:#ff4444; color:#fff; border:none; padding:8px 12px; border-radius:6px; cursor:pointer; font-weight:bold; font-size:12px; display:flex; align-items:center; gap:5px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+                    Exit Team
+                </button>
             </div>
 
             <!-- TEAM WALLET — one combined balance -->
