@@ -1841,6 +1841,7 @@ function loadTournaments() {
       div.innerHTML = `
         <div>
           <strong>${escHtml(t.title)}</strong><br>
+          <small style="color:var(--muted); font-size:11px;">UID: <span style="user-select:all; background:#222; padding:2px 4px; border-radius:3px; color:#aaa; font-family:monospace; cursor:copy;" onclick="navigator.clipboard.writeText('${d.id}'); showToast('UID copied!', 'success');">${d.id}</span></small><br>
           <small>₹${t.entryFee} · ${t.mode} · ${t.category}${t.eventDate ? ` · 📅 ${t.eventDate}` : ""}</small>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
@@ -2161,9 +2162,33 @@ window.executeGlobalSearch = async function() {
         const tSnap = await getDoc(doc(db, "tournaments", queryStr));
         if (tSnap.exists()) {
             const t = tSnap.data();
+            
+            // Fetch participant counts
+            let upcomingCount = 0;
+            let ongoingCount = 0;
+            try {
+                const upcomingSnap = await getDocs(collection(db, "tournaments", queryStr, "upcomingRegistrations"));
+                upcomingCount = upcomingSnap.size;
+                const ongoingSnap = await getDocs(collection(db, "tournaments", queryStr, "verifications"));
+                ongoingCount = ongoingSnap.size;
+            } catch(e) { console.warn("Could not fetch registration counts", e); }
+            
+            let createdDate = "Unknown";
+            if (t.createdAt) {
+                const d = t.createdAt.toDate ? t.createdAt.toDate() : new Date(t.createdAt);
+                createdDate = d.toLocaleString();
+            }
+
+            let transitionInfo = "None";
+            if (t.transitionTime) {
+                transitionInfo = new Date(t.transitionTime).toLocaleString();
+            }
+
             alert(`🏆 TOURNAMENT FOUND!\n\n` +
                   `• Tournament ID: ${tSnap.id}\n` +
                   `• Title: ${t.title || "—"}\n` +
+                  `• Created On: ${createdDate}\n` +
+                  `• Registered Teams: ${upcomingCount + ongoingCount} (Upcoming: ${upcomingCount}, Verified: ${ongoingCount})\n` +
                   `• Category: ${t.category || "—"}\n` +
                   `• Mode: ${t.mode || "Solo"}\n` +
                   `• Entry Fee: ₹${t.entryFee !== undefined ? t.entryFee : 0}\n` +

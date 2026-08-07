@@ -231,6 +231,9 @@ window.handleUpcomingRegister = async function(tournamentId) {
     const entryFeeDisplay = document.getElementById("joinEntryFeeDisplay");
     if (entryFeeDisplay) entryFeeDisplay.textContent = tournament.entryFee || 0;
     
+    const entryFeeDisplay2 = document.getElementById("joinEntryFeeDisplay2");
+    if (entryFeeDisplay2) entryFeeDisplay2.textContent = tournament.entryFee || 0;
+
     const paymentAmount = document.getElementById("paymentAmount");
     if (paymentAmount) paymentAmount.textContent = tournament.entryFee || 0;
     
