@@ -4270,13 +4270,17 @@ window.handleNotificationClick = async function(notifId, actionLink, type) {
         }
 
         // 3. UNIVERSAL POPUP FOR ALL OTHER NOTIFICATIONS (Blast, Admin Messages, Room IDs, etc.)
-        let btnText = "Got it";
+        let btnText = "Close";
         if (type === "room_details") btnText = "Copy Details";
         if (type === "match_started") btnText = "Open Match Room";
 
+        let popupType = "info";
+        if (type === "error" || type === "rejected") popupType = "error";
+        else if (type === "success" || type === "verification" || type === "approval") popupType = "success";
+
         // Show the universal popup for everything else!
         showPopup(
-            type === "error" ? "error" : "success", 
+            popupType, 
             n.message || "No details available.", 
             btnText, 
             () => {
@@ -4811,8 +4815,19 @@ window.closeJoinModal = function() {
 function showPopup(type, message, buttonText = null, action = null) {
     document.getElementById("customPopup")?.remove();
 
-    const isSuccess = (type === 'success');
-    const accentColor = isSuccess ? '#00ff88' : '#ff4444';
+    let accentColor = '#ff4444';
+    let icon = '❌';
+    let title = 'Error';
+
+    if (type === 'success') {
+        accentColor = '#00ff88';
+        icon = '✅';
+        title = 'Success!';
+    } else if (type === 'info') {
+        accentColor = '#00aaff';
+        icon = '📢';
+        title = 'Announcement';
+    }
 
     // Build shell with only literal strings — no user data injected here
     document.body.insertAdjacentHTML("beforeend", `
@@ -4825,11 +4840,11 @@ function showPopup(type, message, buttonText = null, action = null) {
                     color:#aaa;font-size:18px;">✖</span>
 
                 <div style="font-size:48px;margin-bottom:12px;">
-                    ${isSuccess ? '✅' : '❌'}
+                    ${icon}
                 </div>
 
                 <h2 style="color:${accentColor};margin:0 0 12px;">
-                    ${isSuccess ? 'Success!' : 'Error'}
+                    ${title}
                 </h2>
 
                 <!-- ✅ message injected via textContent below — NOT innerHTML -->
