@@ -5486,6 +5486,9 @@ window.renderProfileContent = async function(content) {
 
             const cardClass = isLeader ? "premium-member-card leader-card" : "premium-member-card";
 
+            const isCurrentUserLeader = currentUser.uid === leaderId;
+            const canKick = isCurrentUserLeader && !isLeader;
+
             rosterHtml += `
                 <div class="${cardClass}">
                     ${isLeader ? `<span class="leader-badge">Leader</span>` : ''}
@@ -5496,6 +5499,11 @@ window.renderProfileContent = async function(content) {
                         <span class="detail-pill">🎂 Age: ${age}</span>
                         <span class="detail-pill">📅 Since: ${joinDateStr}</span>
                     </div>
+                    ${canKick ? `
+                    <button onclick="kickTeamMember('${uid}')" style="margin-top:10px; background:rgba(255, 68, 68, 0.2); color:#ff4444; border:1px solid #ff4444; padding:6px; border-radius:6px; font-size:11px; cursor:pointer; width:100%; transition:all .2s; font-weight:bold;">
+                        Remove Member
+                    </button>
+                    ` : ''}
                 </div>`;
         }
         
@@ -7940,6 +7948,58 @@ window.exitTeam = async function() {
     } catch (e) {
         console.error("Error exiting team:", e);
         showMessage("Failed to exit team: " + e.message);
+        btn.innerHTML = oldText;
+        btn.disabled = false;
+    }
+};
+
+// ==========================================
+// KICK TEAM MEMBER LOGIC
+// ==========================================
+window.kickTeamMember = async function(uidToKick) {
+    if (!currentUser || !userProfile || !userProfile.teamId) return;
+
+    if (!confirm("Are you sure you want to kick this member from the team?")) return;
+
+    const btn = event.currentTarget;
+    const oldText = btn.innerHTML;
+    btn.innerHTML = "Processing...";
+    btn.disabled = true;
+
+    try {
+        const teamRef = doc(db, "teams", userProfile.teamId);
+        
+        const batch = writeBatch(db);
+        // Remove from team members array
+        batch.update(teamRef, {
+            members: arrayRemove(uidToKick)
+        });
+        
+        // Try to update user profile (if they are not a ghost account)
+        try {
+            const memberDoc = await getDoc(doc(db, "users", uidToKick));
+            if (memberDoc.exists()) {
+                batch.update(doc(db, "users", uidToKick), {
+                    teamId: null,
+                    teamName: null,
+                    teamCode: null,
+                    role: "viewer"
+                });
+            }
+        } catch (e) {
+            console.warn("Could not read user profile, they might be a ghost account.");
+        }
+        
+        await batch.commit();
+
+        showMessage("Member successfully removed from the team!");
+        
+        // Refresh the UI
+        renderProfileContent(document.querySelector('.popup-content'));
+
+    } catch (e) {
+        console.error("Error kicking member:", e);
+        showMessage("Failed to kick member: " + e.message);
         btn.innerHTML = oldText;
         btn.disabled = false;
     }
