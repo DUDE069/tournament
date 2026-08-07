@@ -1815,6 +1815,18 @@ onAuthStateChanged(auth, async (user) => {
             userProfile = null;
         } else {
             userProfile = snap.data();
+            // V2 DATA SPLIT: Fetch private fields (email, age) and merge into memory
+            try {
+                const privateSnap = await getDoc(doc(db, "users", user.uid, "private", "data"));
+                if (privateSnap.exists()) {
+                    const pData = privateSnap.data();
+                    userProfile.email = pData.email;
+                    userProfile.age = pData.age;
+                    userProfile.phone = pData.phone;
+                }
+            } catch (e) {
+                console.warn("[AUTH] Could not fetch private data");
+            }
         }
         
         // ==========================================
@@ -6229,9 +6241,34 @@ window.createAccount = async function() {
             await window.syncTeamNotifications(teamData.leaderId, uid);
         }
 
-        // ✅ GHOST FIX: Use a transaction-style write with immediate verification
+        // ✅ V2 SECURE DATA SPLIT: Use a transaction-style write with immediate verification
         try {
-            await setDoc(doc(db, "users", uid), userData, { merge: false });
+            const batch = writeBatch(db);
+            const publicRef = doc(db, "users", uid);
+            const privateRef = doc(db, "users", uid, "private", "data");
+            const walletRef = doc(db, "users", uid, "wallet", "main");
+            
+            // 1. PUBLIC PROFILE
+            const publicData = { ...userData };
+            delete publicData.email;
+            delete publicData.age;
+            batch.set(publicRef, publicData, { merge: false });
+            
+            // 2. PRIVATE DATA
+            batch.set(privateRef, {
+                email: email,
+                age: age,
+                phone: null,
+                updatedAt: serverTimestamp()
+            });
+            
+            // 3. INITIALIZE WALLET
+            batch.set(walletRef, {
+                balance: 0,
+                updatedAt: serverTimestamp()
+            });
+            
+            await batch.commit();
             const verifySnap = await getDoc(doc(db, "users", uid));
             if (!verifySnap.exists()) throw new Error("Profile write failed silently");
         
