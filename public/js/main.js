@@ -24,6 +24,7 @@ import {
     GoogleAuthProvider,
     signInWithRedirect,
     signInWithPopup,
+    signInWithCredential,
     browserPopupRedirectResolver,
     getRedirectResult,
     linkWithCredential,
@@ -1787,25 +1788,48 @@ window.googleSignIn = async function() {
         provider.setCustomParameters({ prompt: 'select_account' });
         
         if (isNativeApp) {
-            // APK: Use redirect. The result is caught by getRedirectResult above on next page load.
-            // We pass browserPopupRedirectResolver so the APK's WebChromeClient can open a
-            // custom tab instead of a full external browser, preserving session context.
-            await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
+            // APK NATIVE FLOW: Call the Android JavascriptInterface.
+            // Android's NativeAuth.triggerGoogleSignIn() launches the device's
+            // native account picker and returns a token via window.handleNativeGoogleToken().
+            if (window.NativeAuth && typeof window.NativeAuth.triggerGoogleSignIn === 'function') {
+                window.NativeAuth.triggerGoogleSignIn();
+            } else {
+                // Fallback: NativeAuth bridge not available yet, try redirect
+                showMessage("Starting Google Sign-In...");
+                await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
+            }
             return;
         }
         
         // --- BROWSER / DESKTOP FLOW ---
-        // signInWithPopup returns the result directly as a Promise.
-        // No getRedirectResult needed. No redirect state written.
         const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
         if (result && result.user) {
             await handleGoogleLoginResult(result);
         }
     } catch (error) {
-        // auth/popup-closed-by-user is normal (user dismissed the window) — don't show an error.
         if (error.code !== 'auth/popup-closed-by-user') {
             handleGoogleError(error);
         }
+    }
+};
+
+// ============================================================
+// 🤝 NATIVE ANDROID GOOGLE SIGN-IN BRIDGE
+// Called by Android's NativeAuth JavascriptInterface after the
+// native account picker returns a valid Google ID token.
+// This bypasses all popup/redirect issues in WebViews entirely.
+// ============================================================
+window.handleNativeGoogleToken = async function(idToken) {
+    try {
+        showMessage("⏳ Signing you in...");
+        const credential = GoogleAuthProvider.credential(idToken);
+        const result = await signInWithCredential(auth, credential);
+        if (result && result.user) {
+            await handleGoogleLoginResult(result);
+        }
+    } catch (error) {
+        console.error("[NATIVE AUTH] signInWithCredential failed:", error);
+        handleGoogleError(error);
     }
 };
 
