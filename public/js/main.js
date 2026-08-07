@@ -1744,6 +1744,18 @@ setupUI();
 // We explicitly set it to localStorage persistence so the pending redirect survives the jump.
 setPersistence(auth, browserLocalPersistence)
     .then(() => {
+        // MUST call getRedirectResult AFTER setPersistence so it reads from localStorage, not sessionStorage!
+        getRedirectResult(auth, browserPopupRedirectResolver).then(async (result) => {
+            if (result) {
+                await handleGoogleLoginResult(result);
+            }
+        }).catch((error) => {
+            // Only show error if it's not a generic popup-closed-by-user or similar
+            if (error.code !== 'auth/popup-closed-by-user') {
+                handleGoogleError(error);
+            }
+        });
+
         startFirebaseListeners();
     })
     .catch((error) => {
@@ -1756,8 +1768,14 @@ window.googleSignIn = async function() {
     try {
         const provider = new GoogleAuthProvider();
         
-        // --- BROWSER / DESKTOP / APK FLOW ---
-        // Always use Popup. signInWithRedirect frequently breaks in Android WebViews due to Storage Partitioning.
+        // 🚨 CRITICAL FIX: WebViews (APK) hand popups off to the external browser, losing context.
+        // We MUST use Redirect here, but with the PopupRedirectResolver to handle partitioned storage!
+        if (document.body.classList.contains("native-app")) {
+            await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
+            return; 
+        }
+        
+        // --- BROWSER / DESKTOP FLOW ---
         const result = await signInWithPopup(auth, provider);
         
         if (result) {
