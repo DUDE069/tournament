@@ -1741,13 +1741,24 @@ function startFirebaseListeners() {
 setupUI();
 
 // ============================================================
-// 🚨 AUTH PERSISTENCE & REDIRECT ROUTER
-// Smart routing: only use redirect flow in APK/WebView,
-// use popup flow in standard browsers. This stops the
-// "INTERNAL ASSERTION FAILED" crash from getRedirectResult
-// being called unnecessarily in popup-based desktop flows.
+// 🚨 NATIVE APP DETECTION
+// We check 3 signals in order of reliability:
+// 1. window.NativeAuth exists — the Android JavascriptInterface
+//    is injected directly by Android WebView. Most reliable.
+// 2. User-Agent contains 'NPCTournaments' — injected by Android.
+// 3. Body class 'native-app' — CSS class fallback.
+// If ANY of these are true, we are running inside the APK.
 // ============================================================
-const isNativeApp = document.body.classList.contains("native-app");
+function detectNativeApp() {
+    // Signal 1: JavascriptInterface exists (set by Android addJavascriptInterface)
+    if (typeof window.NativeAuth !== 'undefined') return true;
+    // Signal 2: Custom User-Agent string set by Android WebView
+    if (navigator.userAgent && navigator.userAgent.includes('NPCTournaments')) return true;
+    // Signal 3: CSS class on body (requires Android to inject it)
+    if (document.body.classList.contains('native-app')) return true;
+    return false;
+}
+const isNativeApp = detectNativeApp();
 
 if (isNativeApp) {
     // --- APK / WEBVIEW FLOW ---
