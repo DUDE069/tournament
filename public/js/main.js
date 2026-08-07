@@ -6203,6 +6203,12 @@ window.createAccount = async function() {
     const createBtn = document.querySelector('#createView button[onclick="createAccount()"]');
     const originalText = createBtn?.textContent;
     
+    if (!selectedRole) {
+        showMessage("Please select a Game Role to continue!");
+        document.getElementById("roleSelectionArea")?.scrollIntoView({ behavior: "smooth" });
+        return;
+    }
+
     if (createBtn) {
         createBtn.disabled = true;
         createBtn.textContent = "Finalizing Account...";
