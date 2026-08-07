@@ -1826,14 +1826,8 @@ async function handleGoogleError(error) {
 }
 
 // --- APK / WEBVIEW REDIRECT CATCHER ---
-getRedirectResult(auth, browserPopupRedirectResolver).then(async (result) => {
-    if (result) {
-        await handleGoogleLoginResult(result);
-    }
-}).catch((error) => {
-    handleGoogleError(error);
-});
-
+// (Removed getRedirectResult because we exclusively use signInWithPopup now, which returns directly.
+// Leaving it caused residual "missing initial state" errors to pop up from old failed attempts.)
 
 // 2. Modify the auth state to only handle private data (notifications)
 onAuthStateChanged(auth, async (user) => {
