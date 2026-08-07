@@ -24,6 +24,7 @@ import {
     GoogleAuthProvider,
     signInWithRedirect,
     signInWithPopup,
+    browserPopupRedirectResolver,
     getRedirectResult,
     linkWithCredential,
     fetchSignInMethodsForEmail
@@ -1745,7 +1746,7 @@ window.googleSignIn = async function() {
         
         // 🚨 CRITICAL FIX: WebViews (APK) block Popups. Desktop/Web blocks Redirects.
         if (document.body.classList.contains("native-app")) {
-            await signInWithRedirect(auth, provider);
+            await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
             return; // Execution stops here, page redirects
         }
         
@@ -1818,7 +1819,7 @@ async function handleGoogleError(error) {
 }
 
 // --- APK / WEBVIEW REDIRECT CATCHER ---
-getRedirectResult(auth).then(async (result) => {
+getRedirectResult(auth, browserPopupRedirectResolver).then(async (result) => {
     if (result) {
         await handleGoogleLoginResult(result);
     }
