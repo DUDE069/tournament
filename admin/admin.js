@@ -3788,7 +3788,7 @@ window.submitReward = async function(teamId, tournamentId) {
 // ==========================================
 // DATA MIGRATION SCRIPT (V1 to V2)
 // ==========================================
-import { writeBatch, deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
 window.runV2DataMigration = async function() {
     console.log("Starting Data Migration...");
