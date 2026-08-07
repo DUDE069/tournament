@@ -7,7 +7,7 @@ import { db, auth } from "./firebase.js";
 
 import {
   collection, onSnapshot, doc, setDoc, getDoc, serverTimestamp,
-  addDoc, updateDoc, query, where, getDocs, arrayUnion, orderBy, increment,
+  addDoc, updateDoc, query, where, getDocs, arrayUnion, arrayRemove, orderBy, increment,
   runTransaction, writeBatch, limit, deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
