@@ -1756,13 +1756,8 @@ window.googleSignIn = async function() {
     try {
         const provider = new GoogleAuthProvider();
         
-        // 🚨 CRITICAL FIX: WebViews (APK) block Popups. Desktop/Web blocks Redirects.
-        if (document.body.classList.contains("native-app")) {
-            await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
-            return; // Execution stops here, page redirects
-        }
-        
-        // --- BROWSER / DESKTOP FLOW ---
+        // --- BROWSER / DESKTOP / APK FLOW ---
+        // Always use Popup. signInWithRedirect frequently breaks in Android WebViews due to Storage Partitioning.
         const result = await signInWithPopup(auth, provider);
         
         if (result) {
