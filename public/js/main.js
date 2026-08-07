@@ -1769,7 +1769,7 @@ window.googleSignIn = async function() {
         const provider = new GoogleAuthProvider();
         
         // 🚨 CRITICAL FIX: WebViews (APK) hand popups off to the external browser, losing context.
-        // We MUST use Redirect here, but with the PopupRedirectResolver to handle partitioned storage!
+        // We MUST use Redirect here, but the APK must have DOM Storage enabled in Android Studio!
         if (document.body.classList.contains("native-app")) {
             await signInWithRedirect(auth, provider, browserPopupRedirectResolver);
             return; 
@@ -1814,6 +1814,11 @@ async function handleGoogleLoginResult(result) {
         if(verifyBtn) verifyBtn.textContent = "Continue to Role Selection";
         
         showMessage("Google account linked! Please complete your profile details.");
+    } else {
+        // Existing user - close the modal!
+        const modal = document.getElementById("loginModal");
+        if (modal) modal.style.display = "none";
+        showMessage("Successfully logged in with Google!");
     }
 }
 
