@@ -974,6 +974,13 @@ document.addEventListener("DOMContentLoaded", function() {
             return;
         }
 
+        // Validate Payout UPI ID
+        const payoutUpiId = document.getElementById("joinPayoutUpiId").value.trim();
+        if (!payoutUpiId || !payoutUpiId.includes('@')) {
+            showMessage("Please enter a valid Payout UPI ID (e.g. name@ybl)");
+            return;
+        }
+
         // Show loading
         submitBtn.disabled = true;
         submitBtn.textContent = isUpcoming ? "Registering..." : "Sending...";
@@ -1057,6 +1064,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     playersData:  playersData,         
                     phone:        formattedPhone,
                     backupEmail:  backupEmail,
+                    payoutUpiId:  payoutUpiId,
                     status:       registrationStatus,
                     paymentChoice: paymentChoice,
                     paymentStatus: "pending",
@@ -1131,6 +1139,7 @@ document.addEventListener("DOMContentLoaded", function() {
                     playersData: playersData,         
                     phone:       formattedPhone,
                     backupEmail: backupEmail,
+                    payoutUpiId: payoutUpiId,
                     status:      registrationStatus,
                     paymentChoice: paymentChoice,
                     paymentStatus: "pending",
@@ -4641,6 +4650,14 @@ async function showApprovedReviewInterface(tournamentId, userId) {
                 eLabel.innerHTML = eLabel.innerHTML.split('<span')[0].trim() + ` <span style="color:#00ff88;font-size:11px;margin-left:5px;">✓ Verified</span>`;
             }
         }
+
+        const upiInput = document.getElementById("joinPayoutUpiId");
+        if (upiInput) {
+            upiInput.value = regData.payoutUpiId || "";
+            upiInput.readOnly = true;
+            upiInput.style.background = "#2a2a2a";
+            upiInput.style.color = "#888";
+        }
         
        document.getElementById('player5Container').style.display = 'none';
 // const isUpcoming = tournament.category === 'upcoming'; // Already determined above
@@ -6588,6 +6605,7 @@ window.editRejectedApplication = async function(tournamentId) {
         }
     }
     document.getElementById("joinBackupEmail").value = data.backupEmail || "";
+    document.getElementById("joinPayoutUpiId").value = data.payoutUpiId || "";
     
     // --- SYNC ADMIN REJECTIONS & HIGHLIGHT FIELDS ---
     const rejectedFields = data.rejectedFields || []; 

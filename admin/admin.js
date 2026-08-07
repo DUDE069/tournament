@@ -3719,12 +3719,28 @@ window.openRewardModal = async function(tournamentId, teamId, teamName) {
     // Fetch Team Data to get UPI ID
     let upiId = "Not Set by User";
     try {
-        const teamSnap = await getDoc(doc(db, "teams", teamId));
-        if (teamSnap.exists() && teamSnap.data().upiId) {
-            upiId = teamSnap.data().upiId;
+        // Query verifications to get the tournament-specific payout UPI ID
+        const vQuery = query(collection(db, "tournaments", tournamentId, "verifications"), where("teamId", "==", teamId), limit(1));
+        const vSnap = await getDocs(vQuery);
+        
+        if (!vSnap.empty && vSnap.docs[0].data().payoutUpiId) {
+            upiId = vSnap.docs[0].data().payoutUpiId;
+        } else {
+            // Check upcomingRegistrations as fallback
+            const uQuery = query(collection(db, "tournaments", tournamentId, "upcomingRegistrations"), where("teamId", "==", teamId), limit(1));
+            const uSnap = await getDocs(uQuery);
+            if (!uSnap.empty && uSnap.docs[0].data().payoutUpiId) {
+                upiId = uSnap.docs[0].data().payoutUpiId;
+            } else {
+                // Fallback to global team profile
+                const teamSnap = await getDoc(doc(db, "teams", teamId));
+                if (teamSnap.exists() && teamSnap.data().upiId) {
+                    upiId = teamSnap.data().upiId;
+                }
+            }
         }
     } catch (e) {
-        console.error("Error fetching team data", e);
+        console.error("Error fetching team data for UPI", e);
     }
 
     const overlay = document.createElement("div");
@@ -3736,8 +3752,11 @@ window.openRewardModal = async function(tournamentId, teamId, teamName) {
             <h2 style="margin-top:0; color:#00ff88;">💰 Reward Team</h2>
             <p style="font-size:18px; margin-bottom:5px;"><strong>${escHtml(teamName)}</strong></p>
             <div style="background:#1a1a1a; padding:10px; border-radius:6px; margin-bottom:20px; border-left:4px solid #ffd700;">
-                <p style="margin:0; font-size:12px; color:#888;">Team Leader's UPI ID / Bank:</p>
-                <p style="margin:5px 0 0 0; font-size:16px; font-weight:bold; color:#ffd700; word-break:break-all;">${escHtml(upiId)}</p>
+                <p style="margin:0; font-size:12px; color:#888;">Tournament Payout UPI ID / Bank:</p>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
+                    <p style="margin:0; font-size:16px; font-weight:bold; color:#00ff88; word-break:break-all;">${escHtml(upiId)}</p>
+                    <button onclick="navigator.clipboard.writeText('${escHtml(upiId)}'); showToast('UPI ID copied!', 'success');" style="background:transparent;border:1px solid #00ff88;color:#00ff88;cursor:pointer;border-radius:4px;padding:2px 8px;font-size:12px;">Copy</button>
+                </div>
             </div>
             
             <p style="font-size:12px; color:#aaa; margin-bottom:15px;"><em>Please transfer the funds to the above account before confirming below.</em></p>
