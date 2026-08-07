@@ -1257,7 +1257,7 @@ window.showPaymentInterface = async function(tournamentId, btnElement = null) {
     `;
     document.body.appendChild(loader);
 
-    if (btnElement) {
+    if (btnElement && btnElement instanceof HTMLElement) {
         btnElement.dataset.originalText = btnElement.textContent;
         btnElement.textContent = "Please wait... enabling payment";
         btnElement.disabled = true;
@@ -1281,7 +1281,7 @@ window.showPaymentInterface = async function(tournamentId, btnElement = null) {
         console.error("[PAYMENT] 404 or Load Error:", error);
         document.getElementById(loaderId)?.remove();
         
-        if (btnElement) {
+        if (btnElement && btnElement instanceof HTMLElement) {
             btnElement.textContent = btnElement.dataset.originalText || "Pay Now";
             btnElement.disabled = false;
         }
