@@ -412,7 +412,7 @@ function loadWithdrawals() {
             <p style="margin:0 0 5px; color:#3b82f6;"><strong>UPI ID:</strong> ${w.upiId}</p>
           </div>
           <div>
-            <button onclick="resolveWithdrawal('${doc.id}')" style="background:#00ff88; color:#000; padding:10px 20px; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Mark Paid</button>
+            <button onclick="resolveWithdrawal('${doc.id}', '${w.userId}', ${w.amount})" style="background:#00ff88; color:#000; padding:10px 20px; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Mark Paid</button>
           </div>
         </div>
       `;
@@ -420,14 +420,45 @@ function loadWithdrawals() {
   });
 }
 
-window.resolveWithdrawal = async function(docId) {
-  if (!confirm("Did you successfully send the money via UPI?")) return;
+window.resolveWithdrawal = async function(docId, userId, amount) {
+  if (!confirm(`Did you successfully send ₹${amount} via UPI? This will deduct the funds from the user's wallet.`)) return;
   try {
-    await updateDoc(doc(db, "withdrawal_requests", docId), {
-      status: "completed",
-      completedAt: serverTimestamp()
+    const { runTransaction } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
+    
+    await runTransaction(db, async (transaction) => {
+        const walletRef = doc(db, "users", userId, "wallet", "main");
+        const requestRef = doc(db, "withdrawal_requests", docId);
+        
+        const walletDoc = await transaction.get(walletRef);
+        if (!walletDoc.exists()) throw new Error("Wallet not found!");
+        
+        const currentBal = walletDoc.data().balance || 0;
+        if (currentBal < amount) throw new Error("User no longer has sufficient balance! Reject this request.");
+        
+        // Deduct balance
+        transaction.update(walletRef, {
+            balance: currentBal - amount,
+            updatedAt: serverTimestamp()
+        });
+        
+        // Log the transaction for the user
+        const txRef = doc(collection(db, "users", userId, "transactions"));
+        transaction.set(txRef, {
+            type: 'debit',
+            amount: amount,
+            description: `Withdrawal to UPI`,
+            status: 'completed',
+            createdAt: serverTimestamp()
+        });
+        
+        // Mark request complete
+        transaction.update(requestRef, {
+            status: "completed",
+            completedAt: serverTimestamp()
+        });
     });
-    showToast("Withdrawal marked as completed!");
+    
+    showToast("Withdrawal completed and funds deducted!");
   } catch (e) {
     console.error("Error resolving withdrawal:", e);
     alert("Error: " + e.message);

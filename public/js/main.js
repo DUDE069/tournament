@@ -2775,6 +2775,55 @@ window.openWalletModal = function() {
     }
 };
 
+window.requestWalletWithdrawal = async function() {
+    if (!currentUser) return showMessage("Please log in first");
+    
+    const amountEl = document.getElementById("withdrawAmount");
+    const upiEl = document.getElementById("withdrawUpi");
+    
+    const amount = Number(amountEl.value);
+    const upiId = upiEl.value.trim();
+    
+    if (!amount || amount < 50) return showMessage("Minimum withdrawal is ₹50");
+    if (!upiId || !upiId.includes("@")) return showMessage("Please enter a valid UPI ID");
+    if ((userWallet?.balance || 0) < amount) return showMessage("Insufficient balance");
+    
+    const btn = document.querySelector("#walletModal button[onclick='requestWalletWithdrawal()']");
+    if (btn) btn.textContent = "Processing...";
+    
+    try {
+        await addDoc(collection(db, "withdrawal_requests"), {
+            userId: currentUser.uid,
+            amount: amount,
+            upiId: upiId,
+            status: "pending",
+            createdAt: serverTimestamp(),
+            userEmail: userProfile.email || currentUser.email || 'N/A',
+            userNickname: userProfile.nickname || 'Unknown'
+        });
+        
+        // Notify admin panel
+        await addDoc(collection(db, "adminNotifications"), {
+            title: "💸 New Withdrawal Request",
+            message: `User requested ₹${amount} to ${upiId}`,
+            type: "withdrawal",
+            userId: currentUser.uid,
+            amount: amount,
+            createdAt: serverTimestamp()
+        });
+        
+        showMessage("Withdrawal request submitted! Processing takes up to 24hrs.");
+        amountEl.value = "";
+        upiEl.value = "";
+        closeWalletModal();
+    } catch (e) {
+        console.error("Withdrawal error:", e);
+        showMessage("Failed to submit request.");
+    } finally {
+        if (btn) btn.textContent = "Request Withdrawal";
+    }
+};
+
 window.viewTransactionHistory = async function() {
     if (!currentUser) return;
     const transactions = await getDocs(
