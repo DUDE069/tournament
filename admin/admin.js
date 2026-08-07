@@ -769,12 +769,26 @@ window.viewStatusModal = async function(tournamentId, userId) {
       const processedAt = v.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? "—";
       
       // Stage calculations from live data
-      const stage3 = ["submitted","paid","verified"].includes(pData.paymentStatus);
-      const stage4 = pData.paymentStatus === "verified";
+      const stage3 = ["submitted","paid","verified","pending_verification"].includes(pData.paymentStatus);
+      const stage4 = (pData.paymentStatus === "verified" || pData.paymentStatus === "paid" || pData.paymentStatus === "Payment Verified");
       const stage5 = pData.confirmationReceived === true;
+
+      // Team code from either the verification doc or participant doc
+      const teamCode = v.teamCode || p.teamCode || "N/A";
 
       contentDiv.innerHTML = `
         <h3>📊 Team Status — ${escHtml(v.teamName ?? "—")}</h3>
+
+        <!-- ✅ TEAM UNIQUE CODE — Prominent, copyable -->
+        <div style="background:#0a1f0a;border:1px solid var(--green);border-radius:10px;padding:14px 16px;margin-bottom:14px;text-align:center;">
+          <p style="color:var(--muted);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 6px;">🔑 Team Unique Code</p>
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;">
+            <span id="statusTeamCode" style="font-family:monospace;font-size:22px;font-weight:900;color:var(--green);letter-spacing:3px;">${escHtml(teamCode)}</span>
+            <button onclick="navigator.clipboard.writeText('${escHtml(teamCode)}').then(()=>{this.textContent='✅';setTimeout(()=>{this.textContent='📋 Copy'},1200)})" 
+              style="padding:5px 12px;background:#1a3a1a;color:var(--green);border:1px solid var(--green);border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">📋 Copy</button>
+          </div>
+          <p style="color:#555;font-size:10px;margin:6px 0 0;">Paste this in the website search bar to pull up all team details instantly</p>
+        </div>
 
         <div class="status-row">
           <span class="s-label">Tournament</span>
@@ -790,15 +804,16 @@ window.viewStatusModal = async function(tournamentId, userId) {
         </div>
         ${v.phone ? `<div class="status-row"><span class="s-label">Phone</span><span class="s-value">${escHtml(v.phone)}</span></div>` : ""}
         ${pData.transactionCode ? `<div class="status-row"><span class="s-label">Transaction ID</span><span class="s-value" style="font-family:monospace;color:var(--gold);">${escHtml(pData.transactionCode)}</span></div>` : ""}
+        ${pData.utr ? `<div class="status-row"><span class="s-label">UTR / Payment Ref</span><span class="s-value" style="font-family:monospace;color:var(--gold);">${escHtml(pData.utr)}</span></div>` : ""}
 
         <div style="margin:20px 0 6px;">
-          <p style="color:var(--muted);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;">Application Progress</p>
+          <p style="color:var(--muted);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;">✅ Application Progress Checklist</p>
           ${progressTracker([
-            { label: "Application Submitted",  done: true  },
-            { label: "Verification Approved",  done: true  },
-            { label: "Payment Completed",       done: stage3 },
-            { label: "Payment Verified",        done: stage4 },
-            { label: "Confirmation Received",  done: stage5 },
+            { label: "Application Submitted",        done: true },
+            { label: "Verification Approved by Admin", done: true },
+            { label: "Payment Receipt Submitted",     done: stage3 },
+            { label: "Payment Verified by Admin",     done: stage4 },
+            { label: "Confirmation Acknowledged",     done: stage5 },
           ])}
         </div>
 
