@@ -5458,15 +5458,7 @@ window.renderProfileContent = async function(content) {
             const isLeader = uid === leaderId;
 
             if (isDeletedGhost) {
-                rosterHtml += `
-                    <div class="premium-member-card ghost-card">
-                        ${isLeader ? `<span class="leader-badge">Leader</span>` : ''}
-                        <div class="role-label">👥 Deleted Account</div>
-                        <div class="member-nickname" style="color: #666;">Empty / Removed</div>
-                        <div class="member-details">
-                            <span class="detail-pill ghost-pill">⚠️ This user account was deleted from the system. Admin kick required to free slot.</span>
-                        </div>
-                    </div>`;
+                // User requested to hide deleted accounts completely from the UI
                 continue;
             }
 
