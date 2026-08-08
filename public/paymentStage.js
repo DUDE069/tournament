@@ -4,9 +4,8 @@
 
 import { db, auth } from './js/firebase.js';
 import {
-  doc, onSnapshot, updateDoc, setDoc, serverTimestamp, getDoc
+  doc, onSnapshot, updateDoc, setDoc, serverTimestamp, getDoc, addDoc, collection
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-
 // 🔒 SECURITY FIX (Issue 6): Suppress sensitive payment logs in production.
 // Payment IDs, Order IDs, and Signatures must never appear in browser console
 // on a live site. Set to true ONLY during local development/debugging.
@@ -96,30 +95,67 @@ async function submitUtrVerification(tournamentId, entryFee) {
        teamId = _currentUserId;
     }
 
-    payLog("[PAYMENT] Sending UTR verification request to backend...");
-    // Hit the new Node.js express backend (Replace URL with deployed Render URL)
-    const verificationResponse = await fetch('https://npc-secure-backend.onrender.com/verify-utr', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        utr: utrInput,
-        userId: _currentUserId,
-        tournamentId: tournamentId,
-        teamId: teamId,
-        expectedAmount: entryFee
-      })
-    });
-
-    const verificationResult = await verificationResponse.json();
+    payLog("[PAYMENT] Updating local Firestore pending status for instant UI updates...");
     
-    if (!verificationResponse.ok || !verificationResult.success) {
-      payError("[PAYMENT] Backend verification failed:", verificationResult.message);
-      showToast(verificationResult.message || "Invalid or Duplicate UTR.", "error");
-      if (btn) { btn.disabled = false; btn.textContent = "Submit UTR"; }
-      return;
+    const paymentStatus = "pending_verification";
+    const timestamp = serverTimestamp();
+
+    const updatePayload = {
+      paymentStatus: paymentStatus,
+      paymentUtr: utrInput,
+      updatedAt: timestamp
+    };
+
+    // 1. Update user's personal pendingPayment record (allowed by security rules)
+    try {
+      await setDoc(doc(db, 'users', _currentUserId, 'pendingPayment', tournamentId), {
+        paymentStatus: paymentStatus,
+        tournamentId: tournamentId,
+        utr: utrInput,
+        updatedAt: timestamp
+      }, { merge: true });
+    } catch(e) {
+      payError("[PAYMENT] Local pendingPayment set failed:", e);
     }
 
-    showToast("✅ UTR Submitted! Pending Admin Approval.", "success");
+    // 2. If upcoming, update upcomingRegistrations document
+    if (_isUpcomingTournament) {
+       try {
+         await updateDoc(doc(db, 'tournaments', tournamentId, 'upcomingRegistrations', _currentUserId), updatePayload);
+         await updateDoc(doc(db, 'users', _currentUserId, 'upcomingRegistrations', tournamentId), updatePayload);
+       } catch(e) {}
+    }
+
+    // 3. Admin Notification (non-blocking)
+    try {
+      await addDoc(collection(db, "adminNotifications"), {
+          title:        "🔔 New Payment Received - Verification Required",
+          message:      `Team: ${teamId || _currentUserId} | UTR: ${utrInput} | Tournament: ${tournamentId}`,
+          tournamentId: tournamentId,
+          teamId:       teamId,
+          submittedBy:  _currentUserId,
+          userId:       _currentUserId,
+          utr:          utrInput,
+          status:       "pending_verification",
+          createdAt:    timestamp,
+          priority:     "high"
+      });
+    } catch(e) {}
+
+    // 4. Log Transaction for Ledger (so they can see UTR in their profile)
+    if (teamId) {
+      try {
+          await addDoc(collection(db, "teams", teamId, "transactions"), {
+              type: "payment",
+              amount: entryFee,
+              title: `Payment for Tournament`,
+              description: `Payment for Tournament`,
+              status: "pending",
+              utr: utrInput,
+              createdAt: timestamp
+          });
+      } catch(e) {}
+    }
 
     // 🔒 IMMEDIATELY lock the UI state via localStorage so re-renders show "Verification Pending"
     try {
@@ -128,8 +164,41 @@ async function submitUtrVerification(tournamentId, entryFee) {
       localStorage.setItem('npc_pending_payments', JSON.stringify(pending));
     } catch (e) {}
 
-    // Close the overlay as it's now pending admin approval
+    // Instant user feedback
+    showToast("✅ Your payment verification has been sent. It's upon admin to accept or not.", "success");
     closePaymentOverlay();
+
+    // 5. Asynchronously trigger the backend API to handle global UTR locking & verifications collection write
+    // This allows the request to be processed without keeping the user waiting on Render cold starts.
+    const backendUrl = 'https://npc-secure-backend.onrender.com/verify-utr';
+    const requestBody = {
+      utr: utrInput,
+      userId: _currentUserId,
+      tournamentId: tournamentId,
+      teamId: teamId,
+      expectedAmount: entryFee || 0,
+      screenshotUrl: null
+    };
+
+    fetch(backendUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody)
+    })
+    .then(async (response) => {
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        payError("[PAYMENT] Backend verification error response:", errData.message || response.statusText);
+        if (response.status === 409) {
+          showToast("❌ Duplicate UTR detected! Please verify your payment details.", "error");
+        }
+      } else {
+        payLog("[PAYMENT] Backend verification request received and locked successfully.");
+      }
+    })
+    .catch((err) => {
+      payError("[PAYMENT] Backend API request failed (likely due to cold start/timeout):", err);
+    });
 
   } catch (error) {
     payError("[PAYMENT] Verification error:", error);

@@ -1697,8 +1697,10 @@ function startFirebaseListeners() {
             let t = d.data();
             let eventDateTime = t.eventDate ? (t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}:00`) : new Date(t.eventDate)) : null;
             
-            // CHECK IF TIME HAS PASSED
-            let isTimePassed = eventDateTime && eventDateTime.getTime() <= now;
+            let transitionDateTime = t.transitionTime ? new Date(`${t.eventDate}T${t.transitionTime}:00`) : eventDateTime;
+            
+            // CHECK IF TIME HAS PASSED (using transition time)
+            let isTimePassed = transitionDateTime && transitionDateTime.getTime() <= now;
 
             return {
                 id: d.id,
@@ -1707,7 +1709,7 @@ function startFirebaseListeners() {
                 // DYNAMIC OVERRIDE: If time passed, force it to 'ongoing' locally for all users
                 category: (t.category === 'upcoming' && isTimePassed) ? 'ongoing' : t.category,
                 status: (t.category === 'upcoming' && isTimePassed) ? 'live' : t.status,
-                endTime: t.endTime || (isTimePassed ? eventDateTime.getTime() + (2 * 60 * 60 * 1000) : (t.createdAt?.toMillis?.() + (t.duration || 60) * 60000))
+                endTime: t.endTime || (isTimePassed ? eventDateTime.getTime() : (t.createdAt?.toMillis?.() + (t.duration || 60) * 60000))
             };
         });
         
@@ -1818,7 +1820,11 @@ window.googleSignIn = async function() {
             await handleGoogleLoginResult(result);
         }
     } catch (error) {
-        if (error.code !== 'auth/popup-closed-by-user') {
+        if (error.code === 'auth/popup-closed-by-user' || 
+            error.code === 'auth/cancelled-popup-request' || 
+            error.code === 'auth/popup-blocked') {
+            showMessage("Google Sign-in was cancelled or blocked by your browser. Please try again or use Email/Password.", "warning");
+        } else {
             handleGoogleError(error);
         }
     }
@@ -1832,7 +1838,7 @@ window.googleSignIn = async function() {
 // ============================================================
 window.handleNativeGoogleToken = async function(idToken) {
     try {
-        showMessage("⏳ Signing you in...");
+        showMessage("⏳ Signing you in with your previously selected Google Account...");
         const credential = GoogleAuthProvider.credential(idToken);
         const result = await signInWithCredential(auth, credential);
         if (result && result.user) {
@@ -2322,7 +2328,12 @@ async function checkTournamentPromotions() {
         let eventDateTime = t.eventTime
             ? new Date(`${t.eventDate}T${t.eventTime}:00`)
             : new Date(t.eventDate);
-        const timeDiff  = eventDateTime - now;
+            
+        let transitionDateTime = t.transitionTime
+            ? new Date(`${t.eventDate}T${t.transitionTime}:00`)
+            : eventDateTime;
+
+        const timeDiff  = transitionDateTime - now;
         const diffHours = timeDiff / (1000 * 60 * 60);
 
         // DATABASE & NOTIFICATION LOGIC
@@ -2331,7 +2342,8 @@ async function checkTournamentPromotions() {
             t.isPromoting = true;
 
             try {
-                const endTimeMs = eventDateTime.getTime() + (2 * 60 * 60 * 1000);
+                // Set endTime to the actual MATCH START TIME
+                const endTimeMs = eventDateTime.getTime();
                 await updateDoc(doc(db, "tournaments", t.id), {
                     category:          'ongoing',
                     status:            'live',
@@ -5897,8 +5909,10 @@ async function renderAccountContent(content) {
                     const color = isCredit ? '#00ff88' : '#ff4444';
                     
                     let refHtml = '';
-                    if (isCredit && t.referenceId) {
+                    if (t.referenceId) {
                         refHtml = `<button onclick="alert('Transaction Proof / Ref:\\n${t.referenceId}\\n\\nPaid by Admin.')" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:16px;padding:0 5px;" title="View Receipt">⋮</button>`;
+                    } else if (t.utr) {
+                        refHtml = `<button onclick="alert('Your UTR:\\n${t.utr}')" style="background:none;border:none;color:#aaa;cursor:pointer;font-size:16px;padding:0 5px;" title="View UTR">⋮</button>`;
                     }
                     
                     return `
@@ -6358,7 +6372,7 @@ window.createAccount = async function() {
     const originalText = createBtn?.textContent;
     
     if (!selectedRole) {
-        showMessage("Please select a Game Role to continue!");
+        showMessage("Please select an Account Type (Viewer, Leader, or Join Team) to continue!");
         document.getElementById("roleSelectionArea")?.scrollIntoView({ behavior: "smooth" });
         return;
     }
@@ -6396,12 +6410,15 @@ window.createAccount = async function() {
         // Team Leader Logic
         if (selectedRole === "leader") {
             const teamName = document.getElementById("teamNameInput")?.value.trim();
-            const teamCode = document.getElementById("generatedCode")?.textContent?.replace("Code: ", "").trim();
+            let teamCode = document.getElementById("generatedCode")?.textContent?.replace("Code: ", "").trim();
 
-            if (!teamName || !teamCode) {
-                showMessage("Enter team name and generate code");
+            if (!teamName) {
+                showMessage("Please enter a team name");
                 if (createBtn) { createBtn.disabled = false; createBtn.textContent = originalText; }
                 return;
+            }
+            if (!teamCode) {
+                teamCode = "NPC" + Math.floor(100000 + Math.random() * 900000);
             }
 
             const teamId = "team_" + Math.random().toString(36).substr(2, 9);
@@ -6505,8 +6522,6 @@ window.createAccount = async function() {
             });
             
             await batch.commit();
-            const verifySnap = await getDoc(doc(db, "users", uid));
-            if (!verifySnap.exists()) throw new Error("Profile write failed silently");
         
 // ✅ NEW: Setup notifications after account is created
 try {
@@ -6527,7 +6542,8 @@ try {
             // ✅ Mark as fresh registration for the Auth listener
             sessionStorage.setItem("npc_fresh_registration", uid);
         
-            userProfile = verifySnap.data();
+            userProfile = { ...publicData, email: email, age: age };
+
             isLoggedIn = true;
             
             // ✅ FIX: Instantly change the Login button to Profile!
@@ -6926,6 +6942,9 @@ window.openTeamSetup = function() {
         <label style="color:#888; font-size:12px;">In-Game Nickname</label>
         <input id="ghostNickname" type="text" placeholder="e.g. ProGamer" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:8px;margin-bottom:15px;box-sizing:border-box;">
         
+        <label style="color:#888; font-size:12px;">Free Fire UID</label>
+        <input id="ghostUID" type="number" placeholder="e.g. 12345678" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:8px;margin-bottom:15px;box-sizing:border-box;">
+        
         <label style="color:#888; font-size:12px;">Age</label>
         <input id="ghostAge" type="number" placeholder="12-60" style="width:100%;padding:12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:8px;margin-bottom:15px;box-sizing:border-box;">
         
@@ -6973,11 +6992,13 @@ window.resendGhostVerificationLink = async function(element) {
 window.saveGhostProfile = async function() {
     const nick = document.getElementById("ghostNickname").value.trim();
     const age = parseInt(document.getElementById("ghostAge").value);
+    const ffUid = document.getElementById("ghostUID").value.trim();
     const roleType = document.getElementById("ghostRoleType").value;
     const btn = document.getElementById("ghostSaveBtn");
     
     if (!nick) { showMessage("Please enter a nickname"); return; }
     if (isNaN(age) || age < 12) { showMessage("Please enter a valid age"); return; }
+    if (!ffUid) { showMessage("Please enter your Free Fire UID"); return; }
     
     // WITH THIS
     // ✅ FIX: Client-side validation stops the crash before Firestore rejects the transaction
@@ -7004,7 +7025,7 @@ window.saveGhostProfile = async function() {
         const email = currentUser.email;
         
         let updates = {
-            uid, email, age, nickname: nick,
+            uid, email, age, nickname: nick, freeFireUid: ffUid,
             isAdmin: false, isLeader: false,
             teamId: null, teamName: null, teamCode: null,
             role: "viewer",
@@ -7015,9 +7036,12 @@ window.saveGhostProfile = async function() {
         if (roleType === "leader") {
             const tName = document.getElementById("ghostTeamName").value.trim();
             const codeTxt = document.getElementById("ghostCode").innerText;
-            const tCode = codeTxt ? codeTxt.replace("NPC", "NPC").trim() : "";
+            let tCode = codeTxt ? codeTxt.replace("NPC", "NPC").trim() : "";
             
-            if (!tName || !tCode) { showMessage("Enter team name and generate code"); btn.disabled=false; btn.textContent="Save & Complete Account"; return; }
+            if (!tName) { showMessage("Enter team name"); btn.disabled=false; btn.textContent="Save & Complete Account"; return; }
+            if (!tCode) {
+                tCode = "NPC" + Math.floor(100000 + Math.random() * 900000);
+            }
             
             const tId = "team_" + Math.random().toString(36).substr(2, 9);
             await setDoc(doc(db, "teams", tId), {

@@ -335,10 +335,10 @@ window.approveTransaction = async function(tournamentId, docId, teamId, userId, 
     await updateDoc(docRef, { status: "approved", approvedAt: serverTimestamp() });
     
     // 2. Mark slot as verified (prevent cron from deleting it)
-    await updateDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
-      paymentStatus: "Payment Verified", // Set to verified
+    await setDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
+      paymentStatus: "verified",
       updatedAt: serverTimestamp()
-    });
+    }, { merge: true });
 
     // 3. Mark team history as verified so they get trust score
     await setDoc(doc(db, "team_verification_history", teamId), {
@@ -374,10 +374,10 @@ window.rejectPaymentTransaction = async function(tournamentId, docId, teamId, us
     await updateDoc(docRef, { status: "payment_rejected", rejectedAt: serverTimestamp(), paymentStatus: "payment_rejected" });
     
     // 2. Mark slot as rejected
-    await updateDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
+    await setDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
       paymentStatus: "Payment Rejected",
       updatedAt: serverTimestamp()
-    });
+    }, { merge: true });
     
     // 3. Update the actual participant record
     await setDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
@@ -1911,6 +1911,10 @@ function loadTournaments() {
       const eventTime = t.eventDate ? new Date(t.eventDate) : null;
       const isTournamentOver = eventTime && eventTime <= new Date();
 
+      const postponeBtn = isActive
+        ? `<button class="btn-status" onclick="window.openPostponeModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}', '${t.eventDate || ''}', '${t.transitionTime || ''}')" style="background:#f97316;color:#fff;border:none;">🗓️ Postpone</button>`
+        : '';
+
       const deleteBtn = (isActive && !isTournamentOver)
         ? `<button class="btn-delete" disabled title="Cannot delete: tournament is active or ongoing" style="opacity:0.35;cursor:not-allowed;" onclick="event.preventDefault();">🔒 Delete</button>`
         : `<button class="btn-delete" onclick="deleteTournament('${d.id}')">Delete</button>`;
@@ -1925,10 +1929,11 @@ function loadTournaments() {
           <small style="color:var(--muted); font-size:11px;">UID: <span style="user-select:all; background:#222; padding:2px 4px; border-radius:3px; color:#aaa; font-family:monospace; cursor:copy;" onclick="navigator.clipboard.writeText('${d.id}'); showToast('UID copied!', 'success');">${d.id}</span></small><br>
           <small>₹${t.entryFee} · ${t.mode} · ${t.category}${t.eventDate ? ` · 📅 ${t.eventDate}` : ""}</small>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
           <button class="btn-status" onclick="manageTournamentSlots('${d.id}')" style="background:var(--gold);color:#000;border:none;">
             🎯 Manage Slots
           </button>
+          ${postponeBtn}
           ${completeBtn}
           ${deleteBtn}
         </div>`;
@@ -2499,24 +2504,61 @@ window.manageTournamentSlots = async function(tournamentId) {
 
         const tournament = tSnap.exists() ? tSnap.data() : {};
         
-        // Merge participants and slots securely
-        const teamMap = new Map();
-        participantsSnap.forEach(d => teamMap.set(d.id, { id: d.id, _source: "participants", ...d.data() }));
-        slotsSnap.forEach(d => teamMap.set(d.id, { ...teamMap.get(d.id), id: d.id, _source: "slots", ...d.data() }));
-        let allTeams = Array.from(teamMap.values());
-
-        // Map manual inputs submitted via the joining / registration interface
+        // Map manual inputs submitted via the joining / registration interface FIRST
         const registrationDataMap = new Map();
-        verificationsSnap.forEach(d => {
+        const userToTeamMap = new Map();
+        
+        const processReg = (d, source) => {
             const data = d.data();
-            if (data.teamId) registrationDataMap.set(data.teamId, data);
+            if (!data.teamId || data.status === "rejected") return;
+            registrationDataMap.set(data.teamId, data);
             registrationDataMap.set(d.id, data);
+            userToTeamMap.set(d.id, data.teamId);
+        };
+
+        verificationsSnap.forEach(d => processReg(d, "verifications"));
+        upcomingSnap.forEach(d => processReg(d, "upcomingRegistrations"));
+
+        const teamMap = new Map();
+
+        // 1. Initialize teamMap from Registration Data (so all registered teams get a base slot)
+        for (const [tId, data] of registrationDataMap.entries()) {
+            if (tId === data.teamId && !teamMap.has(tId)) {
+                let pStatus = data.status === "approved" ? "Pending Payment" : "Not Verified";
+                teamMap.set(tId, { 
+                    id: tId, 
+                    teamId: tId, 
+                    userId: data.userId || null,
+                    _source: "registration", 
+                    ...data, 
+                    paymentStatus: pStatus,
+                    assignedAt: data.registeredAt || data.timestamp || 0 
+                });
+            }
+        }
+
+        // 2. Merge Participants (keyed by userId -> teamId) to mark as verified
+        participantsSnap.forEach(d => {
+            const pData = d.data();
+            let tId = userToTeamMap.get(d.id) || d.id; // Fallback to id if teamId unknown
+            if (teamMap.has(tId)) {
+                teamMap.get(tId).paymentStatus = pData.paymentStatus || 'verified';
+            } else {
+                teamMap.set(tId, { id: tId, _source: "participants", ...pData });
+            }
         });
-        upcomingSnap.forEach(d => {
-            const data = d.data();
-            if (data.teamId) registrationDataMap.set(data.teamId, data);
-            registrationDataMap.set(d.id, data);
+
+        // 3. Merge explicit Slots (keyed by teamId)
+        slotsSnap.forEach(d => {
+            if (teamMap.has(d.id)) {
+                const existing = teamMap.get(d.id);
+                teamMap.set(d.id, { ...existing, ...d.data(), paymentStatus: d.data().paymentStatus || existing.paymentStatus });
+            } else {
+                teamMap.set(d.id, { id: d.id, _source: "slots", ...d.data() });
+            }
         });
+
+        let allTeams = Array.from(teamMap.values());
 
         const mode = tournament.mode?.toLowerCase() || "squad";
         const rowsPerTeam = mode === "squad" ? 4 : mode === "duo" ? 2 : 1;
@@ -3986,3 +4028,70 @@ window.deleteUserDoc = async function(uid) {
     }
 };
 
+
+window.openPostponeModal = function(tournamentId, title, currentEventDate, currentTransitionTime) {
+    const overlay = document.createElement("div");
+    overlay.id = "postponeModalOverlay";
+    overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index:10000; padding:20px;";
+    
+    const formatForInput = (isoStr) => {
+        if (!isoStr) return "";
+        const d = new Date(isoStr);
+        if (isNaN(d)) return "";
+        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,16);
+    };
+
+    overlay.innerHTML = `
+        <div style="background:#1a1a1a; padding:25px; border-radius:12px; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.5); border:1px solid #333;">
+            <h3 style="margin-top:0; color:#f97316;">🗓️ Postpone Tournament</h3>
+            <p style="color:#aaa; font-size:13px; margin-bottom:20px;">
+                <strong>${title}</strong><br>
+                This will move the tournament back to "Upcoming" status until the new timer triggers.
+            </p>
+
+            <div style="margin-bottom:15px;">
+                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:5px;">New Event Date & Time:</label>
+                <input type="datetime-local" id="postponeEventDate" value="${formatForInput(currentEventDate)}" style="width:100%; padding:10px; background:#111; color:#fff; border:1px solid #444; border-radius:6px; font-family:inherit;">
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:5px;">New Auto-Ongoing Timer:</label>
+                <input type="datetime-local" id="postponeTransitionTime" value="${formatForInput(currentTransitionTime)}" style="width:100%; padding:10px; background:#111; color:#fff; border:1px solid #444; border-radius:6px; font-family:inherit;">
+                <small style="color:#888; font-size:11px; display:block; margin-top:5px;">When should it move back to the "Ongoing" section?</small>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('postponeModalOverlay').remove()" style="flex:1; padding:10px; background:#333; color:#fff; border:none; border-radius:6px; cursor:pointer;">Cancel</button>
+                <button onclick="submitPostpone('${tournamentId}')" style="flex:1; padding:10px; background:#f97316; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">Postpone</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+};
+
+window.submitPostpone = async function(tournamentId) {
+    const eventDateInput = document.getElementById("postponeEventDate").value;
+    const transitionTimeInput = document.getElementById("postponeTransitionTime").value;
+
+    if (!eventDateInput || !transitionTimeInput) {
+        showToast("Both Date and Timer are required.", "error");
+        return;
+    }
+
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId), {
+            category: "upcoming",
+            status: "upcoming",
+            eventDate: new Date(eventDateInput).toISOString(),
+            transitionTime: new Date(transitionTimeInput).toISOString(),
+            promotionNotified: false
+        });
+
+        document.getElementById('postponeModalOverlay').remove();
+        showToast("Tournament postponed successfully! Moved to Upcoming.", "success");
+    } catch (err) {
+        console.error("Postpone Error:", err);
+        showToast("Failed to postpone: " + err.message, "error");
+    }
+};

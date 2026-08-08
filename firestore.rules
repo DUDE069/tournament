@@ -99,7 +99,7 @@ service cloud.firestore {
         || (isLoggedIn() && request.auth.uid in request.resource.data.members && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']));
       
       match /wallet/{walletId} { allow read: if isLoggedIn(); allow write: if isAdmin(); }
-      match /transactions/{txId} { allow read: if isAdmin() || (isLoggedIn() && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members); allow write: if isAdmin(); }
+      match /transactions/{txId} { allow read: if isAdmin() || (isLoggedIn() && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members); allow create: if isLoggedIn() && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members; allow update, delete: if isAdmin(); }
       match /tournamentHistory/{docId} { allow read: if true; allow write: if isAdmin(); }
     }
     

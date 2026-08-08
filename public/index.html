@@ -393,7 +393,8 @@
       .btn-allow-push, .btn-deny-push { flex: 1; }
       
       /* ✅ FIX: Enable absolute full-viewport scrolling for the modal box on mobile screens */
-      #loginModal.modal-overlay.active {
+      #loginModal.modal-overlay.active,
+      #customActionModal.active {
         display: flex !important;
         align-items: flex-start; /* Changed from center to flex-start to prevent top clipping on overflow */
         justify-content: center;
@@ -402,7 +403,8 @@
         padding: 60px 12px 30px 12px !important;
         -webkit-overflow-scrolling: touch;
       }
-      #loginModal .modal-card {
+      #loginModal .modal-card,
+      #customActionContent {
         margin: 0 auto !important;
         width: 100% !important;
         max-width: 100% !important;
@@ -898,7 +900,7 @@
 
 
         <div id="roleSelectionArea" style="display:none;">
-          <h3 style="margin-top:20px;">Select your Game Role to use our website</h3>
+          <h3 style="margin-top:20px;">Select your Account Type / Path</h3>
           <div class="role-options">
             <div class="role-card" onclick="selectRole('viewer', this)">👁 Viewer</div>
             <div class="role-card" onclick="selectRole('leader', this)">👑 Team Leader</div>
