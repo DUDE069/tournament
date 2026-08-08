@@ -4088,8 +4088,32 @@ window.submitPostpone = async function(tournamentId) {
             promotionNotified: false
         });
 
+        // NOTIFY ALL REGISTERED USERS
+        const [verifSnap, upcomSnap] = await Promise.all([
+            getDocs(collection(db, "tournaments", tournamentId, "verifications")),
+            getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
+        ]);
+        
+        const allIds = new Set();
+        verifSnap.forEach(d => { if(d.data().status !== "rejected") allIds.add(d.id); });
+        upcomSnap.forEach(d => { if(d.data().status !== "rejected") allIds.add(d.id); });
+
+        const formattedDate = new Date(eventDateInput).toLocaleString(undefined, { 
+            weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+        });
+
+        const notifPromises = [...allIds].map(uid => sendDualNotification(uid, {
+            type:       "tournament_announcement",
+            title:      "🗓️ Tournament Postponed",
+            message:    `The tournament has been postponed to ${formattedDate}. Your registration and verified slots are completely saved!`,
+            extra:      { tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        }));
+        
+        await Promise.all(notifPromises);
+
         document.getElementById('postponeModalOverlay').remove();
-        showToast("Tournament postponed successfully! Moved to Upcoming.", "success");
+        showToast(`Tournament postponed! Notified ${allIds.size} teams.`, "success");
     } catch (err) {
         console.error("Postpone Error:", err);
         showToast("Failed to postpone: " + err.message, "error");
