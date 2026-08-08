@@ -1955,6 +1955,7 @@ async function checkAdminAutoPromotion(tId, t) {
                 await updateDoc(doc(db, "tournaments", tId), {
                     category: 'ongoing',
                     status: 'live',
+                    endTime: new Date(t.eventDate).getTime(),
                     promotionNotified: true
                 });
 
@@ -4085,6 +4086,7 @@ window.submitPostpone = async function(tournamentId) {
             status: "upcoming",
             eventDate: new Date(eventDateInput).toISOString(),
             transitionTime: new Date(transitionTimeInput).toISOString(),
+            endTime: new Date(eventDateInput).getTime(),
             promotionNotified: false
         });
 
