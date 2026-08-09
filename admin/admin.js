@@ -823,6 +823,15 @@ window.viewStatusModal = async function(tournamentId, userId) {
       // Team code from either the verification doc or participant doc
       const teamCode = pData.teamCode || "N/A";
       const theUtr = pData.paymentUtr || pData.utr || "";
+      
+      console.error("=== 🚨 STATUS MODAL DEBUG INFO 🚨 ===");
+      console.error("1. Combined Data (pData):", pData);
+      console.error("2. currentPaymentStatus:", currentPaymentStatus);
+      console.error("3. theUtr:", theUtr);
+      console.error("4. stage3 (Is it submitted?):", stage3);
+      console.error("5. stage4 (Is it ALREADY verified?):", stage4);
+      console.error("6. Will Button Show? (stage3 && !stage4 && theUtr):", !!(stage3 && !stage4 && theUtr));
+      console.error("======================================");
 
       contentDiv.innerHTML = `
         <h3>📊 Team Status — ${escHtml(pData.teamName ?? "—")}</h3>
