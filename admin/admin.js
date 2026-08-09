@@ -249,9 +249,11 @@ function loadTransactions() {
   if (!container) return;
   container.innerHTML = '<p class="loading-text">Loading transactions...</p>';
 
-  const q = query(collectionGroup(db, "verifications"), where("status", "==", "pending"), orderBy("timestamp", "asc"));
+  const q = query(collectionGroup(db, "verifications"), orderBy("submittedAt", "desc"));
   _listeners.transactions = onSnapshot(q, (snap) => {
-    _allTransactions = snap.docs.map(doc => ({ id: doc.id, ...doc.data(), tournamentId: doc.ref.parent.parent.id }));
+    _allTransactions = snap.docs
+        .map(doc => ({ id: doc.id, ...doc.data(), tournamentId: doc.ref.parent.parent.id }))
+        .filter(t => t.utr && (t.paymentStatus === "submitted" || t.status === "pending"));
     filterTransactions();
   }, (err) => {
     console.error("Transactions load error:", err);
@@ -606,9 +608,17 @@ function renderVerificationList(snapshot) {
   snapshot.forEach(vDoc => {
     const d = { id: vDoc.id, tournamentId: vDoc.ref.parent.parent.id, ...vDoc.data() };
     if (d.archived === true) return; // CLIENT-SIDE: skip archived docs
-    if      (d.status === "pending")  pending.push(d);
-    else if (d.status === "approved") accepted.push(d);
-    else if (d.status === "rejected") rejected.push(d);
+    
+    const isPaymentSubmitted = (d.paymentStatus === "submitted" && !!d.utr);
+    
+    if (d.status === "rejected") {
+      rejected.push(d);
+    } else if (d.status === "approved" || isPaymentSubmitted) {
+      // If payment is submitted, it means the application phase was already approved
+      accepted.push(d);
+    } else if (d.status === "pending") {
+      pending.push(d);
+    }
   });
 
   if (!pending.length && !accepted.length && !rejected.length) {
