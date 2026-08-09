@@ -2693,17 +2693,21 @@ window.manageTournamentSlots = async function(tournamentId) {
                     const isPaid = (team?.paymentStatus === 'Payment Verified' || team?.paymentStatus === 'verified' || team?.paymentStatus === 'Paid');
                     const actionBtns = team ? `
                         <div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:center;">
-                            <button onclick="moveToWaitlist('${tournamentId}','${team.id}')"
+                            <button onclick="moveToWaitlist('${tournamentId}','${team.id}','${team.userId || team.id}')"
                                 style="background:#f59e0b;color:#000;border:none;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
                                 ⏳ Waitlist
                             </button>
-                            <button onclick="kickTeamFromSlot('${tournamentId}','${team.id}')"
+                            <button onclick="kickTeamFromSlot('${tournamentId}','${team.id}','${team.userId || team.id}')"
                                 style="background:#ef4444;color:#fff;border:none;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
                                 🚫 Kick
                             </button>
+                            <button onclick="openPayoutModal('${tournamentId}','${team.id}','${team.userId || team.id}')"
+                                style="background:#3b82f6;color:#fff;border:none;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
+                                💸 Payout
+                            </button>
                             ${isPaid
                               ? `<span title="Payment verified — cannot delete" style="background:transparent;color:#555;border:1px solid #333;padding:4px 7px;border-radius:4px;font-size:10px;white-space:nowrap;cursor:not-allowed;opacity:0.5;">🔒 Delete</span>`
-                              : `<button onclick="deleteSlot('${tournamentId}','${team.id}')"
+                              : `<button onclick="deleteSlot('${tournamentId}','${team.id}','${team.userId || team.id}')"
                                 style="background:transparent;color:#ef4444;border:1px solid #ef4444;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
                                 🗑 Delete
                               </button>`
@@ -2804,7 +2808,11 @@ window.manageTournamentSlots = async function(tournamentId) {
                             style="background:var(--blue);color:#fff;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;">
                             ⬆ Promote
                         </button>
-                        <button onclick="deleteSlot('${tournamentId}','${t.id}')"
+                        <button onclick="openPayoutModal('${tournamentId}','${t.id}','${t.userId || t.id}')"
+                            style="background:#3b82f6;color:#fff;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;">
+                            💸 Payout
+                        </button>
+                        <button onclick="deleteSlot('${tournamentId}','${t.id}','${t.userId || t.id}')"
                             style="background:transparent;color:var(--red);border:1px solid var(--red);padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;">
                             Remove
                         </button>
@@ -3042,15 +3050,16 @@ window.rejectChangeRequest = async function(tournamentId, userId) {
 };
 
 
-window.kickTeamFromSlot = async function(tournamentId, teamId) {
+window.kickTeamFromSlot = async function(tournamentId, teamId, userId) {
     if (!confirm("Kick this team? This will remove all their data and notify every team member.")) return;
     try {
+        const uid = userId || teamId;
         // 1. Delete from all tournament subcollections
         await Promise.allSettled([
             deleteDoc(doc(db, "tournaments", tournamentId, "slots",                  teamId)),
-            deleteDoc(doc(db, "tournaments", tournamentId, "participants",           teamId)),
-            deleteDoc(doc(db, "tournaments", tournamentId, "verifications",          teamId)),
-            deleteDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations",  teamId)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "participants",           uid)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "verifications",          uid)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations",  uid)),
         ]);
 
         // 2. Look up team members and notify ALL of them
@@ -3371,13 +3380,16 @@ window.moveToWaitlist = async function(tournamentId, teamId) {
     }
 };
 
-window.deleteSlot = async function(tournamentId, teamId) {
+window.deleteSlot = async function(tournamentId, teamId, userId) {
     if (!confirm("Permanently delete this slot entry? This cannot be undone.")) return;
     try {
+        const uid = userId || teamId;
         // Try deleting from both /slots and /participants for backward compat
         const promises = [
             deleteDoc(doc(db, "tournaments", tournamentId, "slots", teamId)).catch(() => {}),
-            deleteDoc(doc(db, "tournaments", tournamentId, "participants", teamId)).catch(() => {})
+            deleteDoc(doc(db, "tournaments", tournamentId, "participants", uid)).catch(() => {}),
+            deleteDoc(doc(db, "tournaments", tournamentId, "verifications", uid)).catch(() => {}),
+            deleteDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", uid)).catch(() => {})
         ];
         await Promise.all(promises);
         
@@ -3386,6 +3398,121 @@ window.deleteSlot = async function(tournamentId, teamId) {
         
     } catch (e) {
         showToast("Error deleting: Permission Denied.", "error");
+    }
+};
+
+// =============================================================================
+// PAYOUT MODAL
+// =============================================================================
+
+window.openPayoutModal = async function(tournamentId, teamId, userId) {
+    const uid = userId || teamId;
+    document.getElementById("payoutModalOverlay")?.remove();
+    
+    // Fetch data from verifications or participants
+    let tData = null;
+    try {
+        let snap = await getDoc(doc(db, "tournaments", tournamentId, "participants", uid));
+        if (snap.exists()) tData = snap.data();
+        else {
+            snap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", uid));
+            if (snap.exists()) tData = snap.data();
+        }
+    } catch(e) { console.error(e); }
+    
+    tData = tData || {};
+    const teamName = tData.teamName || "Unnamed Team";
+    const phone = tData.phone || "—";
+    const leaderEmail = tData.leaderEmail || "—";
+    const backupEmail = tData.backupEmail || "—";
+    const upiId = tData.payoutUpiId || tData.upiId || "—";
+
+    const overlay = document.createElement("div");
+    overlay.id = "payoutModalOverlay";
+    overlay.className = "status-modal-overlay";
+    overlay.innerHTML = `
+        <div class="status-modal" style="max-width:500px; width:100%; padding:24px; background:#111; border:1px solid #333; border-radius:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #222; padding-bottom:12px;">
+                <h3 style="color:var(--blue); margin:0;">💸 Payout / Refund</h3>
+                <button onclick="document.getElementById('payoutModalOverlay').remove()" style="background:none; border:none; color:#888; font-size:20px; cursor:pointer;">✖</button>
+            </div>
+            
+            <div style="background:#1a1a1a; padding:15px; border-radius:8px; margin-bottom:20px;">
+                <p style="color:#888; font-size:11px; text-transform:uppercase; margin-bottom:10px;">Team Information</p>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="color:#888; font-size:13px;">Team Name:</span>
+                    <span style="color:#fff; font-weight:bold; font-size:13px;">${escHtml(teamName)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="color:#888; font-size:13px;">Leader Email:</span>
+                    <span style="color:#fff; font-size:13px;">${escHtml(leaderEmail)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="color:#888; font-size:13px;">Backup Email:</span>
+                    <span style="color:#fff; font-size:13px;">${escHtml(backupEmail)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="color:#888; font-size:13px;">Phone:</span>
+                    <span style="color:#fff; font-size:13px;">${escHtml(phone)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-top:12px; padding-top:12px; border-top:1px dashed #333;">
+                    <span style="color:var(--green); font-size:13px; font-weight:bold;">Provided UPI ID:</span>
+                    <span style="color:var(--green); font-size:13px; font-weight:bold; font-family:monospace;">${escHtml(upiId)}</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:8px;">Enter Refund UTR / Transaction ID *</label>
+                <input type="text" id="payoutUtrInput" placeholder="e.g. 123456789012" style="width:100%; padding:12px; background:#000; border:1px solid #444; color:#fff; border-radius:8px; font-size:14px; font-family:monospace;">
+            </div>
+
+            <button onclick="processPayout('${tournamentId}', '${uid}', '${escHtml(teamName.replace(/'/g, "\\'"))}')" 
+                style="width:100%; padding:14px; background:var(--blue); color:#fff; border:none; border-radius:8px; font-weight:bold; font-size:15px; cursor:pointer;">
+                Send Payout Notification
+            </button>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+};
+
+window.processPayout = async function(tournamentId, uid, teamName) {
+    const utr = document.getElementById("payoutUtrInput")?.value.trim();
+    if (!utr) {
+        showToast("Please enter the UTR / Transaction ID.", "warning");
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to send this payout notification to ${teamName} with UTR: ${utr}?`)) return;
+
+    try {
+        const message = `Sorry for your inconvenience. Here we have sended your entry fee to your registered UPI ID. Please check and verify. This is the UTR: ${utr}`;
+        
+        // Notify the team
+        await sendDualNotification(uid, {
+            type:       "admin_notice",
+            title:      "💸 Tournament Refund / Payout",
+            message:    message,
+            actionLink: `tournament=${tournamentId}`
+        });
+
+        // Optionally, we could update their payment status to 'Refunded'
+        try {
+            const participantRef = doc(db, "tournaments", tournamentId, "participants", uid);
+            await updateDoc(participantRef, { paymentStatus: "Refunded" });
+        } catch(e) {} // Ignore if document doesn't exist
+        
+        try {
+            const slotRef = doc(db, "tournaments", tournamentId, "slots", uid);
+            await updateDoc(slotRef, { paymentStatus: "Refunded" });
+        } catch(e) {}
+
+        showToast("Payout notification sent successfully!", "success");
+        document.getElementById("payoutModalOverlay")?.remove();
+        manageTournamentSlots(tournamentId); // Refresh
+
+    } catch (e) {
+        console.error(e);
+        showToast("Error sending payout notification.", "error");
     }
 };
 

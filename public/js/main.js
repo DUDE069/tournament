@@ -188,14 +188,24 @@ window.handleUpcomingRegister = async function(tournamentId) {
 
     // NEW: Check if user already submitted for upcoming tournament
     try {
-        const existingSnap = await getDoc(
-            doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid)
-        );
+        let exists = false;
+        let isApproved = false;
+        
+        let snap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", currentUser.uid));
+        if (snap.exists()) {
+            exists = true;
+            isApproved = snap.data().status === 'approved';
+        } else {
+            snap = await getDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid));
+            if (snap.exists()) {
+                exists = true;
+                isApproved = snap.data().status === 'approved';
+            }
+        }
 
-        if (existingSnap.exists()) {
-            const existing = existingSnap.data();
-            // Use the status modal to show they are already registered/accepted
-            showAlreadyAppliedModal(existing, tournamentId, tournament, 'upcoming');
+        if (exists) {
+            // Show the filled out form where everything is read-only except UPI
+            showApprovedReviewInterface(tournamentId, currentUser.uid);
             return; 
         }
     } catch (checkErr) {
@@ -671,78 +681,28 @@ document.getElementById('player5Container').style.display = 'none';
 
     // ── NEW: Check if user already submitted ──────────────────
     try {
-        const existingSnap = await getDoc(
-            doc(db, "tournaments", tournamentId, "verifications", currentUser.uid)
-        );
+        let exists = false;
+        let isApproved = false;
+        
+        let snap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", currentUser.uid));
+        if (snap.exists()) {
+            exists = true;
+            isApproved = snap.data().status === 'approved';
+        } else {
+            snap = await getDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid));
+            if (snap.exists()) {
+                exists = true;
+                isApproved = snap.data().status === 'approved';
+            }
+        }
 
-        if (existingSnap.exists()) {
-            const existing = existingSnap.data();
-            const statusColor = existing.status === "approved"
-                ? "#00ff88"
-                : existing.status === "rejected"
-                    ? "#ff4444"
-                    : "#ffd700";
-            const statusLabel = existing.status === "approved"
-                ? "✅ Approved — Proceed to payment"
-                : existing.status === "rejected"
-                    ? `❌ Rejected — Reason: ${existing.rejectionNote || "Contact admin"}`
-                    : "⏳ Under Review — Admin will notify you";
-
-            const uids = Array.isArray(existing.uids)
-                ? existing.uids.join(", ")
-                : (existing.uids ?? "—");
-
-            // Remove any existing already-applied modal
-            document.getElementById("alreadyAppliedModal")?.remove();
-
-            document.body.insertAdjacentHTML("beforeend", `
-                <div id="alreadyAppliedModal"
-                    style="position:fixed;inset:0;background:rgba(0,0,0,0.92);
-                           display:flex;align-items:center;justify-content:center;
-                           z-index:9999;padding:20px;">
-                    <div style="background:#1a1a1a;width:100%;max-width:480px;padding:28px;
-                                border-radius:14px;border:1px solid #333;">
-
-                        <h2 style="color:#00ff88;margin-bottom:6px;">Application Status</h2>
-                        <p style="color:#888;font-size:13px;margin-bottom:20px;">
-                            You have already applied for <b style="color:#fff;">${tournament.title}</b>
-                        </p>
-
-                        <div style="background:rgba(${existing.status === "approved" ? "0,255,136" : existing.status === "rejected" ? "255,68,68" : "255,215,0"},.1);
-                                    border:1px solid ${statusColor};border-radius:10px;
-                                    padding:14px 16px;margin-bottom:20px;
-                                    color:${statusColor};font-size:14px;font-weight:600;">
-                            ${statusLabel}
-                        </div>
-
-                        <div style="display:grid;gap:8px;margin-bottom:20px;">
-                            ${infoRowUser("Team Name",    existing.teamName   ?? "—")}
-                            ${infoRowUser("Leader Email", existing.leaderEmail ?? "—")}
-                            ${infoRowUser("Phone",        existing.phone       ?? "—")}
-                            ${infoRowUser("Player UIDs",  uids)}
-                            ${infoRowUser("Submitted",    existing.submittedAt?.toDate?.()?.toLocaleString("en-IN") ?? "—")}
-                        </div>
-
-                        ${existing.status === "approved" ? `
-                        <button onclick="document.getElementById('alreadyAppliedModal').remove(); showTeamPaymentWarning('${tournamentId}');"
-                            style="width:100%;padding:12px;background:#00ff88;color:#000;border:none;
-                                   border-radius:8px;font-weight:700;cursor:pointer;font-size:15px;
-                                   margin-bottom:10px;">
-                            💳 Proceed to Payment →
-                        </button>` : ""}
-
-                        <button onclick="document.getElementById('alreadyAppliedModal').remove()"
-                            style="width:100%;padding:10px;background:transparent;color:#666;
-                                   border:1px solid #333;border-radius:8px;cursor:pointer;">
-                            Close
-                        </button>
-                    </div>
-                </div>`);
-            return; // ← stop here, don't open the regular form
+        if (exists) {
+            // Show the filled out form where everything is read-only except UPI
+            showApprovedReviewInterface(tournamentId, currentUser.uid);
+            return;
         }
     } catch (checkErr) {
         console.warn("Could not check existing application:", checkErr.message);
-        // If check fails, fall through to normal flow
     }
     // ── END already-submitted check ───────────────────────────
 
@@ -4787,11 +4747,22 @@ async function showApprovedReviewInterface(tournamentId, userId) {
         }
 
         const upiInput = document.getElementById("joinPayoutUpiId");
+        const isPaid = (regData.paymentStatus === 'paid' || regData.paymentStatus === 'verified' || regData.paymentStatus === 'Payment Verified');
+        
         if (upiInput) {
-            upiInput.value = regData.payoutUpiId || "";
-            upiInput.readOnly = true;
-            upiInput.style.background = "#2a2a2a";
-            upiInput.style.color = "#888";
+            upiInput.value = regData.payoutUpiId || regData.upiId || "";
+            if (isPaid) {
+                upiInput.readOnly = true;
+                upiInput.style.background = "#2a2a2a";
+                upiInput.style.color = "#888";
+                upiInput.style.border = "1px solid #333";
+            } else {
+                // If unpaid, allow them to edit their payout UPI ID
+                upiInput.readOnly = false;
+                upiInput.style.background = "#111";
+                upiInput.style.color = "#fff";
+                upiInput.style.border = "1px solid #555";
+            }
         }
         
        document.getElementById('player5Container').style.display = 'none';
@@ -4811,8 +4782,6 @@ if (guidelinesLabel) {
 // Modify the submit button based on Upcoming vs Ongoing
 const submitBtn = document.getElementById("joinSubmitBtn");
 if (submitBtn) {
-    const isPaid = (regData.paymentStatus === 'paid' || regData.paymentStatus === 'verified');
-    
     if (isPaid) {
         submitBtn.textContent = "Payment Verified - View Status →";
         submitBtn.onclick = function(e) {
@@ -4822,13 +4791,39 @@ if (submitBtn) {
         };
     } else {
         submitBtn.textContent = "Continue to Payment →";
-        submitBtn.onclick = function(e) {
+        submitBtn.onclick = async function(e) {
             e.preventDefault();
             if (!agreeCheckbox || !agreeCheckbox.checked) {
                 showMessage("You must agree to the Payment Guidelines to proceed.");
                 return;
             }
-            if (isUpcoming) {
+            
+            // Save the newly entered UPI ID before proceeding
+            const newUpi = upiInput?.value?.trim() || "";
+            if (!newUpi || !newUpi.includes('@')) {
+                showMessage("Please enter a valid Payout UPI ID (e.g. name@ybl)");
+                return;
+            }
+            
+            // Show loading state on button
+            const origText = submitBtn.textContent;
+            submitBtn.textContent = "Saving...";
+            submitBtn.disabled = true;
+            
+            try {
+                // Update in whichever collection it came from
+                const colName = isUpcoming ? "upcomingRegistrations" : "verifications";
+                await updateDoc(doc(db, "tournaments", tournamentId, colName, userId), {
+                    payoutUpiId: newUpi
+                });
+            } catch (err) {
+                console.warn("Failed to update UPI ID", err);
+            }
+            
+            submitBtn.textContent = origText;
+            submitBtn.disabled = false;
+
+            if (isUpcoming && tournament.category === 'upcoming') {
                 // Trigger Pay Now or Pay Later Flow
                 document.getElementById('joinTournamentModal').style.display = 'none';
                 showPopup("success", 
