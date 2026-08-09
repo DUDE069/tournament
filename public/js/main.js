@@ -1575,6 +1575,27 @@ window.confirmPayment = async function(tournamentId) {
             });
         } catch(e) {}
 
+        // ✅ FIX: Send to Admin Panel Transactions Tab by updating the mirror in verifications
+        try {
+            await updateDoc(doc(db, "tournaments", tournamentId, "verifications", currentUser.uid), {
+                paymentStatus: "submitted",
+                status: "pending", // Admin query looks for pending!
+                utr: utr,
+                paymentUtr: utr,
+                updatedAt: serverTimestamp()
+            });
+        } catch(e) {}
+
+        // ✅ FIX: Update Upcoming Registrations just in case admin checks the card
+        try {
+            await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid), {
+                paymentStatus: "submitted",
+                utr: utr,
+                paymentUtr: utr,
+                updatedAt: serverTimestamp()
+            });
+        } catch(e) {}
+
         const memberIds = await getTeamMemberIds(userProfile.teamId);
         await Promise.all(
             memberIds.map(uid =>

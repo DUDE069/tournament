@@ -837,6 +837,9 @@ window.viewStatusModal = async function(tournamentId, userId) {
 
         <div style="display:flex;gap:8px;margin-top:4px;">
           <button onclick="openNotifyModal('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(v.uids) ? v.uids : [userId]).replace(/"/g,"'")},'${escHtml(v.teamName ?? "Team")}')" style="flex:1;padding:10px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">🔔 Notify This Team</button>
+          ${(stage3 && !stage4 && pData.utr) ? `
+          <button onclick="if(confirm('Force approve this payment manually? This will confirm their slot.')){ window.approveTransaction('${tournamentId}', '${userId}', '${escHtml(v.teamId || pData.teamId || "")}', '${userId}', '${escHtml(pData.utr)}', '${v.entryFee || 0}'); document.getElementById('statusModalOverlay').remove(); }" style="flex:1;padding:10px;background:var(--gold);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">✅ Approve Payment</button>
+          ` : ""}
         </div>
 
         <button onclick="document.getElementById('statusModalOverlay').remove(); if(window._statusModalListener){window._statusModalListener();window._statusModalListener=null;}" style="width:100%;margin-top:10px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">Close</button>
