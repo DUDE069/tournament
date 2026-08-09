@@ -546,13 +546,13 @@ function renderTournaments() {
                     </button>`;
             } else if (isRejected) {
                 buttonHTML = `
-                    <button class="join-btn" onclick="showTeamPaymentWarning('${t.id}')"
+                    <button class="join-btn" onclick="handleUpcomingRegister('${t.id}')"
                         style="background: #ff4444; border-color: #ff4444; color: #fff; box-shadow: 0 0 15px rgba(255,68,68,0.4);">
                         ❌ Re-verify Payment
                     </button>`;
             } else if (isApproved) {
                 buttonHTML = `
-                    <button class="join-btn" onclick="showTeamPaymentWarning('${t.id}')"
+                    <button class="join-btn" onclick="handleUpcomingRegister('${t.id}')"
                         style="background: #00ff88; border-color: #00ff88; color: #000; box-shadow: 0 0 15px rgba(0,255,136,0.4);">
                         💳 Pay Now
                     </button>`;
@@ -4684,17 +4684,22 @@ async function showApprovedReviewInterface(tournamentId, userId) {
       // Inside showApprovedReviewInterface in main.js
         // Populate and lock player UID/Nickname fields
         const playersData = regData.playersData || [];
+        const uidsArray = regData.uids || [];
         const verifiedStatus = regData.verifiedPlayers || {};
 
         for (let i = 1; i <= 5; i++) {
             const player = playersData[i - 1];
+            const fallbackUid = uidsArray[i - 1];
+            
             const uidInput = document.getElementById(`uidPlayer${i}`);
             const nickInput = document.getElementById(`nickPlayer${i}`);
             const typeSelect = document.getElementById(`typePlayer${i}`);
             const playerLabel = uidInput?.previousElementSibling;
 
-            if (uidInput && player) {
-                uidInput.value = player.uid || "";
+            const finalUid = player?.uid || fallbackUid;
+
+            if (uidInput && finalUid) {
+                uidInput.value = finalUid;
                 uidInput.readOnly = true;
                 uidInput.style.background = "#2a2a2a";
                 uidInput.style.color = "#888";
@@ -4707,14 +4712,15 @@ async function showApprovedReviewInterface(tournamentId, userId) {
                     }
                 }
             }
-            if (nickInput && player) {
-                nickInput.value = player.nickname || "";
+            if (nickInput && (player?.nickname || finalUid)) {
+                // If nickname is missing from older documents, fallback to a placeholder
+                nickInput.value = player?.nickname || (i === 1 ? (regData.leaderName || "Leader") : "Player " + i);
                 nickInput.readOnly = true;
                 nickInput.style.background = "#2a2a2a";
                 nickInput.style.color = "#888";
             }
-            if (typeSelect && player) {
-                typeSelect.value = player.type || "friend";
+            if (typeSelect && (player || finalUid)) {
+                typeSelect.value = player?.type || "friend";
                 typeSelect.disabled = true; // Disable select element
                 typeSelect.style.background = "#2a2a2a";
                 typeSelect.style.color = "#888";
@@ -4790,7 +4796,7 @@ if (submitBtn) {
             showPaymentInterface(tournamentId); // This will render the success screen directly
         };
     } else {
-        submitBtn.textContent = "Continue to Payment →";
+        submitBtn.textContent = "Proceed to Payment →";
         submitBtn.onclick = async function(e) {
             e.preventDefault();
             if (!agreeCheckbox || !agreeCheckbox.checked) {
