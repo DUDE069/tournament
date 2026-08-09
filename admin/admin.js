@@ -358,6 +358,39 @@ window.approveTransaction = async function(tournamentId, docId, teamId, userId, 
       updatedAt: serverTimestamp()
     }, { merge: true });
 
+    // 6. Fix for Upcoming Tournaments: Ensure their dashboard is fully updated
+    try {
+        await setDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
+            paymentStatus: 'verified',
+            status: 'approved',
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+        
+        await setDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId), {
+            paymentStatus: 'verified',
+            status: 'accepted',
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+        
+        await setDoc(doc(db, "tournaments", tournamentId, "teamSessions", teamId), {
+            paymentStatus: 'verified',
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+    } catch(e) {}
+
+    // 7. Send Notification to User
+    try {
+        await sendDualNotification(userId, {
+            type:       "success",
+            title:      "💳 Payment Verified!",
+            message:    `Your payment of ₹${amount} for tournament ${tournamentId} has been successfully verified. Your slot is now confirmed!`,
+            extra:      { tournamentId, utr },
+            actionLink: `tournament=${tournamentId}`,
+        });
+    } catch (e) {
+        console.warn("Could not send notification:", e);
+    }
+
     showToast("Transaction approved successfully!");
   } catch (e) {
     console.error("Error approving transaction:", e);
@@ -728,14 +761,27 @@ window.viewStatusModal = async function(tournamentId, userId) {
   }
 
   try {
-    const [vSnap, pSnap] = await Promise.all([
+    const [vSnap, pSnap, uSnap] = await Promise.all([
       getDoc(doc(db, "tournaments", tournamentId, "verifications", userId)),
       getDoc(doc(db, "tournaments", tournamentId, "participants", userId)),
+      getDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId))
     ]);
 
     const v = vSnap.exists() ? vSnap.data() : {};
     const p = pSnap.exists() ? pSnap.data() : {};
-    const processedAt = v.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? "—";
+    const u = uSnap.exists() ? uSnap.data() : {};
+    
+    // Fallback to fetch team session to get true live payment status if others lag
+    let sessionData = {};
+    const teamId = v.teamId || p.teamId || u.teamId;
+    if (teamId) {
+        try {
+            const sSnap = await getDoc(doc(db, "tournaments", tournamentId, "teamSessions", teamId));
+            if (sSnap.exists()) sessionData = sSnap.data();
+        } catch(e) {}
+    }
+
+    const processedAt = v.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? (u.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? "—");
 
     // Remove any existing modal
     document.getElementById("statusModalOverlay")?.remove();
@@ -765,19 +811,21 @@ window.viewStatusModal = async function(tournamentId, userId) {
     });
 
     // Function to render/update the modal content
-    function renderStatusContent(pData) {
-      const processedAt = v.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? "—";
+    function renderStatusContent(updatedP, updatedV, updatedU, updatedS) {
+      const pData = { ...updatedV, ...updatedU, ...updatedP, ...updatedS };
+      const currentPaymentStatus = pData.paymentStatus || "";
       
       // Stage calculations from live data
-      const stage3 = ["submitted","paid","verified","pending_verification"].includes(pData.paymentStatus);
-      const stage4 = (pData.paymentStatus === "verified" || pData.paymentStatus === "paid" || pData.paymentStatus === "Payment Verified");
+      const stage3 = ["submitted","paid","verified","pending_verification"].includes(currentPaymentStatus);
+      const stage4 = (currentPaymentStatus === "verified" || currentPaymentStatus === "paid" || currentPaymentStatus === "Payment Verified");
       const stage5 = pData.confirmationReceived === true;
 
       // Team code from either the verification doc or participant doc
-      const teamCode = v.teamCode || p.teamCode || "N/A";
+      const teamCode = pData.teamCode || "N/A";
+      const theUtr = pData.paymentUtr || pData.utr || "";
 
       contentDiv.innerHTML = `
-        <h3>📊 Team Status — ${escHtml(v.teamName ?? "—")}</h3>
+        <h3>📊 Team Status — ${escHtml(pData.teamName ?? "—")}</h3>
 
         <!-- ✅ TEAM UNIQUE CODE — Prominent, copyable -->
         <div style="background:#0a1f0a;border:1px solid var(--green);border-radius:10px;padding:14px 16px;margin-bottom:14px;text-align:center;">
@@ -796,15 +844,15 @@ window.viewStatusModal = async function(tournamentId, userId) {
         </div>
         <div class="status-row">
           <span class="s-label">Leader</span>
-          <span class="s-value">${escHtml(v.leaderEmail ?? "—")}</span>
+          <span class="s-value">${escHtml(pData.leaderEmail ?? "—")}</span>
         </div>
         <div class="status-row">
           <span class="s-label">Approved At</span>
           <span class="s-value">${processedAt}</span>
         </div>
-        ${v.phone ? `<div class="status-row"><span class="s-label">Phone</span><span class="s-value">${escHtml(v.phone)}</span></div>` : ""}
+        ${pData.phone ? `<div class="status-row"><span class="s-label">Phone</span><span class="s-value">${escHtml(pData.phone)}</span></div>` : ""}
         ${pData.transactionCode ? `<div class="status-row"><span class="s-label">Transaction ID</span><span class="s-value" style="font-family:monospace;color:var(--gold);">${escHtml(pData.transactionCode)}</span></div>` : ""}
-        ${pData.utr ? `<div class="status-row"><span class="s-label">UTR / Payment Ref</span><span class="s-value" style="font-family:monospace;color:var(--gold);">${escHtml(pData.utr)}</span></div>` : ""}
+        ${theUtr ? `<div class="status-row"><span class="s-label">UTR / Payment Ref</span><span class="s-value" style="font-family:monospace;color:var(--gold);">${escHtml(theUtr)}</span></div>` : ""}
 
         <div style="margin:20px 0 6px;">
           <p style="color:var(--muted);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;">✅ Application Progress Checklist</p>
@@ -832,13 +880,13 @@ window.viewStatusModal = async function(tournamentId, userId) {
             <input id="smRoomId" placeholder="Room ID" value="${escHtml(pData.roomId ?? "")}" style="flex:1;padding:8px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;font-size:13px;">
             <input id="smRoomPass" placeholder="Password" value="${escHtml(pData.roomPassword ?? "")}" style="flex:1;padding:8px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;font-size:13px;">
           </div>
-          <button onclick="saveRoomDetails('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(v.uids) ? v.uids : [userId]).replace(/"/g,"'")})" style="width:100%;padding:9px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;">💾 Save & Notify Team</button>
+          <button onclick="saveRoomDetails('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(pData.uids) ? pData.uids : [userId]).replace(/"/g,"'")})" style="width:100%;padding:9px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;">💾 Save & Notify Team</button>
         </div>
 
         <div style="display:flex;gap:8px;margin-top:4px;">
-          <button onclick="openNotifyModal('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(v.uids) ? v.uids : [userId]).replace(/"/g,"'")},'${escHtml(v.teamName ?? "Team")}')" style="flex:1;padding:10px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">🔔 Notify This Team</button>
-          ${(stage3 && !stage4 && pData.utr) ? `
-          <button onclick="if(confirm('Force approve this payment manually? This will confirm their slot.')){ window.approveTransaction('${tournamentId}', '${userId}', '${escHtml(v.teamId || pData.teamId || "")}', '${userId}', '${escHtml(pData.utr)}', '${v.entryFee || 0}'); document.getElementById('statusModalOverlay').remove(); }" style="flex:1;padding:10px;background:var(--gold);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">✅ Approve Payment</button>
+          <button onclick="openNotifyModal('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(pData.uids) ? pData.uids : [userId]).replace(/"/g,"'")},'${escHtml(pData.teamName ?? "Team")}')" style="flex:1;padding:10px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">🔔 Notify This Team</button>
+          ${(stage3 && !stage4 && theUtr) ? `
+          <button onclick="if(confirm('Force approve this payment manually? This will confirm their slot.')){ window.approveTransaction('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}', '${userId}', '${escHtml(theUtr)}', '${pData.entryFee || 0}'); document.getElementById('statusModalOverlay').remove(); }" style="flex:1;padding:10px;background:var(--gold);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">✅ Approve Payment</button>
           ` : ""}
         </div>
 
@@ -847,19 +895,16 @@ window.viewStatusModal = async function(tournamentId, userId) {
     }
 
     // Initial render
-    renderStatusContent(p);
+    renderStatusContent(p, v, u, sessionData);
 
-    // ✅ THE KEY FIX: Real-time listener for live updates
-    const participantRef = doc(db, "tournaments", tournamentId, "participants", userId);
-    window._statusModalListener = onSnapshot(participantRef, (snap) => {
-      if (!snap.exists()) return;
-      const updatedData = snap.data();
-      console.log("[STATUS] Live update received:", updatedData);
-      // Re-render with updated data
-      renderStatusContent(updatedData);
-    }, (err) => {
-      console.error("[STATUS] Listener error:", err);
-    });
+    // Real-time listener for live updates (try listening to session for payment status instead)
+    if (teamId) {
+        window._statusModalListener = onSnapshot(doc(db, "tournaments", tournamentId, "teamSessions", teamId), (snap) => {
+          if (!snap.exists()) return;
+          const updatedS = snap.data();
+          renderStatusContent(p, v, u, updatedS);
+        });
+    }
 
   } catch (e) {
     showToast("Error loading status: Permission Denied.", "error");
