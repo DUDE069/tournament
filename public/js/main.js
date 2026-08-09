@@ -4684,40 +4684,58 @@ async function showApprovedReviewInterface(tournamentId, userId) {
       // Inside showApprovedReviewInterface in main.js
         // Populate and lock player UID/Nickname fields
         const playersData = regData.playersData || [];
-        const uidsArray = regData.uids || [];
+        
+        let uidsArray = [];
+        if (Array.isArray(regData.uids)) {
+            uidsArray = regData.uids;
+        } else if (typeof regData.uids === 'string') {
+            uidsArray = regData.uids.split(',').map(s => s.trim());
+        }
+        
         const verifiedStatus = regData.verifiedPlayers || {};
 
         for (let i = 1; i <= 5; i++) {
             const player = playersData[i - 1];
-            const fallbackUid = uidsArray[i - 1];
+            let rawUid = player?.uid || uidsArray[i - 1];
+            
+            // Ultimate fallback for Player 1
+            if (i === 1 && !rawUid) {
+                rawUid = regData.leaderUid || userProfile?.freeFireUid || "";
+            }
+            
+            // Ensure the UID only contains numbers so <input type="number"> doesn't silently reject it
+            const finalUid = String(rawUid || "").replace(/\D/g, "");
             
             const uidInput = document.getElementById(`uidPlayer${i}`);
             const nickInput = document.getElementById(`nickPlayer${i}`);
             const typeSelect = document.getElementById(`typePlayer${i}`);
             const playerLabel = uidInput?.previousElementSibling;
 
-            const finalUid = player?.uid || fallbackUid;
-
-            if (uidInput && finalUid) {
+            if (uidInput) {
                 uidInput.value = finalUid;
-                uidInput.readOnly = true;
-                uidInput.style.background = "#2a2a2a";
-                uidInput.style.color = "#888";
-                if (playerLabel) {
-                    playerLabel.innerHTML = playerLabel.innerHTML.split('<span')[0].trim(); // Clear old status
-                    if (verifiedStatus[`p${i}`] || regData.status === "approved") {
-                        playerLabel.innerHTML += ` <span style="color:#00ff88;font-size:11px;">✓ Verified</span>`;
-                    } else {
-                        playerLabel.innerHTML += ` <span style="color:#ffd700;font-size:11px;">(Pending Verification)</span>`;
+                if (finalUid) {
+                    uidInput.readOnly = true;
+                    uidInput.style.background = "#2a2a2a";
+                    uidInput.style.color = "#888";
+                    if (playerLabel) {
+                        playerLabel.innerHTML = playerLabel.innerHTML.split('<span')[0].trim(); // Clear old status
+                        if (verifiedStatus[`p${i}`] || regData.status === "approved") {
+                            playerLabel.innerHTML += ` <span style="color:#00ff88;font-size:11px;">✓ Verified</span>`;
+                        } else {
+                            playerLabel.innerHTML += ` <span style="color:#ffd700;font-size:11px;">(Pending Verification)</span>`;
+                        }
                     }
                 }
             }
-            if (nickInput && (player?.nickname || finalUid)) {
-                // If nickname is missing from older documents, fallback to a placeholder
-                nickInput.value = player?.nickname || (i === 1 ? (regData.leaderName || "Leader") : "Player " + i);
-                nickInput.readOnly = true;
-                nickInput.style.background = "#2a2a2a";
-                nickInput.style.color = "#888";
+            if (nickInput) {
+                if (player?.nickname || finalUid) {
+                    nickInput.value = player?.nickname || (i === 1 ? (regData.leaderName || "Leader") : "Player " + i);
+                    nickInput.readOnly = true;
+                    nickInput.style.background = "#2a2a2a";
+                    nickInput.style.color = "#888";
+                } else {
+                    nickInput.value = "";
+                }
             }
             if (typeSelect && (player || finalUid)) {
                 typeSelect.value = player?.type || "friend";
