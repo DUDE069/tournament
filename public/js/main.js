@@ -7024,10 +7024,14 @@ window.saveGhostProfile = async function() {
         const uid = currentUser.uid;
         const email = currentUser.email;
         
-        let updates = {
-            uid, email, age, nickname: nick, freeFireUid: ffUid,
-            isAdmin: false, isLeader: false,
-            teamId: null, teamName: null, teamCode: null,
+        let publicData = {
+            uid: uid,
+            nickname: nick, 
+            freeFireUid: ffUid,
+            isLeader: false,
+            teamId: null, 
+            teamName: null, 
+            teamCode: null,
             role: "viewer",
             createdAt: serverTimestamp(),
             stats: { tournamentsJoined: 0, tournamentsWon: 0, matchesPlayed: 0 }
@@ -7048,7 +7052,7 @@ window.saveGhostProfile = async function() {
                 teamId: tId, teamName: tName, code: tCode,
                 leaderId: uid, leaderName: nick, members: [uid], maxMembers: 5, createdAt: serverTimestamp()
             });
-            updates.isLeader = true; updates.teamId = tId; updates.teamName = tName; updates.teamCode = tCode; updates.role = "leader";
+            publicData.isLeader = true; publicData.teamId = tId; publicData.teamName = tName; publicData.teamCode = tCode; publicData.role = "leader";
             
         } else if (roleType === "join") {
             const jCode = document.getElementById("ghostJoinCode").value.trim().toUpperCase();
@@ -7061,10 +7065,36 @@ window.saveGhostProfile = async function() {
             if ((tData.members || []).length >= (tData.maxMembers || 5)) { showMessage("Team is full."); btn.disabled=false; btn.textContent="Save & Complete Account"; return; }
             
             await updateDoc(doc(db, "teams", tData.teamId), { members: arrayUnion(uid) });
-            updates.teamId = tData.teamId; updates.teamName = tData.teamName; updates.teamCode = jCode; updates.role = "member";
+            publicData.teamId = tData.teamId; publicData.teamName = tData.teamName; publicData.teamCode = jCode; publicData.role = "member";
         }
         
-        await setDoc(doc(db, "users", uid), updates);
+        // V2 SECURE DATA SPLIT USING BATCH
+        const batch = writeBatch(db);
+        const publicRef = doc(db, "users", uid);
+        const privateRef = doc(db, "users", uid, "private", "data");
+        const walletRef = doc(db, "users", uid, "wallet", "main");
+        
+        // 1. PUBLIC PROFILE
+        batch.set(publicRef, publicData, { merge: true });
+        
+        // 2. PRIVATE DATA
+        batch.set(privateRef, {
+            email: email,
+            age: age,
+            phone: null,
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+        
+        // 3. INITIALIZE WALLET (ONLY IF IT DOESN'T EXIST)
+        batch.set(walletRef, {
+            balance: 0,
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+        
+        await batch.commit();
+
+        sessionStorage.setItem("npc_fresh_registration", uid);
+
         closeCustomModal();
         showMessage("Account setup complete!");
         setTimeout(() => location.reload(), 1500);

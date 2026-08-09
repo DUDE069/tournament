@@ -32,7 +32,7 @@ service cloud.firestore {
       allow create: if isOwner(userId);
       // Only allow updating specific public fields
       allow update: if isAdmin() || (isOwner(userId) && 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'gameRole', 'freeFireUid', 'teamId', 'teamName', 'stats']));
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'gameRole', 'freeFireUid', 'teamId', 'teamName', 'teamCode', 'stats', 'role', 'isLeader', 'uid', 'createdAt']));
       
       // PRIVATE DATA: Highly restricted subcollection for email, age, phone, etc.
       match /private/{docId} {
