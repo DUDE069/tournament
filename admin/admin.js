@@ -899,7 +899,11 @@ window.viewStatusModal = async function(tournamentId, userId) {
           ` : ""}
         </div>
 
-        <button onclick="document.getElementById('statusModalOverlay').remove(); if(window._statusModalListener){window._statusModalListener();window._statusModalListener=null;}" style="width:100%;margin-top:10px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">Close</button>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button onclick="document.getElementById('statusModalOverlay').remove(); if(window._statusModalListener){window._statusModalListener();window._statusModalListener=null;}" style="flex:1;background:#222;color:var(--muted);border:1px solid #333;border-radius:6px;cursor:pointer;font-family:inherit;padding:8px;">Close</button>
+          
+          <button onclick="if(confirm('⚠️ DEV OVERRIDE: Force approve payment regardless of current status?')){ window.approveTransaction('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}', '${userId}', '${escHtml(theUtr || "MANUAL_OVERRIDE")}', '${pData.entryFee || 0}'); document.getElementById('statusModalOverlay').remove(); }" style="padding:8px;background:transparent;color:#ff4444;border:1px dashed #ff4444;border-radius:6px;cursor:pointer;font-family:inherit;font-size:11px;">🛠 Force Override</button>
+        </div>
       `;
     }
 
