@@ -1975,6 +1975,10 @@ function loadTournaments() {
       const postponeBtn = isActive
         ? `<button class="btn-status" onclick="window.openPostponeModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}', '${t.eventDate || ''}', '${t.transitionTime || ''}')" style="background:#f97316;color:#fff;border:none;">🗓️ Postpone</button>`
         : '';
+        
+      const extendBtn = isActive
+        ? `<button class="btn-status" onclick="window.extendTournamentTime('${d.id}')" style="background:#eab308;color:#000;border:none;">⏳ Extend Time</button>`
+        : '';
 
       const deleteBtn = (isActive && !isTournamentOver)
         ? `<button class="btn-delete" disabled title="Cannot delete: tournament is active or ongoing" style="opacity:0.35;cursor:not-allowed;" onclick="event.preventDefault();">🔒 Delete</button>`
@@ -1995,6 +1999,7 @@ function loadTournaments() {
             🎯 Manage Slots
           </button>
           ${postponeBtn}
+          ${extendBtn}
           ${completeBtn}
           ${deleteBtn}
         </div>`;
@@ -4307,5 +4312,39 @@ window.submitPostpone = async function(tournamentId) {
     } catch (err) {
         console.error("Postpone Error:", err);
         showToast("Failed to postpone: " + err.message, "error");
+    }
+};
+
+window.extendTournamentTime = async function(tournamentId) {
+    const hoursStr = prompt("How many hours do you want to extend this tournament's timer? (e.g. 5, 10)", "5");
+    if (!hoursStr) return; // User cancelled
+    
+    const hours = parseFloat(hoursStr);
+    if (isNaN(hours) || hours <= 0) {
+        showToast("Please enter a valid positive number of hours.", "error");
+        return;
+    }
+    
+    try {
+        const docRef = doc(db, "tournaments", tournamentId);
+        const snap = await getDoc(docRef);
+        if (!snap.exists()) return;
+        
+        const t = snap.data();
+        const extendMs = hours * 60 * 60 * 1000;
+        
+        const updates = {};
+        if (t.endTime) updates.endTime = t.endTime + extendMs;
+        if (t.eventDate) updates.eventDate = new Date(new Date(t.eventDate).getTime() + extendMs).toISOString();
+        if (t.transitionTime) updates.transitionTime = new Date(new Date(t.transitionTime).getTime() + extendMs).toISOString();
+        
+        if (Object.keys(updates).length > 0) {
+            await updateDoc(docRef, updates);
+            showToast(`Tournament extended by ${hours} hours! The timer will now increase dynamically.`, "success");
+        } else {
+            showToast("No valid time fields to extend on this tournament.", "error");
+        }
+    } catch(e) {
+        showToast("Error extending time: " + e.message, "error");
     }
 };
