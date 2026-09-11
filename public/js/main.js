@@ -166,6 +166,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         console.log("WebView detected. Hiding APK download buttons.");
     }
+    
+    // Set hero button text based on whether tutorial is completed
+    const heroBtn = document.getElementById("heroMainBtn");
+    if (heroBtn) {
+        if (localStorage.getItem("npc_tutorial_done")) {
+            heroBtn.textContent = "Our Socials";
+        } else {
+            heroBtn.textContent = "How to Play";
+        }
+    }
 });
 // Force the page to start at the absolute top
 window.scrollTo(0, 0);
@@ -5189,6 +5199,8 @@ function startTutorial() {
     // Define functions globally
     window.completeTutorial = function() {
         localStorage.setItem(TUTORIAL_KEY, "1");
+        const btn = document.getElementById("heroMainBtn");
+        if (btn) btn.textContent = "Our Socials";
         overlay?.remove();
         spotlight?.remove();
         scrollToSection("community");
