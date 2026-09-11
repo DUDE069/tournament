@@ -44,15 +44,21 @@ export async function initializeFCM(app) {
         messaging = getMessaging(app);
 
        // WITH THIS
+        let swReg = null;
         if ('serviceWorker' in navigator) {
-            const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js'); // FIXED: Removed module type
+            swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js'); // FIXED: Removed module type
             console.log("[FCM] Service worker registered");
         }
 
-        // ⚠️ REPLACE WITH YOUR ACTUAL VAPID KEY
+        // REPLACE WITH YOUR ACTUAL VAPID KEY
         const VAPID_KEY = "BOUPsaw7DyjJl2VZx4yci5iFrixgZkyhSslGZQkVYemYmyj4i1AOhECUf2SZAgpZsf12EfxZ76FOYz9VQkyBqeY"; 
 
-        const token = await getToken(messaging, { vapidKey: VAPID_KEY });
+        const tokenOptions = { vapidKey: VAPID_KEY };
+        if (swReg) {
+            tokenOptions.serviceWorkerRegistration = swReg;
+        }
+        
+        const token = await getToken(messaging, tokenOptions);
 
         if (token) {
             console.log("[FCM] ✅ FCM Token generated");

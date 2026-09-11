@@ -1077,7 +1077,7 @@ section {
 
     /* Leaderboard Scroll */
     .leaderboard-box { overflow-x: auto; margin: 0 15px; -webkit-overflow-scrolling: touch; }
-    .leaderboard-table { min-width: 600px; }
+    .leaderboard-table { width: 100%; font-size: 11px; }
 
     /* Join Modal */
     #registrationContainer > div[style*="grid-template-columns: 60% 40%"] {
@@ -1205,7 +1205,7 @@ section {
         -webkit-overflow-scrolling: touch; 
     }
     .leaderboard-table { 
-        min-width: 600px; 
+        width: 100%; font-size: 11px; 
     }
 
     /* Join Modal */
@@ -1780,7 +1780,11 @@ button, .dash-card, .role-card {
     padding-bottom: 10px;
   }
   .leaderboard-table {
-    min-width: 500px; /* Forces scroll instead of squishing text */
+    width: 100%; font-size: 11px;
+  }
+  .leaderboard-table th, .leaderboard-table td {
+    padding: 8px 4px !important;
+    letter-spacing: 0 !important;
   }
 
   /* 3. Tutorial / Custom Action Controls (Issue #2) */
@@ -2284,7 +2288,8 @@ button, .dash-card, .role-card {
  b o d y . n a t i v e - a p p   a [ h r e f = " / N P C - E s p o r t . a p k " ]   { 
          d i s p l a y :   n o n e   ! i m p o r t a n t ; 
  } 
-  
+ 
+ 
  
 /* Native App WebView overrides */
 body.native-app .download-section,
@@ -2292,3 +2297,11 @@ body.native-app a[href='/NPC-Esport.apk'] {
     display: none !important;
 }
 
+
+section { scroll-margin-top: 120px; }
+
+footer { scroll-margin-top: 120px; }
+
+.tournament-card, .match-card { scroll-margin-top: 120px; }
+
+@media (max-width: 600px) { .leaderboard-table th, .leaderboard-table td { padding: 8px 4px; font-size: 11px; } .leaderboard-table tr:nth-child(1) td:first-child { font-size: 13px; } .leaderboard-table tr:nth-child(2) td:first-child { font-size: 12px; } .leaderboard-table tr:nth-child(3) td:first-child { font-size: 12px; } }

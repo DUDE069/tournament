@@ -27,7 +27,6 @@ messaging.onBackgroundMessage((payload) => {
         body: body || "You have a new notification!",
         icon: icon || "/logo.png",
         badge: "/logo.png",
-        tag: "npc-notification",
         requireInteraction: true,
         data: payload.data
     };
