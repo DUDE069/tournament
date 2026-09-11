@@ -482,27 +482,48 @@ section {
     width: 100%;
     border-collapse: collapse;
     text-align: center;
+    font-family: inherit;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    background: #0f0f0f;
 }
 
 .leaderboard-table th {
-    background: var(--npc-blue);
+    background: var(--npc-blue, #3b82f6);
     color: white;
-    padding: 12px;
+    padding: 14px 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1px;
     border: 1px solid rgba(255,255,255,0.2);
+    border-bottom: 2px solid rgba(255,255,255,0.3);
 }
 
 .leaderboard-table td {
-    padding: 12px;
+    padding: 12px 10px;
     border: 1px solid rgba(255,255,255,0.15);
+    font-size: 14px;
+    vertical-align: middle;
+}
+
+.leaderboard-table tr {
+    transition: background 0.2s ease;
+}
+
+.leaderboard-table tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.leaderboard-table tr:nth-child(odd) {
+    background: rgba(0, 0, 0, 0.2);
 }
 
 .leaderboard-table tr:hover {
-    background: rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.08);
 }
 
-.leaderboard-table tr:nth-child(1) td:first-child { color: gold; font-weight: bold; }
-.leaderboard-table tr:nth-child(2) td:first-child { color: silver; font-weight: bold; }
-.leaderboard-table tr:nth-child(3) td:first-child { color: #cd7f32; font-weight: bold; }
+.leaderboard-table tr:nth-child(1) td:first-child { color: gold !important; font-weight: 900; font-size: 16px; }
+.leaderboard-table tr:nth-child(2) td:first-child { color: silver !important; font-weight: bold; font-size: 15px; }
+.leaderboard-table tr:nth-child(3) td:first-child { color: #cd7f32 !important; font-weight: bold; font-size: 15px; }
 
 /* ============================= */
 /* DISCORD & FOOTER */

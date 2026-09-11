@@ -7489,7 +7489,7 @@ window.renderLeaderboard = async function(tournamentId) {
 
         const existing = {}; lbSnap.forEach(d => { existing[d.data().rank] = d.data(); });
         let html = ""; const rankColors = { 1: "gold", 2: "silver", 3: "#cd7f32" };
-        for (let i = 1; i <= 12; i++) {
+        for (let i = 1; i <= 15; i++) {
             const d = existing[i]; const color = rankColors[i] || "#aaa";
             
             // To be accurate, nicknames require reading the team data or we can just use teamName if not available
