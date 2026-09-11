@@ -7497,7 +7497,6 @@ window.renderLeaderboard = async function(tournamentId) {
                 <td style="color:${color}; font-weight:bold; text-align:center;">#${i}</td>
                 <td style="color:${d ? "#fff" : "#555"};">${d?.teamName || "—"}</td>
                 <td style="color:#aaa; text-align:center;">${d?.teamName ? "Members" : "—"}</td>
-                <td style="color:#888; text-align:center;">${d ? mode : "—"}</td>
                 <td style="color:${color}; text-align:center;">${d?.totalKills ?? "—"}</td>
             </tr>`;
         }
@@ -7505,8 +7504,8 @@ window.renderLeaderboard = async function(tournamentId) {
         
         // Also fix the table header if possible (if using an old header id)
         const thead = container.parentElement?.querySelector("thead tr");
-        if (thead && thead.children.length === 4) {
-            thead.innerHTML = `<th>Rank</th><th>Team Name</th><th>Players</th><th>Mode</th><th>Total Kills</th>`;
+        if (thead && thead.children.length === 5) {
+            thead.innerHTML = `<th>Rank</th><th>Team Name</th><th>Players</th><th>Total Kills</th>`;
         }
     } catch (err) { container.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#ff4444;">Error.</td></tr>`; }
 };

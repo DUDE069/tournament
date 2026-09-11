@@ -2571,13 +2571,17 @@ window.manageTournamentSlots = async function(tournamentId) {
 
     try {
         // Fetch all contextual tournament sub-collections simultaneously to capture exact user form input states
-        const [tSnap, slotsSnap, participantsSnap, verificationsSnap, upcomingSnap] = await Promise.all([
+        const [tSnap, slotsSnap, participantsSnap, verificationsSnap, upcomingSnap, leaderboardSnap] = await Promise.all([
             getDoc(doc(db, "tournaments", tournamentId)),
             getDocs(collection(db, "tournaments", tournamentId, "slots")),
             getDocs(collection(db, "tournaments", tournamentId, "participants")),
             getDocs(collection(db, "tournaments", tournamentId, "verifications")),
-            getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
+            getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations")),
+            getDocs(collection(db, "tournaments", tournamentId, "leaderboard"))
         ]);
+        
+        const lbData = {};
+        leaderboardSnap.forEach(d => { lbData[d.id] = d.data(); });
 
         const tournament = tSnap.exists() ? tSnap.data() : {};
         
@@ -2842,15 +2846,19 @@ window.manageTournamentSlots = async function(tournamentId) {
             const team = confirmed[slot - 1] || null;
             if (team) {
                 hasTeamsToRank = true;
+                const existingData = lbData[team.id] || {};
+                const currentRank = existingData.rank !== undefined ? existingData.rank : '';
+                const currentKills = existingData.totalKills !== undefined ? existingData.totalKills : '';
+                
                 ranksHtml += `
                     <tr style="border-bottom:1px solid #222;" data-team-id="${team.id}" class="rank-row">
                         <td style="padding:10px; color:#888;">#${slot}</td>
                         <td style="padding:10px; color:#fff; font-weight:bold;">${escHtml(team.teamName || team.name || "Unnamed Team")}</td>
                         <td style="padding:10px;">
-                            <input type="number" class="rank-input" min="1" placeholder="e.g. 1" data-team-id="${team.id}" style="width:100%; padding:6px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px;">
+                            <input type="number" class="rank-input" min="1" placeholder="e.g. 1" value="${currentRank}" data-team-id="${team.id}" oninput="window.checkDuplicateRanks()" style="width:100%; padding:6px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px;">
                         </td>
                         <td style="padding:10px;">
-                            <input type="number" class="kills-input" min="0" placeholder="e.g. 15" data-team-id="${team.id}" style="width:100%; padding:6px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px;">
+                            <input type="number" class="kills-input" min="0" placeholder="e.g. 15" value="${currentKills}" data-team-id="${team.id}" style="width:100%; padding:6px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px;">
                         </td>
                         <td style="padding:10px; text-align:center;">
                             <button onclick="openRewardModal('${tournamentId}', '${team.teamId || team.id}', '${escHtml(team.teamName || team.name || "Unnamed Team").replace(/'/g, "\\'")}')" style="background:#00ff88;color:#000;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:bold;">💰 Reward</button>
@@ -2867,6 +2875,10 @@ window.manageTournamentSlots = async function(tournamentId) {
         ranksHtml += `</tbody></table>`;
         document.getElementById("ranks-container").innerHTML = ranksHtml;
 
+        // Initial duplicate check for pre-filled data
+        if (typeof window.checkDuplicateRanks === 'function') {
+            window.checkDuplicateRanks();
+        }
 
         const wlGrid = document.getElementById("waitlistGrid");
         if (waitlisted.length === 0) {
@@ -3964,11 +3976,69 @@ window.filterAnalyticsUserTable = function() {
 // ==========================================
 // RANKING TEAMS SAVING LOGIC
 // ==========================================
+window.checkDuplicateRanks = function() {
+    const inputs = document.querySelectorAll(".rank-input");
+    const valMap = {};
+    
+    // Reset borders
+    inputs.forEach(input => {
+        input.style.border = "1px solid #333";
+        input.style.boxShadow = "none";
+        
+        const val = input.value;
+        if (val) {
+            if (!valMap[val]) valMap[val] = [];
+            valMap[val].push(input);
+        }
+    });
+
+    // Highlight duplicates
+    Object.keys(valMap).forEach(val => {
+        if (valMap[val].length > 1) {
+            valMap[val].forEach(input => {
+                input.style.border = "2px solid #ff4444";
+                input.style.boxShadow = "0 0 8px rgba(255, 68, 68, 0.5)";
+            });
+        }
+    });
+};
+
 window.saveAllTeamRankings = async function(tournamentId) {
     if (!confirm("Save these rankings? This will update the Leaderboard and Team History.")) return;
 
     try {
         const rows = document.querySelectorAll(".rank-row");
+        const rankSet = new Set();
+        let hasDuplicates = false;
+
+        // Reset borders
+        for (let row of rows) {
+            row.querySelector(".rank-input").style.border = "1px solid #333";
+        }
+
+        // Check for duplicates
+        for (let row of rows) {
+            const rankInput = row.querySelector(".rank-input");
+            const rankVal = rankInput.value;
+            if (rankVal) {
+                if (rankSet.has(rankVal)) {
+                    hasDuplicates = true;
+                    rankInput.style.border = "2px solid #ff4444";
+                    // Also find the other one and highlight it
+                    for (let innerRow of rows) {
+                        const innerInput = innerRow.querySelector(".rank-input");
+                        if (innerInput.value === rankVal) innerInput.style.border = "2px solid #ff4444";
+                    }
+                }
+                rankSet.add(rankVal);
+            }
+        }
+
+        if (hasDuplicates) {
+            showToast("Duplicate ranks found! Please ensure all assigned ranks are unique.", "error");
+            return;
+        }
+
         const batch = writeBatch(db);
         let validUpdates = 0;
 
@@ -4015,6 +4085,14 @@ window.saveAllTeamRankings = async function(tournamentId) {
                     lastUpdateAt: serverTimestamp()
                 });
 
+                validUpdates++;
+            } else if (!rankInput && teamId) {
+                // Clear existing rank if admin removes the value
+                const lbRef = doc(db, "tournaments", tournamentId, "leaderboard", teamId);
+                batch.delete(lbRef);
+                
+                // We could also delete tournamentHistory, but we'll leave it as a design choice.
+                // Just removing from leaderboard is what the user asked.
                 validUpdates++;
             }
         }

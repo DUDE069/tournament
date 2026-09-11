@@ -534,12 +534,12 @@
     <button class="mobile-menu-toggle" onclick="toggleMobileMenu()" aria-label="Menu">☰</button>
 
     <nav style="display: flex; align-items: center; gap: 25px;">
-      <a href="#" onclick="scrollToSection('home', this)">Home</a>
-      <a href="#" onclick="scrollToSection('tournaments', this)">Tournaments</a>
-      <a href="#" onclick="scrollToSection('leaderboard', this)">Leaderboard</a>
+      <a href="javascript:void(0)" onclick="scrollToSection('home', this)">Home</a>
+      <a href="javascript:void(0)" onclick="scrollToSection('tournaments', this)">Tournaments</a>
+      <a href="javascript:void(0)" onclick="scrollToSection('leaderboard', this)">Leaderboard</a>
       <a href="#dashboard" onclick="scrollToDashboard(event)">Dashboard</a>
       <a href="javascript:void(0)" id="walletNavBtn" onclick="openWalletModal()" style="display:none; color:#00ff88;">Wallet</a>
-      <a href="#footer" onclick="scrollToSection('footer', this)">About Us</a>
+      <a href="javascript:void(0)" onclick="scrollToSection('footer', this)">About Us</a>
 
       <a href="/npc-esports.apk" download="npc-esports.apk" class="apk-download-btn" style="text-decoration: none;">
         <button style="display:flex; align-items:center; gap:8px; padding: 10px 20px; font-size: 16px; font-weight:bold; cursor: pointer; background: linear-gradient(135deg, #00ff88, #00cc6a); color: #000; border: none; border-radius: 8px; box-shadow: 0 4px 10px rgba(0, 255, 136, 0.3);">
@@ -776,26 +776,25 @@
             <th>Rank</th>
             <th>Team Name</th>
             <th>Players</th>
-            <th>Mode</th>
             <th>Total Kills</th>
           </tr>
         </thead>
         <tbody id="leaderboardContainer">
-          <tr><td style="color:gold; font-weight:bold;">#1</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:silver; font-weight:bold;">#2</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#cd7f32; font-weight:bold;">#3</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#aaa; font-weight:bold;">#4</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#aaa; font-weight:bold;">#5</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#aaa; font-weight:bold;">#6</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#aaa; font-weight:bold;">#7</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#aaa; font-weight:bold;">#8</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#aaa; font-weight:bold;">#9</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#aaa; font-weight:bold;">#10</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#aaa; font-weight:bold;">#11</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#aaa; font-weight:bold;">#12</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#aaa; font-weight:bold;">#13</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#aaa; font-weight:bold;">#14</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
-          <tr><td style="color:#aaa; font-weight:bold;">#15</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:gold; font-weight:bold;">#1</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:silver; font-weight:bold;">#2</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#cd7f32; font-weight:bold;">#3</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#aaa; font-weight:bold;">#4</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#aaa; font-weight:bold;">#5</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#aaa; font-weight:bold;">#6</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#aaa; font-weight:bold;">#7</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#aaa; font-weight:bold;">#8</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#aaa; font-weight:bold;">#9</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#aaa; font-weight:bold;">#10</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#aaa; font-weight:bold;">#11</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#aaa; font-weight:bold;">#12</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#aaa; font-weight:bold;">#13</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#aaa; font-weight:bold;">#14</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
+          <tr><td style="color:#aaa; font-weight:bold;">#15</td><td style="color:#555;">—</td><td style="color:#555;">—</td><td style="color:#555;">—</td></tr>
         </tbody>
       </table>
     </div>
