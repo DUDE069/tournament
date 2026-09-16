@@ -1422,5 +1422,56 @@
 
 <script src="./js/push-prompt.js"></script>
 
+
+<!-- ========================================== -->
+<!-- FORCE UPDATE MODAL (VERSION CONTROL)       -->
+<!-- ========================================== -->
+<style>
+.force-update-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); z-index: 999999; display: none; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
+.force-update-card { background: #111; border: 1px solid #3b82f6; border-radius: 16px; padding: 30px; max-width: 90%; width: 400px; text-align: center; box-shadow: 0 0 30px rgba(59, 130, 246, 0.3); }
+.force-update-card h2 { color: #3b82f6; margin-top: 0; margin-bottom: 15px; font-size: 24px; }
+.force-update-card p { color: #ccc; margin-bottom: 25px; font-size: 14px; line-height: 1.5; }
+.force-update-btn { display: inline-block; background: #3b82f6; color: #fff; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; font-size: 16px; transition: transform 0.2s, background 0.2s; }
+.force-update-btn:hover { background: #2563eb; transform: scale(1.05); }
+</style>
+
+<div id="forceUpdateOverlay" class="force-update-overlay">
+  <div class="force-update-card">
+    <h2>Update Required! ??</h2>
+    <p>We have released a major update (Push Notifications & Security Upgrades). The old version of the app will no longer work.</p>
+    <p style="color: #fca5a5; font-size: 12px; margin-top:-10px;">Please download the new APK. You do not need to uninstall the old one, just install the new one over it!</p>
+    <a href="/npc-esports.apk" download="npc-esports.apk" class="force-update-btn">Download Update Now</a>
+  </div>
+</div>
+
+<script>
+// ==========================================
+// APP VERSION CONTROL LOGIC
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+  const LATEST_REQUIRED_APK_VERSION = 2; // We are declaring the new APK as version 2!
+  const isWebView = /(wv|WebView|Android.*Version\/[\d.]+.*Chrome\/)/i.test(navigator.userAgent);
+
+  if (isWebView) {
+    let currentVersion = 1; // Default assume it's the old Version 1 APK
+
+    // Check if the new AndroidBridge with versioning exists
+    if (window.AndroidBridge && typeof window.AndroidBridge.getAppVersionCode === 'function') {
+      currentVersion = window.AndroidBridge.getAppVersionCode();
+    }
+
+    // If their installed APK version is lower than the required version, block the screen!
+    if (currentVersion < LATEST_REQUIRED_APK_VERSION) {
+      document.getElementById('forceUpdateOverlay').style.display = 'flex';
+      // Disable scrolling so they can't bypass it easily
+      document.body.style.overflow = 'hidden';
+    }
+  }
+});
+</script>
+<!-- ========================================== -->
+
 </body>
 </html>
+
+
