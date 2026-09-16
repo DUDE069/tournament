@@ -1378,5 +1378,49 @@
 <script type="module" src="./js/main.js?v=1000012"></script>
 
 
+
+<!-- ========================================== -->
+<!-- SOFT PROMPT UI (FROM ANDROID STUDIO AI)    -->
+<!-- ========================================== -->
+<style>
+/* Soft Prompt Container & Card */
+.soft-prompt-container { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); width: calc(100% - 32px); max-width: 420px; z-index: 9999; transition: transform 0.3s ease, opacity 0.3s ease; }
+.soft-prompt-container.hidden { display: none; opacity: 0; pointer-events: none; }
+.soft-prompt-card { position: relative; background: rgba(24, 24, 27, 0.92); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 16px; padding: 16px; color: #ffffff; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3); }
+.soft-prompt-close { position: absolute; top: 10px; right: 12px; background: transparent; border: none; color: #a1a1aa; font-size: 20px; cursor: pointer; line-height: 1; }
+.soft-prompt-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px; }
+.soft-prompt-icon { background: rgba(99, 102, 241, 0.15); color: #818cf8; padding: 10px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.soft-prompt-title { margin: 0 0 4px 0; font-size: 15px; font-weight: 600; color: #f4f4f5; }
+.soft-prompt-body { margin: 0; font-size: 13px; color: #a1a1aa; line-height: 1.4; }
+.soft-prompt-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.btn-prompt-primary { background: #6366f1; color: #ffffff; border: none; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.2s ease; }
+.btn-prompt-primary:hover { background: #4f46e5; }
+.btn-prompt-secondary { background: transparent; color: #d4d4d8; border: 1px solid rgba(255, 255, 255, 0.15); padding: 8px 14px; border-radius: 8px; font-size: 13px; cursor: pointer; }
+</style>
+
+<div id="push-soft-prompt" class="soft-prompt-container hidden">
+  <div class="soft-prompt-card">
+    <button class="soft-prompt-close" id="soft-prompt-close-btn" aria-label="Close">&times;</button>
+    <div class="soft-prompt-header">
+      <div class="soft-prompt-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+      </div>
+      <div class="soft-prompt-content">
+        <h4 class="soft-prompt-title">Never Miss a Match!</h4>
+        <p class="soft-prompt-body">Turn on notifications to receive instant match alerts, tournament results, and updates.</p>
+      </div>
+    </div>
+    <div class="soft-prompt-actions">
+      <button id="soft-prompt-later-btn" class="btn-prompt-secondary">Later</button>
+      <button id="soft-prompt-enable-btn" class="btn-prompt-primary">Enable Alerts</button>
+    </div>
+  </div>
+</div>
+
+<script src="./js/push-prompt.js"></script>
+
 </body>
 </html>
