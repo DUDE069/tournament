@@ -67,7 +67,10 @@ service cloud.firestore {
       match /upcomingRegistrations/{docId}  { allow read, write: if isOwner(userId) || isAdmin(); }
       match /confirmedRegistrations/{docId} { allow read, write: if isOwner(userId) || isAdmin(); }
       match /performanceHistory/{docId}     { allow read, write: if isOwner(userId) || isAdmin(); }
-      match /pendingPayment/{tournamentId}  { allow read, write: if isOwner(userId) || isAdmin(); }
+      match /pendingPayment/{tournamentId}  { 
+        allow read: if isOwner(userId) || isAdmin(); 
+        allow write: if isAdmin(); // Admin SDK bypasses this, clients cannot tamper
+      }
     }
 
     // ==========================================
@@ -78,7 +81,11 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin(); 
 
       match /{path=**}/participants/{docId}           { allow read, write: if isAdmin(); }
-      match /{path=**}/verifications/{docId}          { allow read, write: if isAdmin(); }
+      
+      match /verifications/{userId} { 
+        allow read: if isOwner(userId) || isAdmin(); 
+        allow write: if isAdmin(); // Admin SDK bypasses this, clients cannot tamper
+      }
       match /teamSessions/{teamId}                    { allow read: if isLoggedIn(); allow write: if isOwner(teamId) || isAdmin(); }
       match /slots/{slotId}                           { allow read: if true; allow write: if isAdmin(); }
       match /leaderboard/{rankId}                     { allow read: if true; allow write: if isAdmin(); }
