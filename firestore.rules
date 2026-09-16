@@ -66,10 +66,13 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if isAdmin(); 
 
-      // 🚨 SECURITY PATCH: Regular users can only READ tournament participants
+      // Restored: Users must be able to create participant records to join! 
+      // The rule prevents them from setting paymentStatus to 'verified'.
       match /participants/{docId} {
         allow read: if isOwner(docId) || isAdmin();
-        allow write: if isAdmin();
+        allow create: if (isOwner(docId) || (isLoggedIn() && request.resource.data.userId == request.auth.uid)) 
+                      && request.resource.data.get('paymentStatus', '') != 'verified';
+        allow update: if isAdmin() || (isOwner(docId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['confirmationReceived', 'confirmedAt']));
       }
       
       // 🚨 SECURITY PATCH: Restricted verifications to Admin SDK only
@@ -97,10 +100,18 @@ service cloud.firestore {
         allow write: if isAdmin(); 
       }
 
-      // 🚨 SECURITY PATCH: Regular users can only READ upcomingRegistrations
+      // Restored: Users must be able to create upcomingRegistrations when they click 'Join'.
+      // The rule prevents spoofing approved/verified statuses.
       match /upcomingRegistrations/{docId} {
         allow read: if isOwner(docId) || isAdmin();
-        allow write: if isAdmin();
+        allow create: if (isOwner(docId) || (isLoggedIn() && request.resource.data.userId == request.auth.uid)) 
+                      && request.resource.data.get('paymentStatus', '') != 'verified' 
+                      && request.resource.data.get('status', '') != 'approved';
+        allow update: if isAdmin() || (isOwner(docId) && 
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['paymentStatus']) &&
+          (request.resource.data.status == resource.data.status || request.resource.data.status == 'pending')
+        );
+        allow delete: if isOwner(docId) || isAdmin();
       }
 
       match /lockedRegistrations/{docId} {
