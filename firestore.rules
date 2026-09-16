@@ -12,65 +12,51 @@ service cloud.firestore {
       return isLoggedIn() && request.auth.uid == userId; 
     }
     function isAdmin() { 
-      // SECURE ADMIN CHECK: Relies on a hidden root-level collection
-      return exists(/databases/$(database)/documents/admins/$(request.auth.uid)); 
+      return isLoggedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true; 
     }
 
     // ==========================================
-    // 2. ADMINS COLLECTION
+    // 2. GLOBAL ADMIN OVERRIDES
     // ==========================================
-    match /admins/{uid} {
-      allow read, write: if false; // Only backend or Firebase Console can manage this
-    }
+    match /{path=**}/verifications/{docId}         { allow read, write: if isAdmin(); }
+    match /{path=**}/upcomingRegistrations/{docId} { allow read, write: if isAdmin(); }
+    match /{path=**}/participants/{docId}           { allow read, write: if isAdmin(); }
+    match /{path=**}/transactions/{docId}           { allow read, write: if isAdmin(); }
+    match /{path=**}/notifications/{docId}          { allow read, write: if isAdmin(); }
 
     // ==========================================
-    // 3. USERS COLLECTION (Data Splitting)
+    // 3. USERS COLLECTION
     // ==========================================
     match /users/{userId} {
-      // PUBLIC DATA: Anyone logged in can read public profiles (nickname, gameRole, teamId)
       allow read: if isLoggedIn();
       allow create: if isOwner(userId);
-      // Only allow updating specific public fields
       allow update: if isAdmin() || (isOwner(userId) && 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'gameRole', 'freeFireUid', 'teamId', 'teamName', 'teamCode', 'stats', 'role', 'isLeader', 'uid', 'createdAt']));
-      
-      // PRIVATE DATA: Highly restricted subcollection for email, age, phone, etc.
-      match /private/{docId} {
-        allow read, write: if isOwner(userId) || isAdmin();
-      }
-
-      // WALLET & TRANSACTIONS: Strict constraints for runTransaction
-      match /wallet/{walletId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow create: if isOwner(userId) || isAdmin();
-        
-        // VULNERABILITY PATCHED:
-        // Users can ONLY update the balance field, AND the new balance must be less than or equal to the old balance (deductions only).
-        // It must also never drop below 0. 
-        // Only Admins can manually increase a user's balance.
-        allow update: if isAdmin() || (
-          isOwner(userId) && 
-          request.resource.data.keys().hasOnly(['balance', 'updatedAt']) &&
-          request.resource.data.balance <= resource.data.balance &&
-          request.resource.data.balance >= 0
-        );
-      }
-      
-      match /transactions/{transId} { 
-        allow read: if isOwner(userId) || isAdmin(); 
-        allow create: if isOwner(userId) || isAdmin();
-        allow update, delete: if isAdmin(); // Users cannot modify/delete history
-      }
-      
-      // OTHER USER SUBCOLLECTIONS
-      match /notifications/{notifId}        { allow read, write: if isOwner(userId) || isAdmin(); }
-      match /upcomingRegistrations/{docId}  { allow read, write: if isOwner(userId) || isAdmin(); }
-      match /confirmedRegistrations/{docId} { allow read, write: if isOwner(userId) || isAdmin(); }
-      match /performanceHistory/{docId}     { allow read, write: if isOwner(userId) || isAdmin(); }
-      match /pendingPayment/{tournamentId}  { 
-        allow read: if isOwner(userId) || isAdmin(); 
-        allow write: if isAdmin(); // Admin SDK bypasses this, clients cannot tamper
-      }
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'wallet', 'bonusCredits']));
+    }
+    match /users/{userId}/notifications/{notifId}           { allow read, write: if isOwner(userId) || isAdmin(); }
+    
+    // 🚨 SECURITY PATCH: Restricted pendingPayment to Admin SDK only
+    match /users/{userId}/pendingPayment/{tournamentId} { 
+      allow read: if isOwner(userId) || isAdmin(); 
+      allow write: if isAdmin(); 
+    }
+    
+    match /users/{userId}/upcomingRegistrations/{docId}     { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/confirmedRegistrations/{docId}    { allow read, write: if isOwner(userId) || isAdmin(); }
+    match /users/{userId}/performanceHistory/{docId}        { allow read, write: if isOwner(userId) || isAdmin(); }
+    
+    match /users/{userId}/wallet/{walletId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        request.resource.data.keys().hasOnly(['balance', 'updatedAt', 'createdAt'])
+      );
+    }
+    match /users/{userId}/transactions/{transId} { 
+      allow read: if isOwner(userId) || isAdmin(); 
+      allow create: if isOwner(userId) || isAdmin();
+      allow update, delete: if isAdmin();
     }
 
     // ==========================================
@@ -80,18 +66,47 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if isAdmin(); 
 
-      match /{path=**}/participants/{docId}           { allow read, write: if isAdmin(); }
-      
-      match /verifications/{userId} { 
-        allow read: if isOwner(userId) || isAdmin(); 
-        allow write: if isAdmin(); // Admin SDK bypasses this, clients cannot tamper
+      // 🚨 SECURITY PATCH: Regular users can only READ tournament participants
+      match /participants/{docId} {
+        allow read: if isOwner(docId) || isAdmin();
+        allow write: if isAdmin();
       }
-      match /teamSessions/{teamId}                    { allow read: if isLoggedIn(); allow write: if isOwner(teamId) || isAdmin(); }
-      match /slots/{slotId}                           { allow read: if true; allow write: if isAdmin(); }
-      match /leaderboard/{rankId}                     { allow read: if true; allow write: if isAdmin(); }
-      match /upcomingRegistrations/{docId}            { allow read, write: if isOwner(docId) || isAdmin(); }
-      match /lockedRegistrations/{docId}              { allow read: if isOwner(docId) || isAdmin(); allow write: if isAdmin(); }
-      match /limitedNotifyList/{docId}                { allow read, write: if isOwner(docId) || isAdmin(); }
+      
+      // 🚨 SECURITY PATCH: Restricted verifications to Admin SDK only
+      match /verifications/{docId} { 
+        allow read: if isOwner(docId) || isAdmin(); 
+        allow write: if isAdmin(); 
+      }
+      
+      match /teamSessions/{teamId} { 
+        allow read: if isLoggedIn(); 
+        allow write: if isOwner(teamId) || isAdmin(); 
+      }
+      
+      match /limitedNotifyList/{docId} { 
+        allow read, write: if isOwner(docId) || isAdmin(); 
+      }
+      
+      match /slots/{slotId} {
+        allow read: if true; 
+        allow write: if isAdmin(); 
+      }
+
+      match /leaderboard/{rankId} {
+        allow read: if true; 
+        allow write: if isAdmin(); 
+      }
+
+      // 🚨 SECURITY PATCH: Regular users can only READ upcomingRegistrations
+      match /upcomingRegistrations/{docId} {
+        allow read: if isOwner(docId) || isAdmin();
+        allow write: if isAdmin();
+      }
+
+      match /lockedRegistrations/{docId} {
+        allow read: if isOwner(docId) || isAdmin();
+        allow write: if isAdmin();
+      }
     }
 
     // ==========================================
@@ -100,29 +115,79 @@ service cloud.firestore {
     match /teams/{teamId} {
       allow read, create: if isLoggedIn();
       allow delete: if isAdmin();
+      
       allow update: if isAdmin() 
         || (isLoggedIn() && resource.data.leaderId == request.auth.uid)
         || (isLoggedIn() && request.auth.uid in resource.data.members)
-        || (isLoggedIn() && request.auth.uid in request.resource.data.members && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']));
+        || (isLoggedIn() 
+            && request.auth.uid in request.resource.data.members
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']));
       
-      match /wallet/{walletId} { allow read: if isLoggedIn(); allow write: if isAdmin(); }
-      match /transactions/{txId} { allow read: if isAdmin() || (isLoggedIn() && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members); allow create: if isLoggedIn() && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members; allow update, delete: if isAdmin(); }
-      match /tournamentHistory/{docId} { allow read: if true; allow write: if isAdmin(); }
+      match /wallet/{walletId} { 
+        allow read: if isLoggedIn(); 
+        allow write: if isAdmin(); 
+      }
+      
+      match /transactions/{txId} {
+        allow read: if isAdmin() || (isLoggedIn() && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members);
+        allow write: if isAdmin();
+      }
+      
+      match /tournamentHistory/{docId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
     }
     
     // ==========================================
     // 6. SYSTEM & ADMIN DATA
     // ==========================================
-    match /withdrawal_requests/{requestId} {
+    match /refundRequests/{requestId} {
       allow create: if isLoggedIn() && request.resource.data.userId == request.auth.uid;
       allow read, update, delete: if isAdmin();
     }
-    match /adminNotifications/{notifId} { allow create: if isLoggedIn(); allow read, update, delete: if isAdmin(); }
-    match /refundRequests/{requestId} { allow create: if isLoggedIn(); allow read, update, delete: if isAdmin(); }
-    match /reports/{reportId} { allow create: if isLoggedIn(); allow read, update, delete: if isAdmin(); }
-    match /calendarEvents/{eventId} { allow read: if true; allow write: if isAdmin(); }
-    match /pushQueue/{userId}/tasks/{taskId} { allow read: if false; allow write: if isAdmin(); }
-    match /submitted_utrs/{utr} { allow read, write: if false; }
-    match /team_verification_history/{teamId} { allow read: if isLoggedIn(); allow write: if isAdmin(); }
+
+    match /adminNotifications/{notifId} { 
+      allow create: if isLoggedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isAdmin(); 
+    }
+    
+    match /reports/{reportId} { 
+      allow create: if isLoggedIn() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isAdmin(); 
+    }
+    
+    match /calendarEvents/{eventId} { 
+      allow read: if true; 
+      allow write: if isAdmin(); 
+    }
+
+    // ==========================================
+    // 7. PUSH NOTIFICATION QUEUE
+    // ==========================================
+    match /pushQueue/{userId}/tasks/{taskId} {
+      allow read: if false;
+      allow write: if isAdmin();
+    }
+
+    // ==========================================
+    // 8. PAYMENT & WALLET SYSTEM
+    // ==========================================
+    match /submitted_utrs/{utr} {
+      // Backend Admin SDK only — prevents clients from spoofing UTR duplicates
+      allow read, write: if false;
+    }
+    
+    match /team_verification_history/{teamId} {
+      allow read: if isLoggedIn();
+      allow write: if isAdmin();
+    }
+
+    match /withdrawal_requests/{requestId} {
+      allow create: if isLoggedIn() && request.resource.data.userId == request.auth.uid;
+      // Full admin access required for real-time snapshot listeners
+      allow read, update, delete: if isAdmin();
+    }
+    
   }
 }
