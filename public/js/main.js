@@ -1007,34 +1007,27 @@ document.addEventListener("DOMContentLoaded", function() {
             // Determine if this is a brand new application or an edit of a rejected one
             const isEditing = window.originalApplicationData !== undefined && window.originalApplicationData !== null;
 
-            // ✅ FIX: Check for double registrations by the same team before creating a new one
-            // NOTE: Commented out because global queries across these collections trigger
-            // Firestore "Insufficient Permission" errors. Double-registration must be handled securely server-side.
-            /*
+            // ✅ FIX: Check for double registrations by the same team securely via backend
             if (!isEditing && teamIdToCheck) {
-                // Check upcomingRegistrations
-                const upQuery = query(collection(db, "tournaments", tournamentId, "upcomingRegistrations"), where("teamId", "==", teamIdToCheck));
-                const upSnap = await getDocs(upQuery);
-                if (!upSnap.empty) {
-                    showMessage("❌ Your team has already submitted a registration for this tournament.");
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = isUpcoming ? "Register Now" : "Send Details";
-                    if (processing) processing.style.display = "none";
-                    return;
-                }
-                
-                // Check verifications
-                const vQuery = query(collection(db, "tournaments", tournamentId, "verifications"), where("teamId", "==", teamIdToCheck));
-                const vSnap = await getDocs(vQuery);
-                if (!vSnap.empty) {
-                    showMessage("❌ Your team is already in the verification stage for this tournament.");
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = isUpcoming ? "Register Now" : "Send Details";
-                    if (processing) processing.style.display = "none";
-                    return;
+                try {
+                    const checkResp = await fetch('https://npc-secure-backend.onrender.com/check-duplicate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tournamentId, uids })
+                    });
+                    const checkResult = await checkResp.json();
+                    if (checkResult.isDuplicate) {
+                        showMessage("❌ " + checkResult.message);
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = isUpcoming ? "Register Now" : "Send Details";
+                        if (processing) processing.style.display = "none";
+                        document.getElementById('submitWaitOverlay')?.remove();
+                        return;
+                    }
+                } catch(e) {
+                    console.warn('Backend duplicate check failed, proceeding...', e);
                 }
             }
-            */
 
             if (isUpcoming) {
                 // ========================================
@@ -4892,16 +4885,33 @@ if (submitBtn) {
                     laterBtn.textContent = "⏰ Pay Later — Remind Me";
                     laterBtn.style.cssText = "margin-top:10px; width:100%; padding:12px; background:#1a1a1a; color:#9ca3af; border:1px solid #374151; border-radius:8px; cursor:pointer; font-size:13px;";
                     laterBtn.onclick = async () => {
-                        document.getElementById('customPopup').remove();
-                        await addDoc(collection(db, "users", userId, "notifications"), {
-                            type: "pay_later_reminder",
-                            title: "💳 Complete Your Payment",
-                            message: `Your slot for this tournament is confirmed! Pay your entry fee before the match starts to keep it secured. If unpaid, your slot will be reassigned to other players.`,
-                            tournamentId: tournamentId,
-                            read: false,
-                            createdAt: serverTimestamp()
-                        });
-                        showMessage("Reminder saved to your notifications!");
+                        laterBtn.textContent = "Processing...";
+                        laterBtn.disabled = true;
+                        try {
+                            const res = await fetch('https://npc-secure-backend.onrender.com/pay-later', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ tournamentId, userId: currentUser.uid, teamId: userProfile.teamId })
+                            });
+                            const data = await res.json();
+                            document.getElementById('customPopup').remove();
+                            
+                            // Send in-app notification
+                            await addDoc(collection(db, "users", userId, "notifications"), {
+                                type: "pay_later_reminder",
+                                title: "💳 Pay Later Activated",
+                                message: `Your provisional slot is secured! You must pay before the deadline or your slot will be revoked.`,
+                                tournamentId: tournamentId,
+                                read: false,
+                                createdAt: serverTimestamp()
+                            });
+                            showMessage("Pay Later activated! Remember to pay before the deadline.");
+                        } catch (e) {
+                            console.error(e);
+                            showMessage("Error activating pay later");
+                            laterBtn.textContent = "⏰ Pay Later — Remind Me";
+                            laterBtn.disabled = false;
+                        }
                     };
                     popupBody.appendChild(laterBtn);
                 }
