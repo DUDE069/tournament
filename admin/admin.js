@@ -3307,8 +3307,12 @@ window.openAdminReviewModal = async function(tournamentId, userId, dataString, s
                         <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.phone}</div>
                     </div>
                     <div style="margin-bottom:20px;">
-                        <label style="color:#666;font-size:12px;">Backup Gmail ✉️</label>
+                        <label style="color:#666;font-size:12px;">Backup Gmail 📩</label>
                         <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.backupEmail || '—'}</div>
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <label style="color:#666;font-size:12px;">Payout UPI ID 💳</label>
+                        <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.payoutUpiId || '—'}</div>
                     </div>
                     <div style="margin-bottom:10px;">
                         <label style="color:#666;font-size:12px;">Squad Members</label>

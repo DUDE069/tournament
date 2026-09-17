@@ -1180,7 +1180,7 @@ document.addEventListener("DOMContentLoaded", function() {
                 "success", 
                 `Successfully registered for "${tournament.title}"!\n\nYour application has been sent for verification. Please wait for our notification in your inbox before proceeding with payment.`, 
                 "Awesome!", 
-                () => {}
+                () => { document.getElementById('customPopup')?.remove(); }
             );
 
             // Reset button
@@ -4826,7 +4826,7 @@ if (guidelinesLabel) {
         : `I have read and agree to the <a href="#" onclick="showGuidelines()" style="color:#ffd700;text-decoration:underline;">Payment Guidelines (Strictly Non-Refundable)</a>.`;
 }
 
-// Modify the submit button based on Upcoming vs Ongoing
+// // Modify the submit button based on Upcoming vs Ongoing
 const submitBtn = document.getElementById("joinSubmitBtn");
 if (submitBtn) {
     if (isPaid) {
@@ -4836,8 +4836,22 @@ if (submitBtn) {
             document.getElementById('joinTournamentModal').style.display = 'none';
             showPaymentInterface(tournamentId); // This will render the success screen directly
         };
+    } else if (regData.status === 'pending') {
+        submitBtn.textContent = "Verifying...";
+        submitBtn.disabled = true;
+        submitBtn.onclick = (e) => e.preventDefault();
+        
+        // Hide guidelines container since they can't pay yet
+        const gCont = document.getElementById("guidelinesContainer");
+        if(gCont) gCont.style.display = "none";
     } else {
         submitBtn.textContent = "Proceed to Payment →";
+        submitBtn.disabled = false;
+        
+        // Show guidelines container
+        const gCont = document.getElementById("guidelinesContainer");
+        if(gCont) gCont.style.display = "block";
+        
         submitBtn.onclick = async function(e) {
             e.preventDefault();
             if (!agreeCheckbox || !agreeCheckbox.checked) {
@@ -4928,15 +4942,26 @@ if (submitBtn) {
         if (form) {
             const notice = document.createElement("div");
             notice.id = "reviewNotice";
-            notice.innerHTML = `
-                <div style="background:#1a2a1a; border:1px solid #00ff88; border-radius:8px; padding:15px; margin-bottom:20px;">
-                    <h4 style="color:#00ff88; margin:0 0 8px 0;">✅ Team Verified</h4>
-                    <p style="color:#aaa; margin:0; font-size:13px; line-height:1.5;">
-                        Your team details have been verified by admin. Please review your information below. 
-                        Once you proceed to payment, these details cannot be changed.
-                    </p>
-                </div>
-            `;
+            if (regData.status === 'pending') {
+                notice.innerHTML = `
+                    <div style="background:#2a2a00; border:1px solid #ffd700; border-radius:8px; padding:15px; margin-bottom:20px;">
+                        <h4 style="color:#ffd700; margin:0 0 8px 0;">⏳ Application Under Review</h4>
+                        <p style="color:#aaa; margin:0; font-size:13px; line-height:1.5;">
+                            Your team details are currently being reviewed by admin. Please wait for verification before proceeding to payment.
+                        </p>
+                    </div>
+                `;
+            } else {
+                notice.innerHTML = `
+                    <div style="background:#1a2a1a; border:1px solid #00ff88; border-radius:8px; padding:15px; margin-bottom:20px;">
+                        <h4 style="color:#00ff88; margin:0 0 8px 0;">✅ Team Verified</h4>
+                        <p style="color:#aaa; margin:0; font-size:13px; line-height:1.5;">
+                            Your team details have been verified by admin. Please review your information below. 
+                            Once you proceed to payment, these details cannot be changed.
+                        </p>
+                    </div>
+                `;
+            }
             form.insertBefore(notice, form.firstChild);
         }
         
