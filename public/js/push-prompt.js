@@ -77,6 +77,10 @@
 // TOKEN SYNC TO FIREBASE
 // ==========================================
 
+import { auth, db } from './firebase.js';
+import { doc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
 // Global Callback Invoked by Native Android Bridge
 window.onFcmTokenReceived = function (fcmToken) {
   console.log('[NativeBridge] Received FCM Registration Token:', fcmToken);
@@ -92,19 +96,16 @@ async function saveTokenToFirestore(fcmToken) {
   if (!fcmToken) return;
 
   // Check if user is authenticated
-  const user = firebase.auth().currentUser;
+  const user = auth.currentUser;
 
   if (user) {
     const userId = user.uid;
     try {
-      await firebase.firestore().collection('users').doc(userId).set(
-        {
-          fcmToken: fcmToken,
-          fcmTokenUpdatedAt: firebase.firestore.FieldValue.serverTimestamp(),
-          devicePlatform: 'Android'
-        },
-        { merge: true }
-      );
+      await setDoc(doc(db, 'users', userId), {
+        fcmToken: fcmToken,
+        fcmTokenUpdatedAt: serverTimestamp(),
+        devicePlatform: 'Android'
+      }, { merge: true });
       console.log('✅ FCM Token successfully stored in Firestore for user:', userId);
     } catch (error) {
       console.error('❌ Error saving FCM Token to Firestore:', error);
@@ -117,7 +118,7 @@ async function saveTokenToFirestore(fcmToken) {
 }
 
 // Auto-sync cached token when Firebase Auth state changes (after user logs in)
-firebase.auth().onAuthStateChanged((user) => {
+onAuthStateChanged(auth, (user) => {
   if (user) {
     const cachedToken = localStorage.getItem('cached_fcm_token');
     if (cachedToken) {
