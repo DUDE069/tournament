@@ -6810,14 +6810,15 @@ window.editRejectedApplication = async function(tournamentId) {
     // ✅ FIX: Fetch tournament details to populate the entry fee and title
     const tournament = tournaments.find(t => t.id === tournamentId);
     if (tournament) {
-        document.getElementById("joinTournamentTitle").textContent = tournament.title;
-        document.getElementById("joinPrizeFirst").textContent = tournament.prize?.first || 0;
-        document.getElementById("prizeFirst").textContent = tournament.prize?.first || 0;
-        document.getElementById("prizeSecond").textContent = tournament.prize?.second || 0;
-        document.getElementById("prizeThird").textContent = tournament.prize?.third || 0;
-        document.getElementById("joinEntryFeeDisplay").textContent = tournament.entryFee || 0;
+        const _jtt = document.getElementById("joinTournamentTitle"); if (_jtt) _jtt.textContent = tournament.title;
+        const _jpf = document.getElementById("joinPrizeFirst"); if (_jpf) _jpf.textContent = tournament.prize?.first || 0;
+        const _pf = document.getElementById("prizeFirst"); if (_pf) _pf.textContent = tournament.prize?.first || 0;
+        const _ps = document.getElementById("prizeSecond"); if (_ps) _ps.textContent = tournament.prize?.second || 0;
+        const _pt = document.getElementById("prizeThird"); if (_pt) _pt.textContent = tournament.prize?.third || 0;
+        const _jef = document.getElementById("joinEntryFeeDisplay"); if (_jef) _jef.textContent = tournament.entryFee || 0;
+        const _jef2 = document.getElementById("joinEntryFeeDisplay2"); if (_jef2) _jef2.textContent = tournament.entryFee || 0;
         const _pa = document.getElementById("paymentAmount"); if (_pa) _pa.textContent = tournament.entryFee || 0;
-        document.getElementById("walletBalance").textContent = userWallet?.balance || 0;
+        const _wb = document.getElementById("walletBalance"); if (_wb) _wb.textContent = userWallet?.balance || 0;
     }
 
     // Open Modal
