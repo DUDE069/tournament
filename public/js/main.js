@@ -1178,7 +1178,7 @@ document.addEventListener("DOMContentLoaded", function() {
             
             showPopup(
                 "success", 
-                `Successfully registered for "${tournament.title}"!\n\nYour application has been sent for verification. Please wait for our notification in your inbox before proceeding with payment.`, 
+                `Successfully registered for "${tournament.title}"!\n\nYour application has been sent for verification. Please wait for our notification in your inbox before proceeding with payment.\n\nNote: You can cancel your application at any time from the "Upcoming Tournaments" tab in your Dashboard.`, 
                 "Awesome!", 
                 () => { document.getElementById('customPopup')?.remove(); }
             );
@@ -8048,6 +8048,17 @@ window.cancelRegistrationUserSide = async function(tournamentId) {
         
         // Remove from tournament's upcoming registrations
         batch.delete(doc(db, "tournaments", tournamentId, "upcomingRegistrations", uid));
+        
+        // Also remove from verifications if it's there
+        batch.delete(doc(db, "tournaments", tournamentId, "verifications", uid));
+        
+        // Also remove from participants if they somehow made it that far
+        batch.delete(doc(db, "tournaments", tournamentId, "participants", uid));
+        
+        // Also remove from slots if it was assigned
+        if (userProfile && userProfile.teamId) {
+            batch.delete(doc(db, "tournaments", tournamentId, "slots", userProfile.teamId));
+        }
         
         await batch.commit();
         showMessage("Registration cancelled successfully.");
