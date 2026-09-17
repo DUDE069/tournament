@@ -30,7 +30,7 @@
     // 3. Handle 'Enable' button
     if (enableBtn) {
       enableBtn.addEventListener('click', () => {
-        hidePromptBanner();
+        dismissPromptForLater(); // Hide and suppress for 24h just in case
         // Trigger native permission request bridge
         window.AndroidBridge.requestNativePushPermission();
       });
@@ -46,6 +46,9 @@
   }
 
   function shouldShowPrompt() {
+    if (localStorage.getItem('push_perm_granted_native') === 'true') {
+        return false;
+    }
     const dismissedUntil = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (!dismissedUntil) return true;
     return Date.now() > parseInt(dismissedUntil, 10);
@@ -84,12 +87,18 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/fi
 // Global Callback Invoked by Native Android Bridge
 window.onFcmTokenReceived = function (fcmToken) {
   console.log('[NativeBridge] Received FCM Registration Token:', fcmToken);
+  localStorage.setItem('push_perm_granted_native', 'true');
+  const promptElement = document.getElementById('push-soft-prompt');
+  if (promptElement) promptElement.classList.add('hidden');
   saveTokenToFirestore(fcmToken);
 };
 
 // Global Callback Invoked for Permission Results
 window.onNativePermissionResult = function (granted, reason) {
   console.log('[NativeBridge] Notification Permission Status:', granted, reason);
+  if (granted === true || granted === 'true') {
+    localStorage.setItem('push_perm_granted_native', 'true');
+  }
 };
 
 async function saveTokenToFirestore(fcmToken) {

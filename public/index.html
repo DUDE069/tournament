@@ -1304,6 +1304,7 @@
      * Only shows if browser supports Notification API.
      */
     window.showPushPermBanner = function() {
+      if (window.AndroidBridge) return;                    // handled by native push-prompt.js
       if (!('Notification' in window)) return;             // browser doesn't support push
       if (localStorage.getItem('pushPermDecided')) return; // already decided
       if (Notification.permission === 'granted') return;   // already granted
