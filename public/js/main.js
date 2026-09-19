@@ -1796,6 +1796,24 @@ if (isNativeApp) {
 
 // Google Sign-In Function
 window.googleSignIn = async function() {
+    // Check whichever consent checkbox is currently visible
+    const loginConsent = document.getElementById("loginConsentCheckbox");
+    const signupConsent = document.getElementById("signupConsentCheckbox");
+    const loginView = document.getElementById("loginView");
+    const createView = document.getElementById("createView");
+    
+    if (loginView && loginView.style.display !== "none") {
+        if (loginConsent && !loginConsent.checked) {
+            showMessage("You must agree to the DPDP Act Privacy Terms before proceeding.");
+            return;
+        }
+    } else if (createView && createView.style.display !== "none") {
+        if (signupConsent && !signupConsent.checked) {
+            showMessage("You must agree to the DPDP Act Privacy Terms before proceeding.");
+            return;
+        }
+    }
+
     try {
         const provider = new GoogleAuthProvider();
         provider.setCustomParameters({ prompt: 'select_account' });
@@ -1989,6 +2007,12 @@ onAuthStateChanged(auth, async (user) => {
         AppLog.success("[FIREBASE] All firebase rules are active. Profile data loaded.");
         sessionStorage.removeItem("npc_fresh_registration");
         isLoggedIn = true;
+        
+        if (userProfile && !userProfile.dpdpConsented) {
+            if (window.openDpdpModal) {
+                window.openDpdpModal(false);
+            }
+        }
 
         // Load wallet and private listeners
         await loadUserWallet();
@@ -3395,6 +3419,12 @@ function backToLogin() {
 async function login() {
     const email = document.getElementById("loginEmail")?.value;
     const pass  = document.getElementById("loginPassword")?.value;
+    const consent = document.getElementById("loginConsentCheckbox");
+
+    if (consent && !consent.checked) {
+        showMessage("You must agree to the DPDP Act Privacy Terms before logging in.");
+        return;
+    }
 
     if (!email || !pass) { showMessage("Enter email and password"); return; }
 
@@ -6143,6 +6173,12 @@ let resendCooldown = 0;
 // 1. SEND SIGNUP OTP (Creates Auth User & Sends Email)
 // ==========================================
 window.sendSignupOTP = async function() {
+    const consent = document.getElementById("signupConsentCheckbox");
+    if (consent && !consent.checked) {
+        showMessage("You must agree to the DPDP Act Privacy Terms before creating an account.");
+        return;
+    }
+
     const age = parseInt(document.getElementById("regAge").value);
     const nickname = document.getElementById("regNickname") ? document.getElementById("regNickname").value.trim() : "";
     const freeFireUid = document.getElementById("regUID") ? document.getElementById("regUID").value.trim() : "";
