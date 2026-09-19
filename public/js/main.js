@@ -1408,13 +1408,8 @@ window.openPaymentInterface = async function(tournamentId) {
                             <div style="background:#f0f0f0;padding:20px;border-radius:8px;">
                                 <div style="width:200px;height:200px;margin:0 auto;background:#fff;
                                     display:flex;align-items:center;justify-content:center;
-                                    border:2px dashed #ccc; border-radius: 8px;">
-                                    <div style="text-align:center;">
-                                        <div style="font-size:60px;margin-bottom:10px;">📱</div>
-                                        <div style="font-size:14px;color:#333;font-weight:bold;">
-                                            Scan QR Code
-                                        </div>
-                                    </div>
+                                    border:2px solid #ccc; border-radius: 8px; overflow:hidden;">
+                                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent('upi://pay?pa=npc-esports@upi&pn=NPC%20Esports&am=' + (regData.entryFee || 0) + '&cu=INR')}" alt="UPI QR Code" style="width:100%;height:100%;object-fit:cover;">
                                 </div>
                             </div>
                             <p style="color:#333;margin:15px 0 5px;font-weight:900;font-size:24px;">
