@@ -664,11 +664,13 @@ function applicationCard(d, type) {
 
   let actions = "";
   if (type === "new") {
+    console.error("🛑 RAW FIRESTORE DOC (Ongoing applicationCard):", d);
     const appData = {
       teamName: d.teamName || "—",
       leaderEmail: d.leaderEmail || "—",
       phone: d.phone || "—",
       backupEmail: d.backupEmail || "—",   // ✅ FIX: Include backup Gmail
+      payoutUpiId: d.payoutUpiId || d.upiId || "—",
       uids: d.uids || [],
       playersData: d.playersData || d.uids?.map((uid, i) => ({
         uid: uid,
@@ -1455,11 +1457,13 @@ function upcomingCard(d, type) {
 
   let actions = "";
   if (type === "new") {
+    console.error("🛑 RAW FIRESTORE DOC (Upcoming upcomingCard):", d);
     const appData = {
       teamName: d.teamName || "—",
       leaderEmail: d.leaderEmail || "—",
       phone: d.phone || "—",
       backupEmail: d.backupEmail || "—",   // ✅ FIX: Include backup Gmail
+      payoutUpiId: d.payoutUpiId || d.upiId || "—",
       uids: d.uids || [],
       playersData: d.playersData || d.uids?.map((uid, i) => ({
         uid: uid,
@@ -3250,6 +3254,7 @@ window.filterSlots = function() {
 
 window.openAdminReviewModal = async function(tournamentId, userId, dataString, stage = 'ongoing') {
     const app = JSON.parse(decodeURIComponent(dataString));
+    console.error("🛑 APP DATA RECEIVED IN MODAL:", app);
     document.getElementById("reviewAppModal")?.remove();
 
     // ✅ FIX: Fetch the actual Tournament Title
