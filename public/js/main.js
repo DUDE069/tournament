@@ -1314,6 +1314,16 @@ window.openPaymentInterface = async function(tournamentId) {
     const existing = document.getElementById("paymentInterface");
     if (existing) existing.remove();
 
+    window._currentPaymentTournamentId = tournamentId;
+    
+    // Track that the user is currently looking at the payment screen
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId, "verifications", currentUser.uid), { paymentStatus: "processing payment" });
+    } catch(e) {}
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid), { paymentStatus: "processing payment" });
+    } catch(e) {}
+
     // Added a smooth fade-in animation to the modal
     document.body.insertAdjacentHTML('beforeend', `
         <style>
@@ -1493,11 +1503,22 @@ window.openPaymentInterface = async function(tournamentId) {
     );
 }; // <--- THIS BRACKET CLOSES openPaymentInterface CORRECTLY NOW
 
-window.closePaymentInterface = function() {
+window.closePaymentInterface = async function() {
     const modal = document.getElementById("paymentInterface");
     if (modal) {
         modal.remove();
         document.body.style.overflow = "auto";
+        
+        // Degrade status to "needs to pay" in the database if user cancels
+        const tournamentId = window._currentPaymentTournamentId;
+        if (tournamentId) {
+            try {
+                await updateDoc(doc(db, "tournaments", tournamentId, "verifications", currentUser.uid), { paymentStatus: "needs to pay" });
+            } catch(e) {}
+            try {
+                await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid), { paymentStatus: "needs to pay" });
+            } catch(e) {}
+        }
     }
     clearInterval(paymentTimerInterval);
     

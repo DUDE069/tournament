@@ -868,6 +868,10 @@ window.viewStatusModal = async function(tournamentId, userId) {
           <span class="s-value">${escHtml(pData.leaderEmail ?? "—")}</span>
         </div>
         <div class="status-row">
+          <span class="s-label">Live Payment Status</span>
+          <span class="s-value" style="font-weight:bold; color:${currentPaymentStatus === 'processing payment' ? 'var(--orange)' : currentPaymentStatus === 'needs to pay' ? 'var(--red)' : 'var(--green)'}; text-transform:uppercase;">${escHtml(currentPaymentStatus || "PENDING")}</span>
+        </div>
+        <div class="status-row">
           <span class="s-label">Approved At</span>
           <span class="s-value">${processedAt}</span>
         </div>
@@ -3558,14 +3562,22 @@ window.openPayoutModal = async function(tournamentId, teamId, userId) {
                 </div>
             </div>
 
+            <div style="margin-bottom:15px;">
+                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:8px;">Transaction Type *</label>
+                <select id="payoutTypeSelect" style="width:100%; padding:12px; background:#000; border:1px solid #444; color:#fff; border-radius:8px; font-size:14px; margin-bottom:10px;">
+                    <option value="prize">🏆 Prize Winnings (Congratulations)</option>
+                    <option value="refund">↩️ Entry Fee Refund (Apology)</option>
+                </select>
+            </div>
+
             <div style="margin-bottom:20px;">
-                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:8px;">Enter Refund UTR / Transaction ID *</label>
+                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:8px;">Enter UTR / Transaction ID *</label>
                 <input type="text" id="payoutUtrInput" placeholder="e.g. 123456789012" style="width:100%; padding:12px; background:#000; border:1px solid #444; color:#fff; border-radius:8px; font-size:14px; font-family:monospace;">
             </div>
 
             <button onclick="processPayout('${tournamentId}', '${uid}', '${escHtml(teamName.replace(/'/g, "\\'"))}')" 
                 style="width:100%; padding:14px; background:var(--blue); color:#fff; border:none; border-radius:8px; font-weight:bold; font-size:15px; cursor:pointer;">
-                Send Payout Notification
+                Send Notification
             </button>
         </div>
     `;
@@ -3574,42 +3586,56 @@ window.openPayoutModal = async function(tournamentId, teamId, userId) {
 
 window.processPayout = async function(tournamentId, uid, teamName) {
     const utr = document.getElementById("payoutUtrInput")?.value.trim();
+    const type = document.getElementById("payoutTypeSelect")?.value || "refund";
+
     if (!utr) {
         showToast("Please enter the UTR / Transaction ID.", "warning");
         return;
     }
     
-    if (!confirm(`Are you sure you want to send this payout notification to ${teamName} with UTR: ${utr}?`)) return;
+    if (!confirm(`Are you sure you want to send this ${type} notification to ${teamName} with UTR: ${utr}?`)) return;
 
     try {
-        const message = `Sorry for your inconvenience. Here we have sended your entry fee to your registered UPI ID. Please check and verify. This is the UTR: ${utr}`;
+        let message = "";
+        let title = "";
+        let finalStatus = "";
+
+        if (type === "prize") {
+            title = "🏆 Prize Winnings Sent!";
+            message = `Congratulations! Your tournament prize winnings have been transferred to your registered UPI ID. Please check your bank. UTR: ${utr}`;
+            finalStatus = "Paid Out";
+        } else {
+            title = "💸 Tournament Refund";
+            message = `Sorry for the inconvenience. We have refunded your entry fee to your registered UPI ID. Please check and verify. UTR: ${utr}`;
+            finalStatus = "Refunded";
+        }
         
         // Notify the team
         await sendDualNotification(uid, {
             type:       "admin_notice",
-            title:      "💸 Tournament Refund / Payout",
+            title:      title,
             message:    message,
             actionLink: `tournament=${tournamentId}`
         });
 
-        // Optionally, we could update their payment status to 'Refunded'
+        // Update their payment status 
         try {
             const participantRef = doc(db, "tournaments", tournamentId, "participants", uid);
-            await updateDoc(participantRef, { paymentStatus: "Refunded" });
+            await updateDoc(participantRef, { paymentStatus: finalStatus });
         } catch(e) {} // Ignore if document doesn't exist
         
         try {
             const slotRef = doc(db, "tournaments", tournamentId, "slots", uid);
-            await updateDoc(slotRef, { paymentStatus: "Refunded" });
+            await updateDoc(slotRef, { paymentStatus: finalStatus });
         } catch(e) {}
 
-        showToast("Payout notification sent successfully!", "success");
+        showToast("Notification sent successfully!", "success");
         document.getElementById("payoutModalOverlay")?.remove();
         manageTournamentSlots(tournamentId); // Refresh
 
     } catch (e) {
         console.error(e);
-        showToast("Error sending payout notification.", "error");
+        showToast("Error sending notification.", "error");
     }
 };
 
