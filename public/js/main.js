@@ -1419,7 +1419,7 @@ window.openPaymentInterface = async function(tournamentId) {
                                 <div style="width:200px;height:200px;margin:0 auto;background:#fff;
                                     display:flex;align-items:center;justify-content:center;
                                     border:2px solid #ccc; border-radius: 8px; overflow:hidden;">
-                                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent('upi://pay?pa=npc-esports@upi&pn=NPC%20Esports&am=' + (regData.entryFee || 0) + '&cu=INR')}" alt="UPI QR Code" style="width:100%;height:100%;object-fit:cover;">
+                                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent('upi://pay?pa=riaz-1@ptyes&pn=NPC%20Esports&am=' + (regData.entryFee || 0) + '&cu=INR')}" alt="UPI QR Code" style="width:100%;height:100%;object-fit:cover;">
                                 </div>
                             </div>
                             <p style="color:#333;margin:15px 0 5px;font-weight:900;font-size:24px;">
@@ -1427,7 +1427,7 @@ window.openPaymentInterface = async function(tournamentId) {
                             </p>
                             <p style="color:#666;margin:0;font-size:13px; text-transform: uppercase; font-weight:bold;">NPC Esports</p>
                             <p style="color:#333;margin:5px 0 0;font-family:monospace;font-size:14px; background:#f5f5f5; padding:5px; border-radius:4px; display:inline-block;">
-                                npc-esports@upi
+                                riaz-1@ptyes
                             </p>
                         </div>
 
