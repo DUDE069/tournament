@@ -8334,3 +8334,40 @@ window.kickTeamMember = async function(uidToKick) {
         btn.disabled = false;
     }
 };
+
+window.handleDpdpConsentSubmission = async function() {
+    if (!currentUser) return;
+    
+    // We get the actual domain or use a relative path if the frontend is served from the same domain
+    // Assuming backend is at https://backend-domain or we use window.location.origin if it's the same
+    // Let's use the Render URL or relative if it's proxied, wait the prompt just says the backend API routes.
+    // I will use an absolute URL or relative URL based on how other endpoints are called. Wait, I'll use `/api/consent/record` assuming it's deployed together or has CORS. Actually, the backend is likely on a different port or domain. Let's see if there are other fetch calls.
+    const backendUrl = window.NPC_BACKEND_URL || 'https://npc-secure-backend.onrender.com';
+    
+    try {
+        const response = await fetch(backendUrl + '/api/consent/record', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: currentUser.uid,
+                policy_version: "1.0"
+            })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            if (userProfile) {
+                userProfile.dpdpConsented = true;
+            }
+            if (typeof showMessage === 'function') {
+                showMessage("Consent successfully recorded.", "success");
+            }
+        } else {
+            console.error("Failed to record consent:", data.message);
+            if (typeof showMessage === 'function') showMessage("Failed to record consent. Please try again.", "error");
+        }
+    } catch (e) {
+        console.error("Network error during consent submission:", e);
+        if (typeof showMessage === 'function') showMessage("Network error. Please try again.", "error");
+    }
+};

@@ -864,6 +864,12 @@
           <input id="loginPassword" type="password" placeholder="Password" style="width: 100%; padding-right: 40px; box-sizing: border-box;">
           <span onclick="togglePasswordVisibility('loginPassword', this)" style="position: absolute; right: 12px; top: 12px; cursor: pointer; font-size: 16px; user-select: none; z-index: 10;">👁️</span>
         </div>
+        <div style="margin: 15px 0; text-align: left; font-size: 12px; color: #aaa; background: #111; padding: 10px; border-radius: 6px; border: 1px solid #333;">
+          <label style="display: flex; gap: 8px; cursor: pointer; align-items: flex-start;">
+            <input type="checkbox" id="loginConsentCheckbox" style="margin-top: 2px; width: auto; accent-color: #00ff88;">
+            <span>I am concerned with and affirmatively consent to my details being processed as per the DPDP Act. <a href="javascript:void(0)" onclick="openDpdpModal(true)" style="color: #00ff88; text-decoration: underline;">I have read the Full Privacy Terms.</a></span>
+          </label>
+        </div>
         <button onclick="login()">Login</button>
         <div style="text-align: right; margin-top: 8px;">
           <span onclick="forgotPasswordFlow()" style="color: var(--blue); font-size: 13px; cursor: pointer;">Forgot Password?</span>
@@ -899,6 +905,13 @@
             <option value="Fragger">💥 Bomber</option>
             <option value="All-Rounder">🌟 All-Rounder</option>
           </select>
+          
+          <div style="margin: 15px 0; text-align: left; font-size: 12px; color: #aaa; background: #111; padding: 10px; border-radius: 6px; border: 1px solid #333;">
+            <label style="display: flex; gap: 8px; cursor: pointer; align-items: flex-start;">
+              <input type="checkbox" id="signupConsentCheckbox" style="margin-top: 2px; width: auto; accent-color: #00ff88;">
+              <span>I am concerned with and affirmatively consent to my details being processed as per the DPDP Act. <a href="javascript:void(0)" onclick="openDpdpModal(true)" style="color: #00ff88; text-decoration: underline;">I have read the Full Privacy Terms.</a></span>
+            </label>
+          </div>
           
           <button onclick="sendSignupOTP()" id="btnSendOTP" style="background:#00ff88;color:#000;">Continue with Email</button>
           
@@ -1271,6 +1284,45 @@
   </div>
   <!-- ══ END JOIN TOURNAMENT MODAL ══════════════════════════ -->
 
+  <!-- ══ DPDP CONSENT MODAL ════════════════════════════════════ -->
+  <div id="dpdpConsentModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.95); z-index:99999; align-items:center; justify-content:center; padding:20px; text-align:left;">
+    <div style="background:#111; border:1px solid #333; border-radius:12px; max-width:600px; width:100%; max-height:85vh; display:flex; flex-direction:column; overflow:hidden; box-shadow: 0 10px 40px rgba(0,0,0,0.8);">
+      <div style="padding:20px; border-bottom:1px solid #222; background:#0a0a0a; display:flex; justify-content:space-between; align-items:center;">
+        <h2 style="color:#00ff88; margin:0; font-size:18px;">Data Privacy, Consent, and Liability Terms</h2>
+        <button id="closeDpdpModalBtn" onclick="closeDpdpModal()" style="display:none; background:none; border:none; color:#666; font-size:24px; cursor:pointer;">&times;</button>
+      </div>
+      
+      <div style="padding:20px; overflow-y:auto; color:#ccc; font-size:13px; line-height:1.6; flex:1;">
+        <p>By proceeding, you (the Data Principal) grant explicit, affirmative consent to NPC's Tournaments (the Data Fiduciary) to collect, process, and store your personal information (including but not limited to username, email, game IDs, and transactional data) strictly for operating skill-based tournaments, verifying identity, ensuring fair play, and processing payouts.</p>
+        
+        <h3 style="color:#fff; font-size:14px; margin-top:15px;">1. Data Usage & Protection:</h3>
+        <p>Your data is encrypted and strictly confined to our secured databases. We do not sell your personal data to third parties. Data processing occurs only to the extent necessary to provide you with tournament services.</p>
+        
+        <h3 style="color:#fff; font-size:14px; margin-top:15px;">2. Your Rights:</h3>
+        <p>Under the DPDP Act, you possess the right to Access, Correct, and Erase your data. You may withdraw your consent at any time; however, withdrawing consent will result in the immediate termination of your ability to participate in tournaments, as this data is essential for platform operation.</p>
+        
+        <h3 style="color:#fff; font-size:14px; margin-top:15px;">3. Limitation of Liability & User Responsibility:</h3>
+        <p>While we deploy industry-standard security measures, no digital transmission is entirely secure. By using this platform, you acknowledge the inherent risks of the internet. In the event of a data breach resulting from external cyber-attacks, zero-day vulnerabilities, or factors beyond our reasonable control, the platform, its administrators, and its affiliates shall bear no legal or financial liability, provided statutory baseline protections were maintained.</p>
+        
+        <h3 style="color:#fff; font-size:14px; margin-top:15px;">4. Client-Side Modifications:</h3>
+        <p>Any attempt by the user to modify, bypass, or manipulate platform mechanics, data transmissions, or consent logs via browser console, third-party software, or network interception immediately nullifies user protections and releases the platform from any data liability regarding that specific user.</p>
+        
+        <h3 style="color:#fff; font-size:14px; margin-top:15px;">5. Permanent Logging:</h3>
+        <p>Checking the consent box creates a permanent, legally binding digital signature associating your IP address, device, and timestamp with this agreement, which the platform retains as immutable proof of consent.</p>
+      </div>
+      
+      <div id="dpdpConsentActionArea" style="padding:20px; border-top:1px solid #222; background:#0a0a0a;">
+        <label style="display:flex; gap:10px; cursor:pointer; align-items:flex-start; margin-bottom:15px;">
+          <input type="checkbox" id="dpdpMainCheckbox" onchange="document.getElementById('dpdpConfirmBtn').disabled = !this.checked; document.getElementById('dpdpConfirmBtn').style.opacity = this.checked ? '1' : '0.5';" style="margin-top:3px; width:auto; accent-color:#00ff88;">
+          <span style="color:#fff; font-size:13px; font-weight:bold;">I am concerned with and affirmatively consent to my details being processed as per the DPDP Act. I have read the Full Privacy Terms.</span>
+        </label>
+        
+        <button id="dpdpConfirmBtn" onclick="submitDpdpConsent()" disabled style="width:100%; padding:14px; background:#00ff88; color:#000; border:none; border-radius:8px; font-size:16px; font-weight:bold; cursor:pointer; opacity:0.5; transition:all 0.2s;">Confirm Consent</button>
+      </div>
+    </div>
+  </div>
+  <!-- ══ END DPDP MODAL ════════════════════════════════════ -->
+
   <!-- ══ PROCESSING OVERLAY ════════════════════════════════ -->
   <div id="processingOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); z-index:9999; display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:20px; box-sizing:border-box;">
         <div style="width:50px; height:50px; border:4px solid #333; border-top:4px solid #00ff88; border-radius:50%; animation:spin 1s linear infinite; margin-bottom:20px;"></div>
@@ -1368,6 +1420,52 @@
                 iconElement.innerHTML = "👁️"; // Show icon
             }
         }
+    };
+    
+    /** DPDP Consent Modal Handlers */
+    window.openDpdpModal = function(readOnly = false) {
+      const modal = document.getElementById('dpdpConsentModal');
+      const actionArea = document.getElementById('dpdpConsentActionArea');
+      const closeBtn = document.getElementById('closeDpdpModalBtn');
+      if (modal) {
+        modal.style.display = 'flex';
+        if (readOnly) {
+          if (actionArea) actionArea.style.display = 'none';
+          if (closeBtn) closeBtn.style.display = 'block';
+        } else {
+          if (actionArea) actionArea.style.display = 'block';
+          if (closeBtn) closeBtn.style.display = 'none';
+        }
+      }
+    };
+    
+    window.closeDpdpModal = function() {
+      const modal = document.getElementById('dpdpConsentModal');
+      if (modal) modal.style.display = 'none';
+    };
+    
+    window.submitDpdpConsent = async function() {
+      const btn = document.getElementById('dpdpConfirmBtn');
+      if (btn) {
+        btn.textContent = 'Processing...';
+        btn.disabled = true;
+      }
+      
+      try {
+        if (window.handleDpdpConsentSubmission) {
+          await window.handleDpdpConsentSubmission();
+        } else {
+          console.error("DPDP submission handler not found in main.js");
+        }
+      } catch (e) {
+        console.error("Consent submission error:", e);
+      }
+      
+      closeDpdpModal();
+      if (btn) {
+        btn.textContent = 'Confirm Consent';
+        btn.disabled = false;
+      }
     };
   </script>
 
