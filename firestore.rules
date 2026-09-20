@@ -92,7 +92,7 @@ service cloud.firestore {
       
       match /teamSessions/{teamId} { 
         allow read: if isLoggedIn(); 
-        allow write: if isOwner(teamId) || isAdmin(); 
+        allow write: if isAdmin() || isOwner(teamId) || (isLoggedIn() && request.auth.uid in get(/databases/$(database)/documents/teams/$(teamId)).data.members); 
       }
       
       match /limitedNotifyList/{docId} { 

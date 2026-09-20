@@ -1624,18 +1624,20 @@ window.confirmPayment = async function(tournamentId) {
 
     try {
         // WITH THIS
-        await updateDoc(
-            doc(db, "tournaments", tournamentId, "teamSessions", userProfile.teamId),
-            {
-                paymentStatus:           "submitted",
-                paymentUtr:              utr,
-                paymentSubmittedBy:      currentUser.uid,
-                paymentSubmittedByName:  getUserDisplayName(),
-                paymentSubmittedAt:      serverTimestamp(),
-                currentStage:            "payment_submitted",
-                updatedAt:               serverTimestamp()
-            }
-        );
+        try {
+            await updateDoc(
+                doc(db, "tournaments", tournamentId, "teamSessions", userProfile.teamId),
+                {
+                    paymentStatus:           "submitted",
+                    paymentUtr:              utr,
+                    paymentSubmittedBy:      currentUser.uid,
+                    paymentSubmittedByName:  getUserDisplayName(),
+                    paymentSubmittedAt:      serverTimestamp(),
+                    currentStage:            "payment_submitted",
+                    updatedAt:               serverTimestamp()
+                }
+            );
+        } catch(e) { console.warn("teamSessions update skipped/failed", e); }
 
         // ✅ FIX: Instantly trigger the Admin Panel Status Tracker!
         try {
