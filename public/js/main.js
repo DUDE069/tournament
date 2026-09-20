@@ -1651,12 +1651,11 @@ window.confirmPayment = async function(tournamentId) {
         try {
             await updateDoc(doc(db, "tournaments", tournamentId, "verifications", currentUser.uid), {
                 paymentStatus: "submitted",
-                status: "pending", // Admin query looks for pending!
                 utr: utr,
                 paymentUtr: utr,
                 updatedAt: serverTimestamp()
             });
-        } catch(e) {}
+        } catch(e) { console.error("Failed to update verifications:", e); }
 
         // ✅ FIX: Update Upcoming Registrations just in case admin checks the card
         try {
