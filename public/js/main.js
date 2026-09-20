@@ -484,7 +484,7 @@ function renderTournaments() {
                 cardStyle = 'border:2px solid #ff4444;';
             }
 
-            const isFullyRegisteredOngoing = typeof currentUser !== 'undefined' && currentUser && window.activeParticipantListeners && window.activeParticipantListeners[t.id];
+            const isFullyRegisteredOngoing = typeof currentUser !== 'undefined' && currentUser && typeof activeParticipantListeners !== 'undefined' && activeParticipantListeners[t.id];
             let isApprovedOngoing = false;
             let isVerificationPendingOngoing = false;
             let isRejectedOngoing = false;
