@@ -185,6 +185,11 @@ service cloud.firestore {
       allow read: if true; 
       allow write: if isAdmin(); 
     }
+    
+    match /systemEvents/{eventId} { 
+      allow read: if true; 
+      allow write: if isAdmin(); 
+    }
 
     // ==========================================
     // 7. PUSH NOTIFICATION QUEUE
