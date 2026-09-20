@@ -4229,7 +4229,7 @@ function initNotifications() {
                 // --------------------------
 
                 // Check if it's an approval/rejection/room details/payment confirmation and hasn't been shown yet
-                if ((notif.type === "approval" || notif.type === "approved" || notif.type === "rejected" || notif.type === "room_details" || notif.type === "match_started" || notif.type === "payment_confirmed") && !notif.popupShown) {
+                if ((notif.type === "approval" || notif.type === "approved" || notif.type === "rejected" || notif.type === "room_details" || notif.type === "room_blast" || notif.type === "match_started" || notif.type === "payment_confirmed") && !notif.popupShown) {
                     console.log("🚀 Firing Popup for:", notif.type);
                     
                     // Shield the client instantly on the spot before making the async database update call
@@ -4249,7 +4249,7 @@ function initNotifications() {
                         showPopup("error", notif.message || "Your application was rejected.", "Close", () => {
                             document.getElementById('customPopup')?.remove();
                         });
-                    } else if (notif.type === "room_details" || notif.type === "match_started") {
+                    } else if (notif.type === "room_details" || notif.type === "room_blast" || notif.type === "match_started") {
                         showPopup("success", notif.message, "Open Match Room", () => {
                             document.getElementById('customPopup')?.remove();
                             if (typeof showMatchRoom === 'function') showMatchRoom(notif.tournamentId);
@@ -4501,7 +4501,7 @@ window.handleNotificationClick = async function(notifId, actionLink, type) {
 
         // 3. UNIVERSAL POPUP FOR ALL OTHER NOTIFICATIONS (Blast, Admin Messages, Room IDs, etc.)
         let btnText = "Close";
-        if (type === "room_details") btnText = "Copy Details";
+        if (type === "room_details" || type === "room_blast") btnText = "Copy Details";
         if (type === "match_started") btnText = "Open Match Room";
 
         let popupType = "info";
@@ -4517,7 +4517,7 @@ window.handleNotificationClick = async function(notifId, actionLink, type) {
                 document.getElementById('customPopup')?.remove();
                 
                 // Extra actions tied to the "Got It" / "Copy" buttons
-                if (type === "room_details" && n.message) {
+                if ((type === "room_details" || type === "room_blast") && n.message) {
                     navigator.clipboard.writeText(n.message).then(() => {
                         if (typeof showMessage === 'function') showMessage("Details copied to clipboard!");
                     });
