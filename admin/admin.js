@@ -283,9 +283,41 @@ window.filterTransactions = function() {
   document.getElementById("transactionBadge").textContent = filtered.length;
   document.getElementById("transactionBadge").style.display = "inline-block";
 
-  // Group by tournamentId
+  // Build Tabs
+  const tourneyIds = new Set(_allTransactions.map(t => t.tournamentId));
+  const tabsContainer = document.getElementById("ongoingTourneyTabs");
+  
+  if (window._currentTransactionFilter === undefined) {
+      window._currentTransactionFilter = 'all';
+  }
+
+  if (tabsContainer) {
+    let tabsHtml = `<button onclick="window._currentTransactionFilter='all'; filterTransactions()" style="padding:6px 12px; background:${window._currentTransactionFilter==='all' ? '#00ff88' : '#333'}; color:${window._currentTransactionFilter==='all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
+    
+    tourneyIds.forEach(tId => {
+      let tName = tId;
+      if (window._adminActiveTournaments) {
+          const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
+          if (tDoc) tName = tDoc.data().title || tId;
+      }
+      tabsHtml += `<button onclick="window._currentTransactionFilter='${tId}'; filterTransactions()" style="padding:6px 12px; background:${window._currentTransactionFilter===tId ? '#00ff88' : '#333'}; color:${window._currentTransactionFilter===tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
+    });
+    tabsContainer.innerHTML = tabsHtml;
+  }
+
+  // Filter by selected tab
+  const tabFiltered = window._currentTransactionFilter === 'all' 
+      ? filtered 
+      : filtered.filter(t => t.tournamentId === window._currentTransactionFilter);
+
+  if (tabFiltered.length === 0) {
+    container.innerHTML = '<p style="color:#888;">No pending transactions found for this tournament.</p>';
+    return;
+  }
+
+  // Group by tournamentId (for display purposes, even if filtered to 1)
   const grouped = {};
-  filtered.forEach(t => {
+  tabFiltered.forEach(t => {
     if (!grouped[t.tournamentId]) grouped[t.tournamentId] = [];
     grouped[t.tournamentId].push(t);
   });
@@ -591,35 +623,59 @@ function loadVerifications() {
     snapshot.docChanges().forEach(c => {
       if (c.type === "added" && c.doc.data().status === "pending") playAdminAlert(c.doc.id);
     });
-    renderVerificationList(snapshot);
+    window._lastVerificationsSnapshot = snapshot;
+    window.renderVerificationList(snapshot);
   }, err => {
     container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: Permission Denied or Invalid Data</p>`;
   });
 }
 
-function renderVerificationList(snapshot) {
+window.renderVerificationList = function(snapshot) {
   const container = document.getElementById("verificationList");
   if (!container) return;
 
   const pending  = [];
   const accepted = [];
   const rejected = [];
+  const tourneyIds = new Set();
+  
+  if (window._currentVerificationFilter === undefined) {
+      window._currentVerificationFilter = 'all';
+  }
 
   snapshot.forEach(vDoc => {
     const d = { id: vDoc.id, tournamentId: vDoc.ref.parent.parent.id, ...vDoc.data() };
     if (d.archived === true) return; // CLIENT-SIDE: skip archived docs
+    
+    tourneyIds.add(d.tournamentId);
+    
+    if (window._currentVerificationFilter !== 'all' && d.tournamentId !== window._currentVerificationFilter) return;
     
     const isPaymentSubmitted = (d.paymentStatus === "submitted" && !!d.utr);
     
     if (d.status === "rejected") {
       rejected.push(d);
     } else if (d.status === "approved" || isPaymentSubmitted) {
-      // If payment is submitted, it means the application phase was already approved
       accepted.push(d);
     } else if (d.status === "pending") {
       pending.push(d);
     }
   });
+  
+  const tabsContainer = document.getElementById("ongoingApplicationsTourneyTabs");
+  if (tabsContainer) {
+    let tabsHtml = `<button onclick="window._currentVerificationFilter='all'; window.renderVerificationList(window._lastVerificationsSnapshot)" style="padding:6px 12px; background:${window._currentVerificationFilter==='all' ? '#00ff88' : '#333'}; color:${window._currentVerificationFilter==='all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
+    
+    tourneyIds.forEach(tId => {
+      let tName = tId;
+      if (window._adminActiveTournaments) {
+          const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
+          if (tDoc) tName = tDoc.data().title || tId;
+      }
+      tabsHtml += `<button onclick="window._currentVerificationFilter='${tId}'; window.renderVerificationList(window._lastVerificationsSnapshot)" style="padding:6px 12px; background:${window._currentVerificationFilter===tId ? '#00ff88' : '#333'}; color:${window._currentVerificationFilter===tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
+    });
+    tabsContainer.innerHTML = tabsHtml;
+  }
 
   if (!pending.length && !accepted.length && !rejected.length) {
     container.innerHTML = `<div class="empty-state"><span class="emoji">✅</span>No applications yet.</div>`;
@@ -1384,12 +1440,14 @@ window.viewRejectedDetails = async function(tournamentId, userId) {
 //  12. UPCOMING REGISTRATIONS TAB
 //  BUG FIX: archived filter applied; reject uses custom modal (no prompt())
 // ============================================================================
+window._currentUpcomingFilter = 'all';
+
 function loadUpcomingRegistrations() {
   if (_listeners.registrations) { _listeners.registrations(); _listeners.registrations = null; }
 
   const container = document.getElementById("upcomingRegistrationsList");
   if (!container) return;
-  container.innerHTML = '<p class="loading-text">Loading…</p>';
+  container.innerHTML = '<p class="loading-text">Loading...</p>';
 
   const q = query(
     collectionGroup(db, "upcomingRegistrations"),
@@ -1397,11 +1455,7 @@ function loadUpcomingRegistrations() {
   );
 
   _listeners.registrations = onSnapshot(q, (snapshot) => {
-    // ✅ FIX: Trigger sound alert for new pending registrations
-    // Pass docId to debounce — badge listener may have already played for this doc
     snapshot.docChanges().forEach(c => {
-      // Only fire alert for documents in tournaments/.../upcomingRegistrations (not users/...)
-      // The parent of the subcollection is the tournament doc; its collection is "tournaments"
       const grandparentColId = c.doc.ref.parent.parent?.parent?.id;
       if (c.type === "added" && c.doc.data().status === "pending" && grandparentColId === "tournaments") {
         playAdminAlert(c.doc.id);
@@ -1411,22 +1465,41 @@ function loadUpcomingRegistrations() {
     const pending  = [];
     const approved = [];
     const rejected = [];
+    const tourneyIds = new Set();
 
     snapshot.forEach(d => {
-      // ✅ FIX: Only process documents from tournaments/.../upcomingRegistrations (not users/...)
-      // d.ref.parent.parent is the tournament doc; d.ref.parent.parent.parent is "tournaments" collection
       const grandparentColId = d.ref.parent.parent?.parent?.id;
-      if (grandparentColId !== "tournaments") return; // SKIP user-side mirror documents
+      if (grandparentColId !== "tournaments") return;
 
       const data = { id: d.id, tournamentId: d.ref.parent.parent.id, ...d.data() };
-      if (data.archived === true) return; // CLIENT-SIDE filter
+      if (data.archived === true) return; 
+      
+      tourneyIds.add(data.tournamentId);
+
+      if (window._currentUpcomingFilter !== 'all' && data.tournamentId !== window._currentUpcomingFilter) return;
+
       if      (data.status === "pending")  pending.push(data);
       else if (data.status === "approved") approved.push(data);
       else if (data.status === "rejected") rejected.push(data);
     });
 
+    const tabsContainer = document.getElementById("upcomingTourneyTabs");
+    if (tabsContainer) {
+      let tabsHtml = `<button onclick="window._currentUpcomingFilter='all'; loadUpcomingRegistrations()" style="padding:6px 12px; background:${window._currentUpcomingFilter==='all' ? '#00ff88' : '#333'}; color:${window._currentUpcomingFilter==='all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
+      
+      tourneyIds.forEach(tId => {
+        let tName = tId;
+        if (window._adminActiveTournaments) {
+            const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
+            if (tDoc) tName = tDoc.data().title || tId;
+        }
+        tabsHtml += `<button onclick="window._currentUpcomingFilter='${tId}'; loadUpcomingRegistrations()" style="padding:6px 12px; background:${window._currentUpcomingFilter===tId ? '#00ff88' : '#333'}; color:${window._currentUpcomingFilter===tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
+      });
+      tabsContainer.innerHTML = tabsHtml;
+    }
+
     if (!pending.length && !approved.length && !rejected.length) {
-      container.innerHTML = `<div class="empty-state"><span class="emoji">📋</span>No registrations yet.</div>`;
+      container.innerHTML = `<div class="empty-state"><span class="emoji">📋</span>No registrations found for this filter.</div>`;
       return;
     }
 

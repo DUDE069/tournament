@@ -649,28 +649,31 @@
       <div class="calendar-events-list" id="calendarEventsList"></div>
     </div>
 
-    <!-- ══ ONGOING APPLICATIONS (was Verifications) ══ -->
+    <!-- ⏳ ONGOING APPLICATIONS (was Verifications) -->
     <div class="section" id="verificationsSection">
       <h2>Ongoing Tournament Applications</h2>
+      <div id="ongoingApplicationsTourneyTabs" style="display:flex; gap:10px; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px; border-bottom: 1px solid #333;"></div>
       <div id="verificationList">
-        <p class="loading-text">Loading…</p>
+        <p class="loading-text">Loading...</p>
       </div>
     </div>
 
-    <!-- ══ REGISTRATIONS (new tab merging upcoming) ═══ -->
+    <!-- 📋 REGISTRATIONS (new tab merging upcoming) -->
     <div class="section" id="registrationsSection">
       <h2>Upcoming Tournament Registrations</h2>
+      <div id="upcomingTourneyTabs" style="display:flex; gap:10px; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px; border-bottom: 1px solid #333;"></div>
       <div id="upcomingRegistrationsList">
-        <p class="loading-text">Loading…</p>
+        <p class="loading-text">Loading...</p>
       </div>
     </div>
 
-    <!-- ══ TRANSACTION VERIFICATION ═══ -->
+    <!-- 💳 TRANSACTION VERIFICATION -->
     <div class="section" id="transactionsSection">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
         <h2>Transaction Verification</h2>
         <input type="text" id="transactionSearch" placeholder="Search by Team ID or UTR" oninput="filterTransactions()" style="padding:10px; background:#0f0f0f; color:#fff; border:1px solid #333; border-radius:4px; width:250px;">
       </div>
+      <div id="ongoingTourneyTabs" style="display:flex; gap:10px; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px; border-bottom: 1px solid #333;"></div>
       <div id="transactionList">
         <p class="loading-text">Loading…</p>
       </div>
