@@ -392,10 +392,21 @@ function renderTournaments() {
 
        // WITH THIS
         // NEW: Bulletproof Room ID & Message Watcher for all active tournaments
-        if (typeof currentUser !== 'undefined' && currentUser && userProfile && !activeParticipantListeners[t.id]) {
+window.roomWatchers = window.roomWatchers || {};
+window.userParticipantDocs = window.userParticipantDocs || {};
+
+        if (typeof currentUser !== 'undefined' && currentUser && userProfile && !window.roomWatchers[t.id]) {
             const pRef = doc(db, "tournaments", t.id, "participants", currentUser.uid);
-            activeParticipantListeners[t.id] = onSnapshot(pRef, async (snap) => {
-                if (!snap.exists()) return; // Document deleted, no longer relevant
+            window.roomWatchers[t.id] = onSnapshot(pRef, async (snap) => {
+                const wasRegistered = window.userParticipantDocs[t.id];
+                const isRegistered = snap.exists();
+                window.userParticipantDocs[t.id] = isRegistered;
+
+                if (wasRegistered !== isRegistered) {
+                    setTimeout(() => { if (typeof renderTournaments === 'function') renderTournaments(); }, 100);
+                }
+
+                if (!isRegistered) return; // Document deleted, no longer relevant
                 const data = snap.data();
                 
               // WITH THIS
@@ -484,7 +495,7 @@ function renderTournaments() {
                 cardStyle = 'border:2px solid #ff4444;';
             }
 
-            const isFullyRegisteredOngoing = typeof currentUser !== 'undefined' && currentUser && typeof activeParticipantListeners !== 'undefined' && activeParticipantListeners[t.id];
+            const isFullyRegisteredOngoing = typeof currentUser !== 'undefined' && currentUser && window.userParticipantDocs && window.userParticipantDocs[t.id];
             let isApprovedOngoing = false;
             let isVerificationPendingOngoing = false;
             let isRejectedOngoing = false;
@@ -1711,6 +1722,11 @@ function cleanupListeners() {
     // Cleanup all active participant listeners
     Object.values(activeParticipantListeners).forEach(unsub => unsub());
     activeParticipantListeners = {}; // Clear the map
+    if (window.roomWatchers) {
+        Object.values(window.roomWatchers).forEach(unsub => unsub());
+        window.roomWatchers = {};
+    }
+    window.userParticipantDocs = {};
 }
 
 function setupUI() {
@@ -2293,6 +2309,11 @@ onAuthStateChanged(auth, async (user) => {
         // Also cleanup participant listeners on logout
         Object.values(activeParticipantListeners).forEach(unsub => unsub());
         activeParticipantListeners = {};
+        if (window.roomWatchers) {
+            Object.values(window.roomWatchers).forEach(unsub => unsub());
+            window.roomWatchers = {};
+        }
+        window.userParticipantDocs = {};
 
         // NEW LOGIC: Show login popup to unauthenticated users once per session
         if (!sessionStorage.getItem('npc_auth_popup_shown')) {
