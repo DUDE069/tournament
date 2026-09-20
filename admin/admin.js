@@ -744,7 +744,7 @@ function applicationCard(d, type) {
 
   let actions = "";
   if (type === "new") {
-    console.error("🛑 RAW FIRESTORE DOC (Ongoing applicationCard):", d);
+    
     const appData = {
       teamName: d.teamName || "—",
       leaderEmail: d.leaderEmail || "—",
@@ -920,14 +920,14 @@ window.viewStatusModal = async function(tournamentId, userId) {
       const teamCode = pData.teamCode || "N/A";
       const theUtr = pData.paymentUtr || pData.utr || "";
       
-      console.error("=== 🚨 STATUS MODAL DEBUG INFO 🚨 ===");
-      console.error("1. Combined Data (pData):", pData);
-      console.error("2. currentPaymentStatus:", currentPaymentStatus);
-      console.error("3. theUtr:", theUtr);
-      console.error("4. stage3 (Is it submitted?):", stage3);
-      console.error("5. stage4 (Is it ALREADY verified?):", stage4);
-      console.error("6. Will Button Show? (stage3 && !stage4 && theUtr):", !!(stage3 && !stage4 && theUtr));
-      console.error("======================================");
+      
+      
+      
+      
+      
+      
+      
+      
 
       contentDiv.innerHTML = `
         <h3>📊 Team Status — ${escHtml(pData.teamName ?? "—")}</h3>
@@ -1582,7 +1582,7 @@ function upcomingCard(d, type) {
 
   let actions = "";
   if (type === "new") {
-    console.error("🛑 RAW FIRESTORE DOC (Upcoming upcomingCard):", d);
+    
     const appData = {
       teamName: d.teamName || "—",
       leaderEmail: d.leaderEmail || "—",
