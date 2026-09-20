@@ -519,9 +519,9 @@ window.userParticipantDocs = window.userParticipantDocs || {};
                     </button>`;
             } else if (isVerificationPendingOngoing) {
                 buttonHTML = `
-                    <button class="join-btn" disabled
-                        style="background: #374151; border-color: #374151; color: #9ca3af; cursor: not-allowed;">
-                        ⏳ Verification Pending
+                    <button class="join-btn" onclick="handleJoin('${t.id}')"
+                        style="background: #eab308; border-color: #eab308; color: #000; cursor: pointer;">
+                        ⏳ Verification Pending (Re-enter UTR)
                     </button>`;
             } else if (isRejectedOngoing) {
                 buttonHTML = `
@@ -603,9 +603,9 @@ window.userParticipantDocs = window.userParticipantDocs || {};
 
             if (isVerificationPending) {
                 buttonHTML = `
-                    <button class="join-btn" disabled
-                        style="background: #374151; border-color: #374151; color: #9ca3af; cursor: not-allowed;">
-                        ⏳ Verification Pending (Admin Reviewing)
+                    <button class="join-btn" onclick="handleUpcomingRegister('${t.id}')"
+                        style="background: #eab308; border-color: #eab308; color: #000; cursor: pointer;">
+                        ⏳ Verification Pending (Re-enter UTR)
                     </button>`;
             } else if (isRejected) {
                 buttonHTML = `
@@ -4964,6 +4964,56 @@ if (submitBtn) {
         // Hide guidelines container since they can't pay yet
         const gCont = document.getElementById("guidelinesContainer");
         if(gCont) gCont.style.display = "none";
+    } else if (regData.paymentStatus === 'submitted') {
+        submitBtn.textContent = "Retry / Re-enter UTR";
+        submitBtn.disabled = false;
+        
+        // Show guidelines container
+        const gCont = document.getElementById("guidelinesContainer");
+        if(gCont) gCont.style.display = "block";
+        
+        submitBtn.onclick = async function(e) {
+            e.preventDefault();
+            if (!agreeCheckbox || !agreeCheckbox.checked) {
+                showMessage("You must agree to the Payment Guidelines to proceed.");
+                return;
+            }
+            
+            // Save the newly entered UPI ID before proceeding
+            const newUpi = upiInput?.value?.trim() || "";
+            if (!newUpi || !newUpi.includes('@')) {
+                showMessage("Please enter a valid Payout UPI ID (e.g. name@ybl)");
+                return;
+            }
+            
+            // Show loading state on button
+            const origText = submitBtn.textContent;
+            submitBtn.textContent = "Saving...";
+            submitBtn.disabled = true;
+            
+            try {
+                // Update in whichever collection it came from
+                const colName = isUpcoming ? "upcomingRegistrations" : "verifications";
+                await updateDoc(doc(db, "tournaments", tournamentId, colName, userId), {
+                    payoutUpiId: newUpi
+                });
+            } catch (err) {
+                console.warn("Failed to update UPI ID", err);
+            }
+            
+            submitBtn.textContent = origText;
+            submitBtn.disabled = false;
+
+            if (isUpcoming && tournament.category === 'upcoming') {
+                document.getElementById('joinTournamentModal').style.display = 'none';
+                window.openUpcomingPaymentInterface(tournamentId);
+            } else {
+                window.currentJoiningTournament = tournamentId;
+                window.currentTournamentCategory = 'ongoing';
+                document.getElementById('joinTournamentModal').style.display = 'none';
+                showPaymentInterface(tournamentId);
+            }
+        };
     } else {
         submitBtn.textContent = "Proceed to Payment →";
         submitBtn.disabled = false;
