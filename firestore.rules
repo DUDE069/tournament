@@ -31,7 +31,9 @@ service cloud.firestore {
       allow read: if isLoggedIn();
       allow create: if isOwner(userId);
       allow update: if isAdmin() || (isOwner(userId) && 
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'wallet', 'bonusCredits']));
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'wallet', 'bonusCredits']))
+        || (isLoggedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamId', 'teamName', 'teamCode', 'role', 'isLeader']) 
+            && request.resource.data.teamId == null);
     }
     match /users/{userId}/notifications/{notifId}           { allow read, write: if isOwner(userId) || isAdmin(); }
     
@@ -133,7 +135,7 @@ service cloud.firestore {
     // ==========================================
     match /teams/{teamId} {
       allow read, create: if isLoggedIn();
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (isLoggedIn() && resource.data.leaderId == request.auth.uid);
       
       allow update: if isAdmin() 
         || (isLoggedIn() && resource.data.leaderId == request.auth.uid)
