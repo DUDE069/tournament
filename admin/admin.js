@@ -3792,10 +3792,27 @@ window.processPayout = async function(tournamentId, uid, teamName) {
 // =============================================================================
 
 window.renderAdminLeaderboardGrid = async function(tournamentId) {
-    const container = document.getElementById("adminLeaderboardGrid");
+    let container = document.getElementById("adminLeaderboardGrid");
+    
+    // If container doesn't exist, create a modal overlay for it!
     if (!container) {
-        console.warn("[LEADERBOARD] No #adminLeaderboardGrid element found in HTML");
-        return;
+        let overlay = document.getElementById("leaderboardModalOverlay");
+        if (!overlay) {
+            overlay = document.createElement("div");
+            overlay.id = "leaderboardModalOverlay";
+            overlay.className = "status-modal-overlay";
+            overlay.innerHTML = `
+                <div class="status-modal" style="max-width:800px; width:100%; max-height:90vh; overflow-y:auto; padding:25px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:15px;">
+                        <h2 style="margin:0; color:var(--green);">🏆 Edit Tournament Leaderboard</h2>
+                        <button onclick="document.getElementById('leaderboardModalOverlay').remove()" style="background:transparent; color:#888; border:none; font-size:24px; cursor:pointer;">&times;</button>
+                    </div>
+                    <div id="adminLeaderboardGrid"></div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+        container = document.getElementById("adminLeaderboardGrid");
     }
 
     container.innerHTML = `
