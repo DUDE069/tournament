@@ -987,11 +987,11 @@ window.viewStatusModal = async function(tournamentId, userId) {
             <input id="smRoomId" placeholder="Room ID" value="${escHtml(pData.roomId ?? "")}" style="flex:1;padding:8px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;font-size:13px;">
             <input id="smRoomPass" placeholder="Password" value="${escHtml(pData.roomPassword ?? "")}" style="flex:1;padding:8px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;font-size:13px;">
           </div>
-          <button onclick="saveRoomDetails('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(pData.uids) ? pData.uids : [userId]).replace(/"/g,"'")})" style="width:100%;padding:9px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;">💾 Save & Notify Team</button>
+          <button onclick="saveRoomDetails('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}')" style="width:100%;padding:9px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;">💾 Save & Notify Team</button>
         </div>
 
         <div style="display:flex;gap:8px;margin-top:4px;">
-          <button onclick="openNotifyModal('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(pData.uids) ? pData.uids : [userId]).replace(/"/g,"'")},'${escHtml(pData.teamName ?? "Team")}')" style="flex:1;padding:10px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">🔔 Notify This Team</button>
+          <button onclick="openNotifyModal('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}', '${escHtml(pData.teamName ?? "Team")}')" style="flex:1;padding:10px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">🔔 Notify This Team</button>
           ${(stage3 && !stage4 && theUtr) ? `
           <button onclick="if(confirm('Force approve this payment manually? This will confirm their slot.')){ window.approveTransaction('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}', '${userId}', '${escHtml(theUtr)}', '${pData.entryFee || 0}', '${pData._collection || "verifications"}'); document.getElementById('statusModalOverlay').remove(); }" style="flex:1;padding:10px;background:var(--gold);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">✅ Approve Payment</button>
           ` : ""}
@@ -1045,7 +1045,7 @@ function progressTracker(stages) {
 }
 
 // ── Save Room ID & Password — notifies all members ─────────────────────────
-window.saveRoomDetails = async function(tournamentId, userId, memberIds) {
+window.saveRoomDetails = async function(tournamentId, userId, teamId) {
   const roomId   = document.getElementById("smRoomId")?.value.trim();
   const roomPass = document.getElementById("smRoomPass")?.value.trim();
 
@@ -1070,8 +1070,18 @@ window.saveRoomDetails = async function(tournamentId, userId, memberIds) {
       if (tSnap.exists()) tournamentName = tSnap.data().title ?? tournamentId;
     } catch (_) {}
 
+    // Resolve true Firebase Auth members from teamId
+    let ids = [userId];
+    if (teamId) {
+      try {
+        const tSnap = await getDoc(doc(db, "teams", teamId));
+        if (tSnap.exists() && Array.isArray(tSnap.data().members)) {
+          ids = [...new Set([...tSnap.data().members, userId])];
+        }
+      } catch(e) {}
+    }
+
     // Notify all members (dual: in-app + push)
-    const ids = Array.isArray(memberIds) ? memberIds : [userId];
     await Promise.all(ids.map(mid => sendDualNotification(mid, {
       type:    "room_details",
       title:   "🔑 Room Details Ready!",
@@ -1080,7 +1090,8 @@ window.saveRoomDetails = async function(tournamentId, userId, memberIds) {
       actionLink: `tournament=${tournamentId}`,
     })));
 
-    showToast(`Room details saved & ${ids.length} member(s) notified!`, "success");
+    document.getElementById("statusModalOverlay")?.remove();
+    showToast(`✅ Room details saved & notified ${ids.length} member(s)!`, "success");
     document.getElementById("statusModalOverlay")?.remove();
   } catch (e) {
     showToast("Action failed: Permission Denied.", "error");
@@ -1091,7 +1102,7 @@ window.saveRoomDetails = async function(tournamentId, userId, memberIds) {
 //  7. NOTIFY THIS TEAM MODAL
 //  NEW: replaced Confirm Payment / Reject Payment buttons
 // ============================================================================
-window.openNotifyModal = function(tournamentId, userId, memberIds, teamName) {
+window.openNotifyModal = function(tournamentId, userId, teamId, teamName) {
   document.getElementById("notifyModalOverlay")?.remove();
 
   const overlay = document.createElement("div");
@@ -1126,7 +1137,7 @@ window.openNotifyModal = function(tournamentId, userId, memberIds, teamName) {
         >Your application is approved. Proceed to tournament.</textarea>
       </div>
 
-      <button onclick="sendTeamNotification('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(memberIds) ? memberIds : [userId]).replace(/"/g,"'")},'${escHtml(teamName)}')"
+      <button onclick="sendTeamNotification('${tournamentId}', '${userId}', '${escHtml(teamId || "")}', '${escHtml(teamName)}')"
         style="width:100%;padding:12px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;font-size:14px;">
         Send Notification
       </button>
@@ -1141,11 +1152,9 @@ window.openNotifyModal = function(tournamentId, userId, memberIds, teamName) {
 };
 
 // WITH THIS
-window.sendTeamNotification = async function(tournamentId, userId, memberIds, teamName) {
+window.sendTeamNotification = async function(tournamentId, userId, teamId, teamName) {
   const message = document.getElementById("notifyMsgInput")?.value.trim();
   if (!message) { showToast("Please enter a message.", "warning"); return; }
-
-  const ids = Array.isArray(memberIds) ? memberIds : [userId];
 
   try {
     // 1. Write directly to the live Participant doc so the frontend pops up immediately
@@ -1156,6 +1165,17 @@ window.sendTeamNotification = async function(tournamentId, userId, memberIds, te
             statusMessageUpdatedAt: serverTimestamp()
         });
     } catch (ignore) { /* Document might not exist yet, this is fine */ }
+
+    // Resolve true Firebase Auth members from teamId
+    let ids = [userId];
+    if (teamId) {
+      try {
+        const tSnap = await getDoc(doc(db, "teams", teamId));
+        if (tSnap.exists() && Array.isArray(tSnap.data().members)) {
+          ids = [...new Set([...tSnap.data().members, userId])];
+        }
+      } catch(e) {}
+    }
 
     // 2. Send dual notification so it lands perfectly in the Inbox!
     await Promise.all(ids.map(mid => sendDualNotification(mid, {
