@@ -288,12 +288,13 @@ window.filterTransactions = function() {
   const searchVal = (document.getElementById("transactionSearch")?.value || "").toLowerCase();
   
   const filtered = _allTransactions.filter(t => {
+    const transactionUtr = t.utr || t.paymentUtr;
     // Only show ones with UTR
-    if (!t.utr) return false;
+    if (!transactionUtr) return false;
     
     if (!searchVal) return true;
     return (t.teamId && t.teamId.toLowerCase().includes(searchVal)) || 
-           (t.utr && t.utr.toLowerCase().includes(searchVal));
+           (transactionUtr && transactionUtr.toLowerCase().includes(searchVal));
   });
 
   if (filtered.length === 0) {
@@ -354,6 +355,7 @@ window.filterTransactions = function() {
       const leaderName = t.teamName ? `${t.teamName} (Leader: ${t.nickPlayer1 || 'Unknown'})` : 'Unknown';
       const phone = t.phone ? `Phone: ${t.phone}` : '';
       const backupEmail = t.backupEmail ? `Backup Email: ${t.backupEmail}` : '';
+      const transactionUtr = t.utr || t.paymentUtr;
       
       return `
         <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #444; margin-bottom:10px;">
@@ -363,12 +365,12 @@ window.filterTransactions = function() {
               <p style="margin:0 0 5px; color:#ccc;"><strong>Team Info:</strong> ${leaderName}</p>
               ${phone ? `<p style="margin:0 0 5px; color:#ccc;"><strong>${phone}</strong></p>` : ''}
               ${backupEmail ? `<p style="margin:0 0 5px; color:#ccc;"><strong>${backupEmail}</strong></p>` : ''}
-              <p style="margin:10px 0 5px; color:#00ff88; font-size:18px;"><strong>UTR:</strong> <span style="letter-spacing:1px;">${t.utr}</span></p>
+              <p style="margin:10px 0 5px; color:#00ff88; font-size:18px;"><strong>UTR:</strong> <span style="letter-spacing:1px;">${transactionUtr}</span></p>
               <p style="margin:0 0 5px; color:#ffd700;"><strong>Amount:</strong> ₹${t.expectedAmount || 0}</p>
               ${t.screenshotUrl ? `<a href="${t.screenshotUrl}" target="_blank" style="color:#3b82f6; display:inline-block; margin-top:5px;">View Screenshot</a>` : ''}
             </div>
             <div style="display: flex; flex-direction: column; gap: 8px; min-width: 200px;">
-              <button onclick="approveTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', '${t.utr}', ${t.expectedAmount || 0}, '${t._collection}')" style="background:#00ff88; color:#000; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">✅ Approve Payment</button>
+              <button onclick="approveTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', '${transactionUtr}', ${t.expectedAmount || 0}, '${t._collection}')" style="background:#00ff88; color:#000; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">✅ Approve Payment</button>
               <button onclick="rejectPaymentTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', '${t._collection}')" style="background:#ff4444; color:#fff; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">❌ Reject (Invalid UTR)</button>
               <button onclick="walletRefundTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', ${t.expectedAmount || 0}, '${t._collection}')" style="background:transparent; color:#888; border:1px solid #444; padding:8px 15px; border-radius:4px; cursor:pointer; font-size: 12px; width:100%;">Refund to Wallet (Waitlist)</button>
             </div>
