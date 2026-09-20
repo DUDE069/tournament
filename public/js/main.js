@@ -484,10 +484,52 @@ function renderTournaments() {
                 cardStyle = 'border:2px solid #ff4444;';
             }
 
-            buttonHTML = `
-                <button class="join-btn" onclick="handleJoin('${t.id}')" ${joinDisabled} style="${joinStyle}">
-                    ${hasStarted ? "Closed" : "Join Now"}
-                </button>`;
+            const isFullyRegisteredOngoing = typeof currentUser !== 'undefined' && currentUser && window.activeParticipantListeners && window.activeParticipantListeners[t.id];
+            let isApprovedOngoing = false;
+            let isVerificationPendingOngoing = false;
+            let isRejectedOngoing = false;
+            
+            if (typeof currentUser !== 'undefined' && currentUser && !isFullyRegisteredOngoing) {
+                if (window.userPendingPayments && window.userPendingPayments[t.id]) {
+                    const status = window.userPendingPayments[t.id].paymentStatus;
+                    if (status === 'payment_rejected') isRejectedOngoing = true;
+                    else if (status === 'pending_verification' || status === 'submitted') isVerificationPendingOngoing = true;
+                }
+                if (window.userUpcomingRegs && (window.userUpcomingRegs[t.id]?.status === 'approved' || window.userUpcomingRegs[t.id]?.status === 'accepted')) {
+                    isApprovedOngoing = true;
+                }
+            }
+
+            if (isFullyRegisteredOngoing) {
+                buttonHTML = `
+                    <button class="join-btn" onclick="handleJoin('${t.id}')"
+                        style="background: #22c55e; border-color: #22c55e; color: #fff;">
+                        ✅ Registered
+                    </button>`;
+            } else if (isVerificationPendingOngoing) {
+                buttonHTML = `
+                    <button class="join-btn" disabled
+                        style="background: #374151; border-color: #374151; color: #9ca3af; cursor: not-allowed;">
+                        ⏳ Verification Pending
+                    </button>`;
+            } else if (isRejectedOngoing) {
+                buttonHTML = `
+                    <button class="join-btn" onclick="handleJoin('${t.id}')"
+                        style="background: #ff4444; border-color: #ff4444; color: #fff; box-shadow: 0 0 15px rgba(255,68,68,0.4);">
+                        ❌ Re-verify Payment
+                    </button>`;
+            } else if (isApprovedOngoing && !hasStarted) {
+                buttonHTML = `
+                    <button class="join-btn" onclick="handleJoin('${t.id}')"
+                        style="background: #00ff88; border-color: #00ff88; color: #000; box-shadow: 0 0 15px rgba(0,255,136,0.4);">
+                        💳 Pay Now
+                    </button>`;
+            } else {
+                buttonHTML = `
+                    <button class="join-btn" onclick="handleJoin('${t.id}')" ${joinDisabled} style="${joinStyle}">
+                        ${hasStarted ? "Closed" : "Join Now"}
+                    </button>`;
+            }
                 // ✅ ADD THE NEW CODE RIGHT HERE, before the closing } of the ongoing block
             if (t.status === 'completed') {
                 buttonHTML = `
@@ -2251,6 +2293,16 @@ onAuthStateChanged(auth, async (user) => {
         // Also cleanup participant listeners on logout
         Object.values(activeParticipantListeners).forEach(unsub => unsub());
         activeParticipantListeners = {};
+
+        // NEW LOGIC: Show login popup to unauthenticated users once per session
+        if (!sessionStorage.getItem('npc_auth_popup_shown')) {
+            sessionStorage.setItem('npc_auth_popup_shown', 'true');
+            setTimeout(() => {
+                if (!currentUser && typeof openLogin === 'function') {
+                    openLogin();
+                }
+            }, 600);
+        }
     }
 
     const loginBtn = document.getElementById("loginBtn");

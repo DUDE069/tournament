@@ -1994,8 +1994,8 @@ function loadTournaments() {
         ? `<button class="btn-status" onclick="window.openPostponeModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}', '${t.eventDate || ''}', '${t.transitionTime || ''}')" style="background:#f97316;color:#fff;border:none;">🗓️ Postpone</button>`
         : '';
         
-      const extendBtn = isActive
-        ? `<button class="btn-status" onclick="window.extendTournamentTime('${d.id}')" style="background:#eab308;color:#000;border:none;">⏳ Extend Time</button>`
+      const editTimingBtn = isActive
+        ? `<button class="btn-status" onclick="window.openEditTimingModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}', '${t.eventDate || ''}', '${t.transitionTime || ''}')" style="background:#3b82f6;color:#fff;border:none;">✏️ Edit Timing</button>`
         : '';
 
       const deleteBtn = (isActive && !isTournamentOver)
@@ -2017,7 +2017,7 @@ function loadTournaments() {
             🎯 Manage Slots
           </button>
           ${postponeBtn}
-          ${extendBtn}
+          ${editTimingBtn}
           ${completeBtn}
           ${deleteBtn}
         </div>`;
@@ -4438,37 +4438,75 @@ window.submitPostpone = async function(tournamentId) {
     }
 };
 
-window.extendTournamentTime = async function(tournamentId) {
-    const hoursStr = prompt("How many hours do you want to extend this tournament's timer? (e.g. 5, 10)", "5");
-    if (!hoursStr) return; // User cancelled
+window.openEditTimingModal = function(tournamentId, title, currentEventDate, currentTransitionTime) {
+    const overlay = document.createElement("div");
+    overlay.id = "editTimingModalOverlay";
+    overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index:10000; padding:20px;";
     
-    const hours = parseFloat(hoursStr);
-    if (isNaN(hours) || hours <= 0) {
-        showToast("Please enter a valid positive number of hours.", "error");
+    const formatForInput = (isoStr) => {
+        if (!isoStr) return "";
+        const d = new Date(isoStr);
+        if (isNaN(d.getTime())) return "";
+        return d.getFullYear() + "-" + 
+               String(d.getMonth() + 1).padStart(2, '0') + "-" + 
+               String(d.getDate()).padStart(2, '0') + "T" + 
+               String(d.getHours()).padStart(2, '0') + ":" + 
+               String(d.getMinutes()).padStart(2, '0');
+    };
+
+    overlay.innerHTML = `
+        <div style="background:#1a1a1a; padding:25px; border-radius:12px; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.5); border:1px solid #333;">
+            <h3 style="margin-top:0; color:#3b82f6;">✏️ Edit Tournament Timing</h3>
+            <p style="color:#aaa; font-size:13px; margin-bottom:20px;">
+                <strong>${title}</strong><br>
+                Directly edit the timing values without changing the status or sending notifications.
+            </p>
+
+            <div style="margin-bottom:15px;">
+                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:5px;">Duration / Registration Ends (Date & Time):</label>
+                <input type="datetime-local" id="editEventDate" value="${formatForInput(currentEventDate)}" style="width:100%; padding:10px; background:#111; color:#fff; border:1px solid #444; border-radius:6px; font-family:inherit;">
+                <small style="color:#888; font-size:11px; display:block; margin-top:5px;">Updates eventDate and endTime.</small>
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:5px;">Auto-Move to Ongoing (Date & Time):</label>
+                <input type="datetime-local" id="editTransitionTime" value="${formatForInput(currentTransitionTime)}" style="width:100%; padding:10px; background:#111; color:#fff; border:1px solid #444; border-radius:6px; font-family:inherit;">
+                <small style="color:#888; font-size:11px; display:block; margin-top:5px;">Updates transitionTime.</small>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('editTimingModalOverlay').remove()" style="flex:1; padding:10px; background:#333; color:#fff; border:none; border-radius:6px; cursor:pointer;">Cancel</button>
+                <button onclick="submitEditTiming('${tournamentId}')" style="flex:1; padding:10px; background:#3b82f6; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">Save Changes</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+};
+
+window.submitEditTiming = async function(tournamentId) {
+    const eventDateInput = document.getElementById("editEventDate").value;
+    const transitionTimeInput = document.getElementById("editTransitionTime").value;
+
+    if (!eventDateInput || !transitionTimeInput) {
+        showToast("Both Date/Time fields are required.", "error");
         return;
     }
-    
+
     try {
         const docRef = doc(db, "tournaments", tournamentId);
-        const snap = await getDoc(docRef);
-        if (!snap.exists()) return;
         
-        const t = snap.data();
-        const extendMs = hours * 60 * 60 * 1000;
-        
-        const updates = {};
-        if (t.endTime) updates.endTime = t.endTime + extendMs;
-        if (t.eventDate) updates.eventDate = new Date(new Date(t.eventDate).getTime() + extendMs).toISOString();
-        if (t.transitionTime) updates.transitionTime = new Date(new Date(t.transitionTime).getTime() + extendMs).toISOString();
-        
-        if (Object.keys(updates).length > 0) {
-            await updateDoc(docRef, updates);
-            showToast(`Tournament extended by ${hours} hours! The timer will now increase dynamically.`, "success");
-        } else {
-            showToast("No valid time fields to extend on this tournament.", "error");
-        }
-    } catch(e) {
-        showToast("Error extending time: " + e.message, "error");
+        await updateDoc(docRef, {
+            eventDate: new Date(eventDateInput).toISOString(),
+            transitionTime: new Date(transitionTimeInput).toISOString(),
+            endTime: new Date(eventDateInput).getTime()
+        });
+
+        document.getElementById('editTimingModalOverlay').remove();
+        showToast("Tournament timing updated successfully!", "success");
+    } catch (err) {
+        console.error("Edit Timing Error:", err);
+        showToast("Failed to update timing: " + err.message, "error");
     }
 };
 
