@@ -4188,6 +4188,12 @@ window.saveAllTeamRankings = async function(tournamentId) {
     if (!confirm("Save these rankings? This will update the Leaderboard and Team History.")) return;
 
     try {
+        let tournamentNameCache = tournamentId;
+        if (window._adminActiveTournaments) {
+            const tDoc = window._adminActiveTournaments.find(d => d.id === tournamentId);
+            if (tDoc && tDoc.data().title) tournamentNameCache = tDoc.data().title;
+        }
+
         const rows = document.querySelectorAll(".rank-row");
         const rankSet = new Set();
         let hasDuplicates = false;
