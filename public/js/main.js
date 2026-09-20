@@ -6764,7 +6764,9 @@ window.createAccount = async function() {
             
             // If ghost accounts were found, purge them from the team document
             if (activeMembers.length < currentMembers.length) {
-                 await updateDoc(doc(db, "teams", teamData.teamId), { members: activeMembers });
+                 try {
+                     await updateDoc(doc(db, "teams", teamData.teamId), { members: activeMembers });
+                 } catch (e) { console.warn("Could not purge ghost members:", e); }
                  currentMembers = activeMembers;
             }
 

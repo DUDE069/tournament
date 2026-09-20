@@ -48,6 +48,9 @@ service cloud.firestore {
     match /users/{userId}/confirmedRegistrations/{docId}    { allow read, write: if isOwner(userId) || isAdmin(); }
     match /users/{userId}/performanceHistory/{docId}        { allow read, write: if isOwner(userId) || isAdmin(); }
     
+    // NEW: Allow access to user's private data subcollection
+    match /users/{userId}/private/{docId}                   { allow read, write: if isOwner(userId) || isAdmin(); }
+    
     match /users/{userId}/wallet/{walletId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId) || isAdmin();
