@@ -521,7 +521,7 @@ window.userParticipantDocs = window.userParticipantDocs || {};
                 buttonHTML = `
                     <button class="join-btn" onclick="handleJoin('${t.id}')"
                         style="background: #eab308; border-color: #eab308; color: #000; cursor: pointer;">
-                        ⏳ Verification Pending (Re-enter UTR)
+                        ⏳ Verification Pending
                     </button>`;
             } else if (isRejectedOngoing) {
                 buttonHTML = `
@@ -605,7 +605,7 @@ window.userParticipantDocs = window.userParticipantDocs || {};
                 buttonHTML = `
                     <button class="join-btn" onclick="handleUpcomingRegister('${t.id}')"
                         style="background: #eab308; border-color: #eab308; color: #000; cursor: pointer;">
-                        ⏳ Verification Pending (Re-enter UTR)
+                        ⏳ Verification Pending
                     </button>`;
             } else if (isRejected) {
                 buttonHTML = `
@@ -4451,10 +4451,9 @@ window.handleNotificationClick = async function(notifId, actionLink, type) {
         if (!snap.exists()) return;
         const n = snap.data();
 
-        // 2. Handle specific redirection paths if necessary
         if (type === "pay_later_reminder") {
-            if (n.tournamentId && n.entryFee && window.openPaymentInterface) {
-                window.openPaymentInterface(n.tournamentId, n.entryFee);
+            if (n.tournamentId && window.showPaymentInterface) {
+                window.showPaymentInterface(n.tournamentId);
             }
             return;
         }
@@ -4765,22 +4764,41 @@ async function showApprovedReviewInterface(tournamentId, userId) {
         let isUpcoming = false;
 
         // First, try to fetch from tournaments/{id}/verifications (ongoing)
+        // Check both direct ID (leader) and query by uids array (team members)
         let snap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
+        let actualLeaderUid = userId;
+        
+        if (!snap.exists()) {
+            const vDocs = await getDocs(query(collection(db, "tournaments", tournamentId, "verifications"), where("uids", "array-contains", userId)));
+            if (!vDocs.empty) {
+                snap = vDocs.docs[0];
+                actualLeaderUid = snap.id;
+            }
+        }
+
         if (snap.exists()) {
             regData = snap.data();
             // We also need to check if payment is already made. For ongoing, check participants doc.
-            const pSnap = await getDoc(doc(db, "tournaments", tournamentId, "participants", userId));
+            const pSnap = await getDoc(doc(db, "tournaments", tournamentId, "participants", actualLeaderUid));
             if (pSnap.exists() && pSnap.data().paymentStatus) {
                 regData.paymentStatus = pSnap.data().paymentStatus;
             }
         } else {
             // If not found in verifications, try upcomingRegistrations
             snap = await getDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId));
+            if (!snap.exists()) {
+                const uDocs = await getDocs(query(collection(db, "tournaments", tournamentId, "upcomingRegistrations"), where("uids", "array-contains", userId)));
+                if (!uDocs.empty) {
+                    snap = uDocs.docs[0];
+                    actualLeaderUid = snap.id;
+                }
+            }
+
             if (snap.exists()) {
                 regData = snap.data();
                 isUpcoming = true;
                 // For upcoming, check user's personal doc to see if paid
-                const uSnap = await getDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId));
+                const uSnap = await getDoc(doc(db, "users", actualLeaderUid, "upcomingRegistrations", tournamentId));
                 if (uSnap.exists() && uSnap.data().paymentStatus) {
                     regData.paymentStatus = uSnap.data().paymentStatus;
                 }
