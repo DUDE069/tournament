@@ -249,16 +249,38 @@ function loadTransactions() {
   if (!container) return;
   container.innerHTML = '<p class="loading-text">Loading transactions...</p>';
 
-  const q = query(collectionGroup(db, "verifications"), orderBy("submittedAt", "desc"));
-  _listeners.transactions = onSnapshot(q, (snap) => {
-    _allTransactions = snap.docs
-        .map(doc => ({ id: doc.id, ...doc.data(), tournamentId: doc.ref.parent.parent.id }))
-        .filter(t => t.utr && (t.paymentStatus === "submitted" || t.status === "pending"));
+  // Query both verifications (Ongoing) and upcomingRegistrations (Upcoming)
+  const qVerif = query(collectionGroup(db, "verifications"), orderBy("submittedAt", "desc"));
+  const qUpcoming = query(collectionGroup(db, "upcomingRegistrations"), orderBy("submittedAt", "desc"));
+  
+  window._transactionsData = { verif: [], upcoming: [] };
+  
+  const updateAllTransactions = () => {
+    _allTransactions = [...window._transactionsData.verif, ...window._transactionsData.upcoming]
+        .sort((a, b) => (b.submittedAt?.toMillis?.() || 0) - (a.submittedAt?.toMillis?.() || 0));
     filterTransactions();
-  }, (err) => {
-    console.error("Transactions load error:", err);
-    container.innerHTML = '<p style="color:red;">Error loading transactions. Make sure index exists.</p>';
-  });
+  };
+
+  _listeners.transactionsVerif = onSnapshot(qVerif, (snap) => {
+    window._transactionsData.verif = snap.docs
+        .map(doc => ({ id: doc.id, ...doc.data(), tournamentId: doc.ref.parent.parent.id, _collection: "verifications" }))
+        .filter(t => t.utr || t.paymentUtr)
+        .filter(t => t.paymentStatus === "submitted" || t.status === "pending");
+    updateAllTransactions();
+  }, (err) => console.error("Verifications load error:", err));
+
+  _listeners.transactionsUpcoming = onSnapshot(qUpcoming, (snap) => {
+    window._transactionsData.upcoming = snap.docs
+        .map(doc => ({ id: doc.id, ...doc.data(), tournamentId: doc.ref.parent.parent.id, _collection: "upcomingRegistrations" }))
+        .filter(t => t.utr || t.paymentUtr)
+        .filter(t => t.paymentStatus === "submitted");
+    updateAllTransactions();
+  }, (err) => console.error("Upcoming load error:", err));
+  
+  _listeners.transactions = () => {
+    if (_listeners.transactionsVerif) _listeners.transactionsVerif();
+    if (_listeners.transactionsUpcoming) _listeners.transactionsUpcoming();
+  };
 }
 
 window.filterTransactions = function() {
@@ -346,9 +368,9 @@ window.filterTransactions = function() {
               ${t.screenshotUrl ? `<a href="${t.screenshotUrl}" target="_blank" style="color:#3b82f6; display:inline-block; margin-top:5px;">View Screenshot</a>` : ''}
             </div>
             <div style="display: flex; flex-direction: column; gap: 8px; min-width: 200px;">
-              <button onclick="approveTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', '${t.utr}', ${t.expectedAmount || 0})" style="background:#00ff88; color:#000; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">✅ Approve Payment</button>
-              <button onclick="rejectPaymentTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}')" style="background:#ff4444; color:#fff; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">❌ Reject (Invalid UTR)</button>
-              <button onclick="walletRefundTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', ${t.expectedAmount || 0})" style="background:transparent; color:#888; border:1px solid #444; padding:8px 15px; border-radius:4px; cursor:pointer; font-size: 12px; width:100%;">Refund to Wallet (Waitlist)</button>
+              <button onclick="approveTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', '${t.utr}', ${t.expectedAmount || 0}, '${t._collection}')" style="background:#00ff88; color:#000; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">✅ Approve Payment</button>
+              <button onclick="rejectPaymentTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', '${t._collection}')" style="background:#ff4444; color:#fff; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">❌ Reject (Invalid UTR)</button>
+              <button onclick="walletRefundTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', ${t.expectedAmount || 0}, '${t._collection}')" style="background:transparent; color:#888; border:1px solid #444; padding:8px 15px; border-radius:4px; cursor:pointer; font-size: 12px; width:100%;">Refund to Wallet (Waitlist)</button>
             </div>
           </div>
         </div>
@@ -360,10 +382,10 @@ window.filterTransactions = function() {
   container.innerHTML = html;
 };
 
-window.approveTransaction = async function(tournamentId, docId, teamId, userId, utr, amount) {
+window.approveTransaction = async function(tournamentId, docId, teamId, userId, utr, amount, collectionName = "verifications") {
   if (!confirm("Are you sure you want to approve this transaction? This will confirm their slot.")) return;
   try {
-    const docRef = doc(db, "tournaments", tournamentId, "verifications", docId);
+    const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
     
     // 1. Mark verification as approved
     await updateDoc(docRef, { status: "approved", approvedAt: serverTimestamp() });
@@ -2314,14 +2336,39 @@ function loadCalendarEvents() {
 
 // ============================================================================
 //  16. SOUND ALERT
-//  FIX: Use .mp3 file instead of AudioContext oscillator.
-//  AudioContext gets suspended in background tabs by browsers and never
-//  resumes reliably. new Audio() with a real file works even when the tab
-//  is in the background.
-//  FIX: Debounce — prevent dual listeners (badge + registrations tab) from
-//  firing the same sound twice for the exact same new document.
+//  Fix: Pre-unlock audio context on first interaction to allow sounds
+//  to play reliably even when the admin panel is idling.
 // ============================================================================
 const _alertedDocIds = new Set(); // tracks doc IDs already alerted this session
+let _adminAudioContext = null;
+let _adminAudioUnlocked = false;
+let _adminSharedAudio = new Audio('/alert.mp3');
+_adminSharedAudio.volume = 0.8;
+
+function _unlockAdminAudio() {
+  if (_adminAudioUnlocked) return;
+  _adminAudioUnlocked = true;
+  
+  // Pre-unlock HTML5 Audio
+  _adminSharedAudio.play().then(() => {
+      _adminSharedAudio.pause();
+      _adminSharedAudio.currentTime = 0;
+  }).catch(() => {});
+
+  // Pre-unlock Web Audio API
+  try {
+    if (!_adminAudioContext) _adminAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (_adminAudioContext.state === 'suspended') _adminAudioContext.resume().catch(() => {});
+  } catch(e) {}
+  
+  document.removeEventListener('click', _unlockAdminAudio);
+  document.removeEventListener('keydown', _unlockAdminAudio);
+  document.removeEventListener('touchstart', _unlockAdminAudio);
+}
+
+document.addEventListener('click', _unlockAdminAudio);
+document.addEventListener('keydown', _unlockAdminAudio);
+document.addEventListener('touchstart', _unlockAdminAudio);
 
 function playAdminAlert(docId) {
   // If a docId is given, only play once per unique doc per session
@@ -2330,23 +2377,23 @@ function playAdminAlert(docId) {
     _alertedDocIds.add(docId);
   }
   try {
-    const audio = new Audio('/alert.mp3');
-    audio.volume = 0.8;
-    audio.play().catch(() => {
+    // Try MP3 first
+    _adminSharedAudio.currentTime = 0;
+    _adminSharedAudio.play().catch(() => {
       // Fallback to AudioContext beep if .mp3 is blocked
       try {
-        const ctx  = new (window.AudioContext || window.webkitAudioContext)();
-        if (ctx.state === 'suspended') ctx.resume();
-        const osc  = ctx.createOscillator();
-        const gain = ctx.createGain();
+        if (!_adminAudioContext) _adminAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (_adminAudioContext.state === 'suspended') _adminAudioContext.resume();
+        const osc  = _adminAudioContext.createOscillator();
+        const gain = _adminAudioContext.createGain();
         osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.frequency.setValueAtTime(1200, ctx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(600, ctx.currentTime + 0.3);
-        gain.gain.setValueAtTime(0.5, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.5);
+        gain.connect(_adminAudioContext.destination);
+        osc.frequency.setValueAtTime(1200, _adminAudioContext.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(600, _adminAudioContext.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.5, _adminAudioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, _adminAudioContext.currentTime + 0.5);
+        osc.start(_adminAudioContext.currentTime);
+        osc.stop(_adminAudioContext.currentTime + 0.5);
       } catch (_) {}
     });
   } catch (_) {}
