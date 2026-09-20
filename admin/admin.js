@@ -454,10 +454,10 @@ window.approveTransaction = async function(tournamentId, docId, teamId, userId, 
   }
 };
 
-window.rejectPaymentTransaction = async function(tournamentId, docId, teamId, userId) {
+window.rejectPaymentTransaction = async function(tournamentId, docId, teamId, userId, collectionName = "verifications") {
   if (!confirm("Are you sure you want to REJECT this payment? The user will be notified to enter the correct UTR.")) return;
   try {
-    const docRef = doc(db, "tournaments", tournamentId, "verifications", docId);
+    const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
     
     // 1. Mark verification as rejected
     await updateDoc(docRef, { status: "payment_rejected", rejectedAt: serverTimestamp(), paymentStatus: "payment_rejected" });
@@ -496,10 +496,10 @@ window.rejectPaymentTransaction = async function(tournamentId, docId, teamId, us
   }
 };
 
-window.walletRefundTransaction = async function(tournamentId, docId, teamId, userId, amount) {
+window.walletRefundTransaction = async function(tournamentId, docId, teamId, userId, amount, collectionName = "verifications") {
   if (!confirm(`Are you sure you want to refund ₹${amount} to their wallet and move them to waitlist?`)) return;
   try {
-    const docRef = doc(db, "tournaments", tournamentId, "verifications", docId);
+    const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
     
     // 1. Mark verification as waitlisted
     await updateDoc(docRef, { status: "waitlisted", waitlistedAt: serverTimestamp() });
@@ -861,6 +861,10 @@ window.viewStatusModal = async function(tournamentId, userId) {
     const p = pSnap.exists() ? pSnap.data() : {};
     const u = uSnap.exists() ? uSnap.data() : {};
     
+    const collectionName = uSnap.exists() ? "upcomingRegistrations" : "verifications";
+    v._collection = collectionName;
+    u._collection = collectionName;
+    
     // Fallback to fetch team session to get true live payment status if others lag
     let sessionData = {};
     const teamId = v.teamId || p.teamId || u.teamId;
@@ -989,14 +993,14 @@ window.viewStatusModal = async function(tournamentId, userId) {
         <div style="display:flex;gap:8px;margin-top:4px;">
           <button onclick="openNotifyModal('${tournamentId}','${userId}',${JSON.stringify(Array.isArray(pData.uids) ? pData.uids : [userId]).replace(/"/g,"'")},'${escHtml(pData.teamName ?? "Team")}')" style="flex:1;padding:10px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">🔔 Notify This Team</button>
           ${(stage3 && !stage4 && theUtr) ? `
-          <button onclick="if(confirm('Force approve this payment manually? This will confirm their slot.')){ window.approveTransaction('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}', '${userId}', '${escHtml(theUtr)}', '${pData.entryFee || 0}'); document.getElementById('statusModalOverlay').remove(); }" style="flex:1;padding:10px;background:var(--gold);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">✅ Approve Payment</button>
+          <button onclick="if(confirm('Force approve this payment manually? This will confirm their slot.')){ window.approveTransaction('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}', '${userId}', '${escHtml(theUtr)}', '${pData.entryFee || 0}', '${pData._collection || "verifications"}'); document.getElementById('statusModalOverlay').remove(); }" style="flex:1;padding:10px;background:var(--gold);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">✅ Approve Payment</button>
           ` : ""}
         </div>
 
         <div style="display:flex;gap:8px;margin-top:10px;">
           <button onclick="document.getElementById('statusModalOverlay').remove(); if(window._statusModalListener){window._statusModalListener();window._statusModalListener=null;}" style="flex:1;background:#222;color:var(--muted);border:1px solid #333;border-radius:6px;cursor:pointer;font-family:inherit;padding:8px;">Close</button>
           
-          <button onclick="if(confirm('⚠️ DEV OVERRIDE: Force approve payment regardless of current status?')){ window.approveTransaction('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}', '${userId}', '${escHtml(theUtr || "MANUAL_OVERRIDE")}', '${pData.entryFee || 0}'); document.getElementById('statusModalOverlay').remove(); }" style="padding:8px;background:transparent;color:#ff4444;border:1px dashed #ff4444;border-radius:6px;cursor:pointer;font-family:inherit;font-size:11px;">🛠 Force Override</button>
+          <button onclick="if(confirm('🛠️ DEV OVERRIDE: Force approve payment regardless of current status?')){ window.approveTransaction('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}', '${userId}', '${escHtml(theUtr || "MANUAL_OVERRIDE")}', '${pData.entryFee || 0}', '${pData._collection || "verifications"}'); document.getElementById('statusModalOverlay').remove(); }" style="padding:8px;background:transparent;color:#ff4444;border:1px dashed #ff4444;border-radius:6px;cursor:pointer;font-family:inherit;font-size:11px;">🛠️ Force Override</button>
         </div>
       `;
     }
