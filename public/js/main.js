@@ -1775,6 +1775,12 @@ function startFirebaseListeners() {
         renderTournaments();
         startTimers();
 
+        // o. FIX: Auto-render the leaderboard on the homepage for the latest completed/ongoing tournament
+        const targetTourney = tournaments.find(t => t.status === 'completed') || tournaments[0];
+        if (targetTourney && window.renderLeaderboard) {
+            window.renderLeaderboard(targetTourney.id);
+        }
+
         // Securely trigger the Database Update & Notifications ONLY if the user is an Admin
         if (userProfile?.isAdmin) {
             checkTournamentPromotions();
@@ -7747,6 +7753,11 @@ window.renderLeaderboard = async function(tournamentId) {
         const thead = container.parentElement?.querySelector("thead tr");
         if (thead && thead.children.length === 5) {
             thead.innerHTML = `<th>Rank</th><th>Team Name</th><th>Players</th><th>Total Kills</th>`;
+        }
+        
+        const heading = document.querySelector("#leaderboard h2");
+        if (heading && tournament.title) {
+            heading.innerText = `Leaderboard: ${tournament.title}`;
         }
     } catch (err) { container.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#ff4444;">Error.</td></tr>`; }
 };
