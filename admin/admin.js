@@ -1057,13 +1057,15 @@ window.saveRoomDetails = async function(tournamentId, userId, teamId) {
   }
 
   try {
-    // Save to participant doc
-    await updateDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
-      roomId:           roomId,
-      roomPassword:     roomPass,
-      roomUpdatedAt:    serverTimestamp(),
-      roomUpdatedBy:    auth.currentUser?.email ?? "admin",
-    });
+    // Save to participant doc if it exists
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+          roomId:           roomId,
+          roomPassword:     roomPass,
+          roomUpdatedAt:    serverTimestamp(),
+          roomUpdatedBy:    auth.currentUser?.email ?? "admin",
+        });
+    } catch (ignore) { /* Document might not exist yet, this is fine */ }
 
     // Get tournament name
     let tournamentName = tournamentId;

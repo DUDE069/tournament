@@ -4235,7 +4235,7 @@ function initNotifications() {
                 // --------------------------
 
                 // Check if it's an approval/rejection/room details/payment confirmation and hasn't been shown yet
-                if ((notif.type === "approval" || notif.type === "approved" || notif.type === "rejected" || notif.type === "room_details" || notif.type === "room_blast" || notif.type === "match_started" || notif.type === "payment_confirmed") && !notif.popupShown) {
+                if ((notif.type === "approval" || notif.type === "approved" || notif.type === "rejected" || notif.type === "room_details" || notif.type === "room_blast" || notif.type === "match_started" || notif.type === "payment_confirmed" || notif.type === "status_message" || notif.type === "admin_notice" || notif.type === "global_alert") && !notif.popupShown) {
                     console.log("🚀 Firing Popup for:", notif.type);
                     
                     // Shield the client instantly on the spot before making the async database update call
@@ -4332,7 +4332,7 @@ function renderNotificationList(docs, listEl) {
     const now = Date.now();
     const activeDocs = docs.filter(d => {
         const n = d.data();
-        const isPriorityType = (n.type === 'room_details' || n.type === 'confirm_and_continue' || n.type === 'payment_confirmed');
+        const isPriorityType = (n.type === 'room_details' || n.type === 'confirm_and_continue' || n.type === 'payment_confirmed' || n.type === 'room_blast' || n.type === 'status_message' || n.type === 'admin_notice' || n.type === 'global_alert');
         if (isPriorityType) {
             const created = n.createdAt?.toDate?.()?.getTime?.() || 0;
             if (created && (now - created) > 24 * 60 * 60 * 1000) return false; // expired after 24h
@@ -4384,7 +4384,7 @@ function renderNotificationList(docs, listEl) {
         // room_details — Room ID & Password (already existed)
         // confirm_and_continue — Payment verified, needs confirmation tap
         // payment_confirmed — Admin manually confirmed payment
-        const isTopPriority = (n.type === 'room_details' || n.type === 'confirm_and_continue' || n.type === 'payment_confirmed');
+        const isTopPriority = (n.type === 'room_details' || n.type === 'confirm_and_continue' || n.type === 'payment_confirmed' || n.type === 'room_blast' || n.type === 'status_message' || n.type === 'admin_notice' || n.type === 'global_alert');
         const topPriorityBorder = isTopPriority ? 'border-left:4px solid #ffd700; background:rgba(255,215,0,0.05);' : `border-left:3px solid ${color};`;
         const starBadge = isTopPriority
             ? `<span style="color:#ffd700; font-size:16px; margin-left:4px;" title="Priority — Action Required">⭐</span>`
@@ -6372,7 +6372,13 @@ window.sendSignupOTP = async function() {
         // Step 1: Create Auth user
         await createUserWithEmailAndPassword(auth, email, pass);
         
-        // Step 2: Skip Email Verification and proceed directly to Role Selection
+        // Step 2: Send Email Verification and proceed directly to Role Selection
+        try {
+            await sendEmailVerification(auth.currentUser);
+            showMessage("Verification email sent! Please check your inbox while you finish setup.");
+        } catch (verifErr) {
+            console.error("[SIGNUP] Failed to send verification email:", verifErr);
+        }
         document.getElementById("signupStep1").style.display = "none";
         document.getElementById("roleSelectionArea").style.display = "block"; 
         
@@ -6698,7 +6704,7 @@ window.createAccount = async function() {
             teamId: null,
             teamName: null,
             teamCode: null,
-            emailVerified: true,
+            emailVerified: user.emailVerified || false,
             createdAt: serverTimestamp(),
             stats: { tournamentsJoined: 0, tournamentsWon: 0, matchesPlayed: 0 }
         };
@@ -6755,7 +6761,9 @@ window.createAccount = async function() {
             const teamData = teamSnap.docs[0].data();
             let currentMembers = teamData.members || [];
             
-            // ── PROACTIVE GHOST CLEANUP ──
+            const actualTeamId = teamSnap.docs[0].id;
+            
+            // 🧹 PROACTIVE GHOST CLEANUP 🧹
             // Before checking if team is full, verify all current members exist
             let activeMembers = [];
             for (const memberUid of currentMembers) {
@@ -6771,7 +6779,7 @@ window.createAccount = async function() {
             // If ghost accounts were found, purge them from the team document
             if (activeMembers.length < currentMembers.length) {
                  try {
-                     await updateDoc(doc(db, "teams", teamData.teamId), { members: activeMembers });
+                     await updateDoc(doc(db, "teams", actualTeamId), { members: activeMembers });
                  } catch (e) { console.warn("Could not purge ghost members:", e); }
                  currentMembers = activeMembers;
             }
@@ -6782,13 +6790,13 @@ window.createAccount = async function() {
                 return;
             }
 
-            await updateDoc(doc(db, "teams", teamData.teamId), { members: arrayUnion(uid) });
-            userData.teamId = teamData.teamId;
-            userData.teamName = teamData.teamName;
+            await updateDoc(doc(db, "teams", actualTeamId), { members: arrayUnion(uid) });
+            userData.teamId = actualTeamId;
+            userData.teamName = teamData.teamName || teamData.name || "Unknown Team";
             userData.teamCode = enteredCode;
             userData.role = "member";
-            localStorage.setItem("welcomeTeam", teamData.teamName);
-            // ✅ ADD THIS NEW LINE: Sync past notifications from leader
+            localStorage.setItem("welcomeTeam", userData.teamName);
+            // 🔄 ADD THIS NEW LINE: Sync past notifications from leader
             await window.syncTeamNotifications(teamData.leaderId, uid);
         }
 
@@ -7363,8 +7371,8 @@ window.saveGhostProfile = async function() {
             const tData = tSnap.docs[0].data();
             if ((tData.members || []).length >= (tData.maxMembers || 5)) { showMessage("Team is full."); btn.disabled=false; btn.textContent="Save & Complete Account"; return; }
             
-            await updateDoc(doc(db, "teams", tData.teamId), { members: arrayUnion(uid) });
-            publicData.teamId = tData.teamId; publicData.teamName = tData.teamName; publicData.teamCode = jCode; publicData.role = "member";
+            await updateDoc(doc(db, "teams", tSnap.docs[0].id), { members: arrayUnion(uid) });
+            publicData.teamId = tSnap.docs[0].id; publicData.teamName = tData.teamName; publicData.teamCode = jCode; publicData.role = "member";
         }
         
         // V2 SECURE DATA SPLIT USING BATCH
@@ -7540,14 +7548,14 @@ window.processViewerUpgrade = async function() {
                 return;
             }
             
-            await updateDoc(doc(db, "teams", tData.teamId), {
+            await updateDoc(doc(db, "teams", tSnap.docs[0].id), {
                 members: arrayUnion(uid)
             });
             
             updates = {
                 role: "member",
                 isLeader: false,
-                teamId: tData.teamId,
+                teamId: tSnap.docs[0].id,
                 teamName: tData.teamName,
                 teamCode: jCode
             };
@@ -7736,7 +7744,7 @@ window.renderLeaderboard = async function(tournamentId) {
 
         const existing = {}; lbSnap.forEach(d => { existing[d.data().rank] = d.data(); });
         let html = ""; const rankColors = { 1: "gold", 2: "silver", 3: "#cd7f32" };
-        for (let i = 1; i <= 15; i++) {
+        for (let i = 1; i <= 12; i++) {
             const d = existing[i]; const color = rankColors[i] || "#aaa";
             
             // To be accurate, nicknames require reading the team data or we can just use teamName if not available
@@ -8220,8 +8228,8 @@ window.saveInAppTeamSetup = async function() {
             const tData = tSnap.docs[0].data();
             if ((tData.members || []).length >= (tData.maxMembers || 5)) { showMessage("Team is full."); btn.disabled=false; btn.textContent="Confirm & Proceed"; return; }
 
-            await updateDoc(doc(db, "teams", tData.teamId), { members: arrayUnion(uid) });
-            updates = { teamId: tData.teamId, teamName: tData.teamName, teamCode: jCode, role: "member" };
+            await updateDoc(doc(db, "teams", tSnap.docs[0].id), { members: arrayUnion(uid) });
+            updates = { teamId: tSnap.docs[0].id, teamName: tData.teamName, teamCode: jCode, role: "member" };
             // ✅ ADD THIS NEW LINE: Sync past notifications from leader
             await window.syncTeamNotifications(tData.leaderId, uid);
         }
@@ -8258,14 +8266,6 @@ window.cancelRegistrationUserSide = async function(tournamentId) {
         
         // Also remove from verifications if it's there
         batch.delete(doc(db, "tournaments", tournamentId, "verifications", uid));
-        
-        // Also remove from participants if they somehow made it that far
-        batch.delete(doc(db, "tournaments", tournamentId, "participants", uid));
-        
-        // Also remove from slots if it was assigned
-        if (userProfile && userProfile.teamId) {
-            batch.delete(doc(db, "tournaments", tournamentId, "slots", userProfile.teamId));
-        }
         
         await batch.commit();
         showMessage("Registration cancelled successfully.");
