@@ -7827,16 +7827,16 @@ window.renderLeaderboard = async function(tournamentId) {
             html += `<tr style="${d ? "" : "opacity:0.4;"}">
                 <td style="color:${color}; font-weight:bold; text-align:center;">#${i}</td>
                 <td style="color:${d ? "#fff" : "#555"};">${d?.teamName || "—"}</td>
-                <td style="color:#aaa; text-align:center;">${d?.teamName ? "Members" : "—"}</td>
-                <td style="color:${color}; text-align:center;">${d?.totalKills ?? "—"}</td>
+                <td style="color:#00ff88; text-align:center; font-weight:bold;">${d?.highestKill || (d?.teamName ? "-" : "—")}</td>
+                <td style="color:${color}; text-align:center;">${d?.kills ?? d?.totalKills ?? "—"}</td>
             </tr>`;
         }
         container.innerHTML = html;
         
         // Also fix the table header if possible (if using an old header id)
         const thead = container.parentElement?.querySelector("thead tr");
-        if (thead && thead.children.length === 5) {
-            thead.innerHTML = `<th>Rank</th><th>Team Name</th><th>Players</th><th>Total Kills</th>`;
+        if (thead) {
+            thead.innerHTML = `<th>Rank</th><th>Team Name</th><th>Highest Kill</th><th>Total Kills</th>`;
         }
         
         const heading = document.querySelector("#leaderboard h2");

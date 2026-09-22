@@ -3837,10 +3837,11 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
         };
 
         let gridHtml = `
-            <div style="display:grid; grid-template-columns:1fr; gap:10px; max-width:780px; margin:0 auto;">
-                <div style="display:grid; grid-template-columns:50px 1fr 120px 120px 80px; gap:8px; padding:0 12px; margin-bottom:2px;">
+            <div style="display:grid; grid-template-columns:1fr; gap:10px; max-width:880px; margin:0 auto;">
+                <div style="display:grid; grid-template-columns:50px 1fr 1fr 90px 90px 80px; gap:8px; padding:0 12px; margin-bottom:2px;">
                     <span style="color:#444; font-size:11px; text-transform:uppercase;">Rank</span>
                     <span style="color:#444; font-size:11px; text-transform:uppercase;">Team Name</span>
+                    <span style="color:#444; font-size:11px; text-transform:uppercase;">Top Player</span>
                     <span style="color:#444; font-size:11px; text-transform:uppercase;">Score</span>
                     <span style="color:#444; font-size:11px; text-transform:uppercase;">Kills</span>
                     <span style="color:#444; font-size:11px; text-transform:uppercase;"></span>
@@ -3855,7 +3856,7 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
             gridHtml += `
                 <div style="
                     display:grid;
-                    grid-template-columns:50px 1fr 120px 120px 80px;
+                    grid-template-columns:50px 1fr 1fr 90px 90px 80px;
                     gap:8px;
                     align-items:center;
                     background:${style.bg};
@@ -3870,6 +3871,13 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
                            id="lb_name_${rank}"
                            value="${escHtml(data.teamName || "")}"
                            placeholder="Team Name"
+                           style="padding:9px 10px; background:#0f0f0f; border:1px solid #333; color:#fff; border-radius:6px; font-family:inherit; font-size:13px; width:100%; box-sizing:border-box;"
+                    >
+
+                    <input type="text"
+                           id="lb_top_player_${rank}"
+                           value="${escHtml(data.highestKill || "")}"
+                           placeholder="Top Player"
                            style="padding:9px 10px; background:#0f0f0f; border:1px solid #333; color:#fff; border-radius:6px; font-family:inherit; font-size:13px; width:100%; box-sizing:border-box;"
                     >
                     
@@ -3925,6 +3933,7 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
 
 window.saveLeaderboardRow = async function(tournamentId, rank) {
     const tName = (document.getElementById(`lb_name_${rank}`)?.value  || "").trim();
+    const tTopPlayer = (document.getElementById(`lb_top_player_${rank}`)?.value  || "").trim();
     const tScore = parseInt(document.getElementById(`lb_score_${rank}`)?.value) || 0;
     const tKills = parseInt(document.getElementById(`lb_kills_${rank}`)?.value) || 0;
 
@@ -3939,15 +3948,15 @@ window.saveLeaderboardRow = async function(tournamentId, rank) {
             {
                 rank:      rank,
                 teamName:  tName,
+                highestKill: tTopPlayer,
                 score:     tScore,
                 kills:     tKills,
                 updatedAt: serverTimestamp()
-            },
-            { merge: false }
+            }
         );
-        showToast(`✅ Rank #${rank} — ${tName} saved!`, "success");
+        showToast(`? Rank #${rank} saved!`, "success");
     } catch (err) {
-        showToast("Error saving Rank #${rank}: Permission Denied.", "error");
+        showToast("Error saving: Permission Denied.", "error");
     }
 };
 
@@ -3956,27 +3965,28 @@ window.saveAllLeaderboardRows = async function(tournamentId) {
     let count = 0;
     
     for (let rank = 1; rank <= 12; rank++) {
-        const tName  = (document.getElementById(`lb_name_${rank}`)?.value || "").trim();
+        const tName = (document.getElementById(`lb_name_${rank}`)?.value || "").trim();
+        const tTopPlayer = (document.getElementById(`lb_top_player_${rank}`)?.value || "").trim();
         const tScore = parseInt(document.getElementById(`lb_score_${rank}`)?.value) || 0;
         const tKills = parseInt(document.getElementById(`lb_kills_${rank}`)?.value) || 0;
         
-        if (!tName) continue; // Skip empty rows
+        if (!tName) continue;
+        count++;
         
         batch.set(
             doc(db, "tournaments", tournamentId, "leaderboard", `rank_${rank}`),
-            { rank, teamName: tName, score: tScore, kills: tKills, updatedAt: serverTimestamp() }
+            { rank, teamName: tName, highestKill: tTopPlayer, score: tScore, kills: tKills, updatedAt: serverTimestamp() }
         );
-        count++;
     }
     
     if (count === 0) {
-        showToast("No rows to save — fill in at least one team name.", "warning");
+        showToast("No valid rows to save.", "warning");
         return;
     }
     
     try {
         await batch.commit();
-        showToast(`✅ ${count} leaderboard rows saved!`, "success");
+        showToast(`? ${count} leaderboard rows saved!`, "success");
     } catch (err) {
         showToast("Error saving batch: Permission Denied.", "error");
     }
