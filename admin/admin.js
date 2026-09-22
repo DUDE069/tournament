@@ -3831,8 +3831,13 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
             getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
         ]);
         
-        const existing = {};
-        lbSnap.forEach(d => { existing[d.data().rank] = d.data(); });
+        const existing = {}; 
+        lbSnap.forEach(d => { 
+            const data = d.data();
+            if (!existing[data.rank] || d.id.startsWith("rank_")) {
+                existing[data.rank] = data;
+            }
+        });
 
         // Build Team Players Map for the dropdowns
         const teamPlayersMap = {};

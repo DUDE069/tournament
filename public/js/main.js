@@ -7818,7 +7818,14 @@ window.renderLeaderboard = async function(tournamentId) {
         const tournament = tSnap.exists() ? tSnap.data() : {};
         const mode = tournament.mode || "—";
 
-        const existing = {}; lbSnap.forEach(d => { existing[d.data().rank] = d.data(); });
+        const existing = {}; 
+        lbSnap.forEach(d => { 
+            const data = d.data();
+            // Prioritize manually edited rows (rank_#) over auto-generated teamId rows to prevent overrides
+            if (!existing[data.rank] || d.id.startsWith("rank_")) {
+                existing[data.rank] = data;
+            }
+        });
         let html = ""; const rankColors = { 1: "gold", 2: "silver", 3: "#cd7f32" };
         for (let i = 1; i <= 12; i++) {
             const d = existing[i]; const color = rankColors[i] || "#aaa";
