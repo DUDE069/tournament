@@ -3876,14 +3876,14 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
             // Build options for select if team exists
             const teamLower = (data.teamName || "").trim().toLowerCase();
             const players = teamPlayersMap[teamLower] || [];
-            let optionsHtml = \`<option value="">-- Select Player --</option>\`;
+            let optionsHtml = `<option value="">-- Select Player --</option>`;
             if (highestKillSafe && !players.includes(data.highestKill)) {
                 // If there's an existing player not in the current list, preserve it
-                optionsHtml += \`<option value="\${highestKillSafe}" selected>\${highestKillSafe}</option>\`;
+                optionsHtml += `<option value="${highestKillSafe}" selected>${highestKillSafe}</option>`;
             }
             players.forEach(p => {
                 const sel = (p === data.highestKill) ? "selected" : "";
-                optionsHtml += \`<option value="\${escHtml(p)}" \${sel}>\${escHtml(p)}</option>\`;
+                optionsHtml += `<option value="${escHtml(p)}" ${sel}>${escHtml(p)}</option>`;
             });
 
             gridHtml += `
