@@ -3824,11 +3824,29 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
     `;
 
     try {
-        const lbRef  = collection(db, "tournaments", tournamentId, "leaderboard");
-        const snap   = await getDocs(query(lbRef, orderBy("rank", "asc")));
+        const [lbSnap, pSnap, vSnap, uSnap] = await Promise.all([
+            getDocs(query(collection(db, "tournaments", tournamentId, "leaderboard"), orderBy("rank", "asc"))),
+            getDocs(collection(db, "tournaments", tournamentId, "participants")),
+            getDocs(collection(db, "tournaments", tournamentId, "verifications")),
+            getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
+        ]);
         
         const existing = {};
-        snap.forEach(d => { existing[d.data().rank] = d.data(); });
+        lbSnap.forEach(d => { existing[d.data().rank] = d.data(); });
+
+        // Build Team Players Map for the dropdowns
+        const teamPlayersMap = {};
+        const allSnaps = [...pSnap.docs, ...vSnap.docs, ...uSnap.docs];
+        allSnaps.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data.teamName && data.playersData) {
+                const names = data.playersData.map(p => p.nickname).filter(n => n);
+                if (names.length > 0) {
+                    teamPlayersMap[data.teamName.trim().toLowerCase()] = names;
+                }
+            }
+        });
+        window.currentTeamPlayersMap = teamPlayersMap;
 
         const rankStyles = {
             1: { color: "gold",    bg: "rgba(255,215,0,0.08)",   border: "gold" },
@@ -3848,10 +3866,25 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
                 </div>
         `;
 
-        // ✅ FIX: Force exactly 12 rows — even if database has 0 entries
+        // o. FIX: Force exactly 12 rows ?" even if database has 0 entries
         for (let rank = 1; rank <= 12; rank++) {
             const data  = existing[rank] || {};
             const style = rankStyles[rank] || { color: "#aaa", bg: "rgba(255,255,255,0.02)", border: "#2a2a2a" };
+            const teamNameSafe = escHtml(data.teamName || "");
+            const highestKillSafe = escHtml(data.highestKill || "");
+
+            // Build options for select if team exists
+            const teamLower = (data.teamName || "").trim().toLowerCase();
+            const players = teamPlayersMap[teamLower] || [];
+            let optionsHtml = \`<option value="">-- Select Player --</option>\`;
+            if (highestKillSafe && !players.includes(data.highestKill)) {
+                // If there's an existing player not in the current list, preserve it
+                optionsHtml += \`<option value="\${highestKillSafe}" selected>\${highestKillSafe}</option>\`;
+            }
+            players.forEach(p => {
+                const sel = (p === data.highestKill) ? "selected" : "";
+                optionsHtml += \`<option value="\${escHtml(p)}" \${sel}>\${escHtml(p)}</option>\`;
+            });
 
             gridHtml += `
                 <div style="
@@ -3869,17 +3902,15 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
                     
                     <input type="text"
                            id="lb_name_${rank}"
-                           value="${escHtml(data.teamName || "")}"
+                           value="${teamNameSafe}"
                            placeholder="Team Name"
+                           oninput="window.updateLeaderboardPlayerSelect(${rank})"
                            style="padding:9px 10px; background:#0f0f0f; border:1px solid #333; color:#fff; border-radius:6px; font-family:inherit; font-size:13px; width:100%; box-sizing:border-box;"
                     >
 
-                    <input type="text"
-                           id="lb_top_player_${rank}"
-                           value="${escHtml(data.highestKill || "")}"
-                           placeholder="Top Player"
-                           style="padding:9px 10px; background:#0f0f0f; border:1px solid #333; color:#fff; border-radius:6px; font-family:inherit; font-size:13px; width:100%; box-sizing:border-box;"
-                    >
+                    <select id="lb_top_player_${rank}" style="padding:9px 10px; background:#0f0f0f; border:1px solid #333; color:#fff; border-radius:6px; font-family:inherit; font-size:13px; width:100%; box-sizing:border-box;">
+                        ${optionsHtml}
+                    </select>
                     
                     <input type="number"
                            id="lb_score_${rank}"
@@ -3929,6 +3960,27 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
             </div>
         `;
     }
+};
+
+window.updateLeaderboardPlayerSelect = function(rank) {
+    const teamNameInput = document.getElementById(`lb_name_${rank}`);
+    const selectEl = document.getElementById(`lb_top_player_${rank}`);
+    if (!teamNameInput || !selectEl || !window.currentTeamPlayersMap) return;
+    
+    const teamName = teamNameInput.value.trim().toLowerCase();
+    const players = window.currentTeamPlayersMap[teamName] || [];
+    
+    const currentValue = selectEl.value;
+    let optionsHtml = `<option value="">-- Select Player --</option>`;
+    if (currentValue && !players.includes(currentValue)) {
+         optionsHtml += `<option value="${escHtml(currentValue)}" selected>${escHtml(currentValue)}</option>`;
+    }
+    players.forEach(p => {
+        const sel = (p === currentValue) ? "selected" : "";
+        optionsHtml += `<option value="${escHtml(p)}" ${sel}>${escHtml(p)}</option>`;
+    });
+    
+    selectEl.innerHTML = optionsHtml;
 };
 
 window.saveLeaderboardRow = async function(tournamentId, rank) {
