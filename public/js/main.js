@@ -188,6 +188,88 @@ if (window.location.hash) {
 
 
 // ===============================
+// AUTO-FILL REGISTRATION DATA
+// ===============================
+window.autoFillRegistrationData = async function() {
+    try {
+        let savedData = userProfile?.lastRegistrationData;
+        
+        if (!savedData && currentUser) {
+            let pastTourneyId = null;
+            const histRef = collection(db, "users", currentUser.uid, "upcomingRegistrations");
+            const q = query(histRef, orderBy("registeredAt", "desc"), limit(1));
+            const snap = await getDocs(q);
+            if (!snap.empty) {
+                pastTourneyId = snap.docs[0].id;
+            } else {
+                const pRef = collection(db, "users", currentUser.uid, "pendingPayment");
+                const pq = query(pRef, orderBy("submittedAt", "desc"), limit(1));
+                const psnap = await getDocs(pq);
+                if (!psnap.empty) {
+                    pastTourneyId = psnap.docs[0].id;
+                }
+            }
+
+            if (pastTourneyId) {
+                let pSnap = await getDoc(doc(db, "tournaments", pastTourneyId, "verifications", currentUser.uid));
+                if (!pSnap.exists()) {
+                    pSnap = await getDoc(doc(db, "tournaments", pastTourneyId, "upcomingRegistrations", currentUser.uid));
+                }
+                if (!pSnap.exists()) {
+                    pSnap = await getDoc(doc(db, "tournaments", pastTourneyId, "participants", currentUser.uid));
+                }
+                if (pSnap.exists()) {
+                    const data = pSnap.data();
+                    if (data.playersData) {
+                        savedData = {
+                            phoneRaw: data.phone?.replace('+91', '') || "",
+                            backupEmail: data.backupEmail || "",
+                            payoutUpiId: data.payoutUpiId || "",
+                            playersData: data.playersData
+                        };
+                        // Save it to user profile so we don't have to query again
+                        updateDoc(doc(db, "users", currentUser.uid), { lastRegistrationData: savedData }).catch(e=>{});
+                    }
+                }
+            }
+        }
+
+        if (savedData) {
+            if (document.getElementById("joinBackupEmail")) document.getElementById("joinBackupEmail").value = savedData.backupEmail || "";
+            if (document.getElementById("joinPhone")) document.getElementById("joinPhone").value = savedData.phoneRaw || "";
+            if (document.getElementById("joinPayoutUpiId")) document.getElementById("joinPayoutUpiId").value = savedData.payoutUpiId || "";
+            
+            // Fill players 2 to 5
+            for (let i = 1; i <= 4; i++) {
+                const p = savedData.playersData[i];
+                if (p) {
+                    const uidEl = document.getElementById("uidPlayer" + (i + 1));
+                    const nickEl = document.getElementById("nickPlayer" + (i + 1));
+                    if (uidEl) uidEl.value = p.uid || "";
+                    if (nickEl) nickEl.value = p.nickname || "";
+                    
+                    if (i === 4 && p.uid) { // Player 5 exists
+                        if (document.getElementById("enablePlayer5")) document.getElementById("enablePlayer5").checked = true;
+                        if (document.getElementById("player5Fields")) document.getElementById("player5Fields").style.display = "flex";
+                    }
+                }
+            }
+        } else {
+            // Default clearing if no data found
+            if (document.getElementById("joinBackupEmail")) document.getElementById("joinBackupEmail").value = "";
+            if (document.getElementById("joinPhone")) document.getElementById("joinPhone").value = "";
+            if (document.getElementById("joinPayoutUpiId")) document.getElementById("joinPayoutUpiId").value = "";
+            for (let i = 2; i <= 5; i++) {
+                if (document.getElementById("uidPlayer" + i)) document.getElementById("uidPlayer" + i).value = "";
+                if (document.getElementById("nickPlayer" + i)) document.getElementById("nickPlayer" + i).value = "";
+            }
+        }
+    } catch (e) {
+        console.warn("Auto-fill failed:", e);
+    }
+};
+
+// ===============================
 // UPCOMING TOURNAMENT REGISTRATION (Phase 1)
 // ===============================
 window.handleUpcomingRegister = async function(tournamentId) {
@@ -347,16 +429,7 @@ window.handleUpcomingRegister = async function(tournamentId) {
         console.error("Error setting user profile details in UI:", e);
     }
 
-    try {
-        document.getElementById("joinBackupEmail").value = "";
-        document.getElementById("uidPlayer2").value     = "";
-        document.getElementById("uidPlayer3").value     = "";
-        document.getElementById("uidPlayer4").value     = "";
-        document.getElementById("uidPlayer5").value     = "";
-        document.getElementById("joinPhone").value       = "";
-    } catch (e) {
-        console.error("Error clearing form inputs:", e);
-    }
+    await window.autoFillRegistrationData();
 
     // Change submit button text
     const submitBtn = document.getElementById("joinSubmitBtn");
@@ -838,16 +911,7 @@ document.getElementById('player5Container').style.display = 'none';
         console.error("Error setting user profile details in UI:", e);
     }
 
-    try {
-        document.getElementById("joinBackupEmail").value = "";
-        document.getElementById("uidPlayer2").value      = "";
-        document.getElementById("uidPlayer3").value      = "";
-        document.getElementById("uidPlayer4").value      = "";
-        document.getElementById("uidPlayer5").value      = "";
-        document.getElementById("joinPhone").value        = "";
-    } catch (e) {
-        console.error("Error clearing form inputs:", e);
-    }
+    await window.autoFillRegistrationData();
 
     try {
         if (userProfile && userProfile.isLeader) {
@@ -1222,6 +1286,18 @@ document.addEventListener("DOMContentLoaded", function() {
 
                 listenToVerification(tournamentId, userId);
             }
+
+            // Save last registration data for auto-fill in future
+            try {
+                await updateDoc(doc(db, "users", userId), {
+                    lastRegistrationData: {
+                        phoneRaw: phoneRaw,
+                        backupEmail: backupEmail,
+                        payoutUpiId: payoutUpiId,
+                        playersData: playersData
+                    }
+                });
+            } catch(e) { console.warn("Failed to save lastRegistrationData:", e); }
 
             // Cleanup and UI Feedback
             document.getElementById('submitWaitOverlay')?.remove();
