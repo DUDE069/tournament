@@ -196,36 +196,70 @@ window.autoFillRegistrationData = async function() {
         
         if (!savedData && currentUser) {
             let pastTourneyId = null;
+            let pastTourneyDoc = null;
+            
+            // 1. Check upcomingRegistrations (no orderBy to prevent missing index/field failures on old data)
             const histRef = collection(db, "users", currentUser.uid, "upcomingRegistrations");
-            const q = query(histRef, orderBy("registeredAt", "desc"), limit(1));
+            const q = query(histRef, limit(1));
             const snap = await getDocs(q);
             if (!snap.empty) {
                 pastTourneyId = snap.docs[0].id;
+                pastTourneyDoc = snap.docs[0].data();
             } else {
+                // 2. Check pendingPayment (no orderBy)
                 const pRef = collection(db, "users", currentUser.uid, "pendingPayment");
-                const pq = query(pRef, orderBy("submittedAt", "desc"), limit(1));
+                const pq = query(pRef, limit(1));
                 const psnap = await getDocs(pq);
                 if (!psnap.empty) {
                     pastTourneyId = psnap.docs[0].id;
+                    pastTourneyDoc = psnap.docs[0].data();
+                } else if (userProfile?.teamId) {
+                    // 3. Ultimate fallback: check team's tournamentHistory
+                    const thRef = collection(db, "teams", userProfile.teamId, "tournamentHistory");
+                    const thSnap = await getDocs(query(thRef, limit(1)));
+                    if (!thSnap.empty) {
+                        pastTourneyId = thSnap.docs[0].id;
+                        pastTourneyDoc = thSnap.docs[0].data();
+                    }
                 }
             }
 
             if (pastTourneyId) {
                 let pSnap = await getDoc(doc(db, "tournaments", pastTourneyId, "verifications", currentUser.uid));
-                if (!pSnap.exists()) {
-                    pSnap = await getDoc(doc(db, "tournaments", pastTourneyId, "upcomingRegistrations", currentUser.uid));
-                }
-                if (!pSnap.exists()) {
-                    pSnap = await getDoc(doc(db, "tournaments", pastTourneyId, "participants", currentUser.uid));
-                }
+                if (!pSnap.exists()) pSnap = await getDoc(doc(db, "tournaments", pastTourneyId, "upcomingRegistrations", currentUser.uid));
+                if (!pSnap.exists()) pSnap = await getDoc(doc(db, "tournaments", pastTourneyId, "participants", currentUser.uid));
+                
+                let dataToProcess = null;
                 if (pSnap.exists()) {
-                    const data = pSnap.data();
-                    if (data.playersData) {
+                    dataToProcess = pSnap.data();
+                } else if (pastTourneyDoc) {
+                    // Fallback to the history doc itself if tournament collections were cleared
+                    dataToProcess = pastTourneyDoc;
+                }
+
+                if (dataToProcess) {
+                    // Reconstruct playersData if only uids exist (older data structure)
+                    let pData = dataToProcess.playersData;
+                    if (!pData && dataToProcess.uids && Array.isArray(dataToProcess.uids)) {
+                        pData = [];
+                        for (const u of dataToProcess.uids) {
+                            if (!u) continue;
+                            try {
+                                const uSnap = await getDoc(doc(db, "users", u));
+                                pData.push({
+                                    uid: u,
+                                    nickname: uSnap.exists() ? (uSnap.data().nickname || "") : ""
+                                });
+                            } catch(e) { pData.push({ uid: u, nickname: "" }); }
+                        }
+                    }
+
+                    if (pData) {
                         savedData = {
-                            phoneRaw: data.phone?.replace('+91', '') || "",
-                            backupEmail: data.backupEmail || "",
-                            payoutUpiId: data.payoutUpiId || "",
-                            playersData: data.playersData
+                            phoneRaw: dataToProcess.phone?.replace('+91', '') || "",
+                            backupEmail: dataToProcess.backupEmail || "",
+                            payoutUpiId: dataToProcess.payoutUpiId || "",
+                            playersData: pData
                         };
                         // Save it to user profile so we don't have to query again
                         updateDoc(doc(db, "users", currentUser.uid), { lastRegistrationData: savedData }).catch(e=>{});
