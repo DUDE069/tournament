@@ -834,6 +834,7 @@
       <a href="privacy.html" style="color: #888; text-decoration: none; font-size: 14px; transition: color 0.2s;">Privacy Policy</a>
       <a href="refund.html" style="color: #888; text-decoration: none; font-size: 14px; transition: color 0.2s;">Refund Policy</a>
       <a href="contact.html" style="color: #888; text-decoration: none; font-size: 14px; transition: color 0.2s;">Contact Us</a>
+      <a href="#" onclick="showDpdpBanner(true); return false;" style="color: #888; text-decoration: none; font-size: 14px; transition: color 0.2s;">Manage Data Preferences</a>
     </div>
     <p style="color: #555; font-size: 13px; margin: 0;">© 2026 NPC's Esports Tournaments | All Rights Reserved</p>
   </footer>
@@ -1576,6 +1577,19 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 <!-- ========================================== -->
 
+  <!-- DPDP CONSENT BANNER -->
+  <div id="dpdpConsentBanner" style="display:none; position:fixed; bottom:0; left:0; width:100%; background:#111; border-top:2px solid #00ff88; padding:20px; box-sizing:border-box; z-index:9999; display:flex; flex-direction:column; gap:15px; text-align:center;">
+    <div>
+      <h3 style="color:#00ff88; margin:0 0 10px 0; font-size:18px;">Privacy & DPDP Act Compliance</h3>
+      <p style="color:#ddd; margin:0; font-size:14px; line-height:1.5;">We use cookies and collect data as per the DPDP Act 2023 to provide you with tournament services, secure transactions, and account management. Please choose your preference.</p>
+    </div>
+    <div style="display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
+      <button id="dpdpAcceptBtn" style="padding:10px 20px; background:#00ff88; color:#000; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">Accept All</button>
+      <button id="dpdpDeclineBtn" style="padding:10px 20px; background:#333; color:#fff; border:1px solid #555; border-radius:6px; font-weight:bold; cursor:pointer;">Decline Non-Essential</button>
+      <a href="privacy.html" style="padding:10px 20px; background:transparent; color:#3b82f6; text-decoration:none; font-weight:bold;">Privacy Policy</a>
+    </div>
+  </div>
+  <script src="js/consent.js"></script>
 </body>
 </html>
 
