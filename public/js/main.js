@@ -1417,8 +1417,8 @@ window.showPaymentInterface = async function(tournamentId, btnElement = null) {
     const tournament = tournaments.find(t => t.id === tournamentId);
     
     try {
-        // Fix 404 Endpoint Mismatch: Use absolute path to root + cache buster
-        const module = await import('/paymentStage.js?v=' + new Date().getTime());
+        // Fix 404 Endpoint Mismatch: Use relative path up one directory for subfolder hosting support (GitHub Pages)
+        const module = await import('../paymentStage.js?v=' + new Date().getTime());
         document.getElementById(loaderId)?.remove();
         
         module.enterPaymentStage(
