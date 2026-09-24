@@ -1512,10 +1512,21 @@ function loadUpcomingRegistrations() {
       }
     });
 
-    const pending  = [];
-    const approved = [];
-    const rejected = [];
-    const tourneyIds = new Set();
+    window._lastUpcomingSnapshot = snapshot;
+    window.renderUpcomingList(snapshot);
+  }, err => {
+    container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: Permission Denied or Invalid Data</p>`;
+  });
+}
+
+window.renderUpcomingList = function(snapshot) {
+  const container = document.getElementById("upcomingRegistrationsList");
+  if (!container) return;
+
+  const pending  = [];
+  const approved = [];
+  const rejected = [];
+  const tourneyIds = new Set();
 
     snapshot.forEach(d => {
       const grandparentColId = d.ref.parent.parent?.parent?.id;
@@ -1535,7 +1546,7 @@ function loadUpcomingRegistrations() {
 
     const tabsContainer = document.getElementById("upcomingTourneyTabs");
     if (tabsContainer) {
-      let tabsHtml = `<button onclick="window._currentUpcomingFilter='all'; loadUpcomingRegistrations()" style="padding:6px 12px; background:${window._currentUpcomingFilter==='all' ? '#00ff88' : '#333'}; color:${window._currentUpcomingFilter==='all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
+      let tabsHtml = `<button onclick="window._currentUpcomingFilter='all'; window.renderUpcomingList(window._lastUpcomingSnapshot)" style="padding:6px 12px; background:${window._currentUpcomingFilter==='all' ? '#00ff88' : '#333'}; color:${window._currentUpcomingFilter==='all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
       
       tourneyIds.forEach(tId => {
         let tName = tId;
@@ -1543,7 +1554,7 @@ function loadUpcomingRegistrations() {
             const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
             if (tDoc) tName = tDoc.data().title || tId;
         }
-        tabsHtml += `<button onclick="window._currentUpcomingFilter='${tId}'; loadUpcomingRegistrations()" style="padding:6px 12px; background:${window._currentUpcomingFilter===tId ? '#00ff88' : '#333'}; color:${window._currentUpcomingFilter===tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
+        tabsHtml += `<button onclick="window._currentUpcomingFilter='${tId}'; window.renderUpcomingList(window._lastUpcomingSnapshot)" style="padding:6px 12px; background:${window._currentUpcomingFilter===tId ? '#00ff88' : '#333'}; color:${window._currentUpcomingFilter===tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
       });
       tabsContainer.innerHTML = tabsHtml;
     }
@@ -1562,9 +1573,6 @@ function loadUpcomingRegistrations() {
     html += rejected.length ? rejected.map(d => upcomingCard(d, "rejected")).join("") : noItems();
 
     container.innerHTML = html;
-  }, err => {
-    container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: Permission Denied or Invalid Data</p>`;
-  });
 }
 
 function upcomingCard(d, type) {
