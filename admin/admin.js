@@ -1238,14 +1238,30 @@ async function sendDualNotification(userId, { type, title, message, extra = {}, 
   }
 
   try {
+    // 1. Write to legacy push queue for history
     await addDoc(collection(db, "pushQueue", userId, "tasks"), {
       type,
       title,
       message,
       ...extra,
       createdAt: serverTimestamp(),
-      sent:      false,    // Cloud Function flips this to true after sending
+      sent:      true,
     });
+
+    // 2. Actually trigger the push via our active REST API (Cloud Functions aren't deployed)
+    fetch('https://npc-secure-backend.onrender.com/send-targeted', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            uids: [userId],
+            title: title,
+            body: message,
+            type: type,
+            extra: extra,
+            actionLink: actionLink
+        })
+    }).catch(err => console.debug("Silent failure hitting push API", err));
+
   } catch (err) {
     // Push queue failure must NEVER break in-app notifications
     // FIX: Changed from console.warn to console.debug so it doesn't clutter your console with yellow errors
