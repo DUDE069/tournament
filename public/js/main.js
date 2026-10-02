@@ -4042,7 +4042,7 @@ async function renderMyAccountTab(content) {
                 </table>
             </div>
             <p style="color:#555;font-size:12px;margin-top:14px;text-align:right;">
-                Future: Razorpay/Cashfree integration · Filters
+                Paid via UPI · UTR-verified
             </p>`;
     } catch (err) {
         console.error("Account tab error:", err);

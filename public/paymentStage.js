@@ -6,17 +6,8 @@ import { db, auth } from './js/firebase.js';
 import {
   doc, onSnapshot, updateDoc, setDoc, serverTimestamp, getDoc, addDoc, collection
 } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
-// 🔒 SECURITY FIX (Issue 6): Suppress sensitive payment logs in production.
-// Payment IDs, Order IDs, and Signatures must never appear in browser console
-// on a live site. Set to true ONLY during local development/debugging.
+// Set to true ONLY during local development/debugging.
 const PAYMENT_DEBUG_MODE = false;
-if (!PAYMENT_DEBUG_MODE) {
-  // Redirect payment-specific logs to a no-op to protect sensitive data.
-  // This does NOT affect main.js logs (they have their own DEBUG_MODE guard).
-  const _noop = () => {};
-  // Override is scoped to this module only via the closure pattern in main.js.
-  // We use a local wrapper below instead of overriding global console.
-}
 
 // Safe payment logger — use this instead of console.log in this file
 function payLog(...args) { if (PAYMENT_DEBUG_MODE) console.log(...args); }
@@ -29,9 +20,6 @@ let _currentTournamentId = null;
 let _currentUserId = null;
 let _isUpcomingTournament = false;
 let _successScreenShowing = false; // ✅ FIX: guard against re-render loop
-
-// ⚠️ YOUR RAZORPAY KEY ID (Frontend uses public Key ID)
-const RAZORPAY_KEY_ID = "rzp_test_SygE6AqBXyl5LI"; 
 
 // ============================================
 // MAIN ENTRY POINT - Called from main.js
@@ -58,7 +46,7 @@ export function enterPaymentStage(userId, tournamentId, tournamentName, entryFee
 }
 
 // ============================================
-// UTR SUBMISSION & VERIFICATION (Replaces Razorpay)
+// UTR SUBMISSION & VERIFICATION
 // ============================================
 async function submitUtrVerification(tournamentId, entryFee) {
   payLog("[PAYMENT] Submit UTR clicked for:", tournamentId);
@@ -217,10 +205,10 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
   if (_successScreenShowing) return;
   document.getElementById('paymentOverlay')?.remove();
 
-  const { paymentStatus, roomId, roomPassword, razorpayPaymentId } = data;
+  const { paymentStatus, roomId, roomPassword, transactionId } = data;
 
   if (paymentStatus === 'verified') {
-    renderSuccessScreen(tournamentName, roomId, roomPassword, razorpayPaymentId);
+    renderSuccessScreen(tournamentName, roomId, roomPassword, transactionId);
     return;
   }
 
