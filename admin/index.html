@@ -6,6 +6,7 @@
   <link rel="icon" type="image/png" href="logo.png">
   <title>NPC Esports — Admin Panel</title>
   <link rel="stylesheet" href="admin.css">
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap');
 
@@ -510,6 +511,9 @@
       📝 Registrations
       <span class="tab-badge" id="registrationBadge" style="display:none">0</span>
     </button>
+    <button class="tab" onclick="showTab('qr')">
+      📱 QR Generator
+    </button>
   </div>
 
   <!-- CONTENT -->
@@ -684,6 +688,39 @@
       <h2>Wallet Withdrawals</h2>
       <div id="withdrawalList">
         <p class="loading-text">Loading withdrawals…</p>
+      </div>
+    </div>
+
+    <!-- 📱 QR CODE GENERATOR -->
+    <div class="section" id="qrSection">
+      <h2>Generate Custom QR Code (No Limits)</h2>
+      <div class="form-box">
+        <div class="form-group">
+          <label>Website URL / Text to Encode</label>
+          <input type="text" id="qrUrl" placeholder="e.g., https://yourwebsite.com/register" value="https://">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>QR Code Color</label>
+            <input type="color" id="qrDarkColor" value="#00ff88" style="height: 40px; cursor: pointer; padding: 0; border: none; width: 100%;">
+          </div>
+          <div class="form-group">
+            <label>Background Color</label>
+            <input type="color" id="qrLightColor" value="#ffffff" style="height: 40px; cursor: pointer; padding: 0; border: none; width: 100%;">
+          </div>
+        </div>
+        <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="qrTransparentBg" style="width: auto; transform: scale(1.3); margin: 0;">
+          <label style="margin: 0; padding-top: 2px;">Make Background Transparent</label>
+        </div>
+        
+        <button class="btn-submit" onclick="window.generateCustomQR()">🎨 Generate QR Code</button>
+        
+        <div id="qrResult" style="margin-top:20px; text-align:center; display:none; background:#111; padding:20px; border-radius:12px; border:1px solid #333;">
+          <img id="qrImage" src="" style="max-width: 100%; border-radius: 8px; margin-bottom:15px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgfQIhZWVn/M5KkmRhhYnQwi2k8jIYZQO/QjJpxNGsYjcP//0FwEgBaHCAwzP1P6AAAAABJRU5ErkJggg==') repeat;">
+          <br>
+          <a id="qrDownloadBtn" href="" download="NPC_QR_Code.png" class="btn-submit" style="text-decoration:none; display:inline-block; background:var(--blue); color:#fff;">⬇️ Download High-Res PNG</a>
+        </div>
       </div>
     </div>
 

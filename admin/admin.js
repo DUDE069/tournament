@@ -212,6 +212,7 @@ window.showTab = function(tabName) {
     transactions:  "transactionsSection",
     withdrawals:   "withdrawalsSection",
     registrations: "registrationsSection",
+    qr:            "qrSection",
   };
   document.getElementById(sectionMap[tabName])?.classList.add("active");
 
@@ -238,6 +239,45 @@ window.showTab = function(tabName) {
   } else {
     if (_listeners.registrations) { _listeners.registrations(); _listeners.registrations = null; }
   }
+};
+
+window.generateCustomQR = function() {
+    const url = document.getElementById("qrUrl").value.trim();
+    if (!url || url === "https://") {
+        alert("Please enter a valid URL.");
+        return;
+    }
+    
+    const darkColor = document.getElementById("qrDarkColor").value;
+    let lightColor = document.getElementById("qrLightColor").value;
+    const isTransparent = document.getElementById("qrTransparentBg").checked;
+    
+    if (isTransparent) {
+        lightColor = "#00000000"; // Transparent hex
+    }
+    
+    if (typeof QRCode === "undefined") {
+        alert("QR Code library is still loading. Please try again in a second.");
+        return;
+    }
+    
+    QRCode.toDataURL(url, {
+        width: 1024,
+        margin: 1,
+        color: {
+            dark: darkColor,
+            light: lightColor
+        }
+    }, function (err, dataUrl) {
+        if (err) {
+            console.error(err);
+            alert("Error generating QR code");
+            return;
+        }
+        document.getElementById("qrImage").src = dataUrl;
+        document.getElementById("qrDownloadBtn").href = dataUrl;
+        document.getElementById("qrResult").style.display = "block";
+    });
 };
 
 let _allTransactions = [];
