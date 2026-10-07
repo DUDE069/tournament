@@ -793,7 +793,19 @@ window.userParticipantDocs = window.userParticipantDocs || {};
                     ${timerHTML}
                     ${buttonHTML}
 
-                    ${isAdminUser ? `<button onclick="editTournament('${t.id}')" style="margin-top:10px;background:#ff6b35;">Edit</button>` : ""}
+                    ${isAdminUser ? `
+                    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+                        <button onclick="editTournament('${t.id}')"
+                            style="flex:1;min-width:90px;padding:8px 12px;background:#ff6b35;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit;transition:opacity .15s;"
+                            onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">
+                            ✏️ Edit
+                        </button>
+                        <button onclick="postponeTournament('${t.id}','${(t.title||'').replace(/'/g,"\\'")}')"
+                            style="flex:1;min-width:90px;padding:8px 12px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit;transition:opacity .15s;"
+                            onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">
+                            📅 Postpone
+                        </button>
+                    </div>` : ""}
                 </div>
             </div>`;
 
@@ -4200,8 +4212,257 @@ async function openAddTournamentForm() {
 
 async function editTournament(id) {
     if (!userProfile?.isAdmin) { showMessage("Not allowed"); return; }
-    // Edit logic here
+
+    // Find the tournament in local cache for pre-filling
+    const t = tournaments.find(x => x.id === id);
+    if (!t) { showMessage("Tournament not found"); return; }
+
+    // --- Build the modal ---
+    const existing = document.getElementById('adminEditModal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'adminEditModal';
+    overlay.style.cssText = `
+        position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9500;
+        display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;
+    `;
+
+    overlay.innerHTML = `
+        <div style="background:#111;border:1px solid #ff6b35;border-radius:16px;padding:28px 24px;
+                    width:100%;max-width:460px;max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                <h2 style="color:#ff6b35;margin:0;font-size:20px;">✏️ Edit Tournament</h2>
+                <button onclick="document.getElementById('adminEditModal').remove()"
+                    style="background:none;border:none;color:#666;font-size:22px;cursor:pointer;padding:0 6px;">&times;</button>
+            </div>
+
+            <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;letter-spacing:.4px;">TOURNAMENT NAME</label>
+            <input id="et-title" type="text" value="${(t.title||'').replace(/"/g,'&quot;')}"
+                style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:#fff;
+                       border-radius:8px;font-size:14px;font-family:inherit;margin-bottom:14px;box-sizing:border-box;"
+                placeholder="Tournament name">
+
+            <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;letter-spacing:.4px;">ENTRY FEE (₹)</label>
+            <input id="et-fee" type="number" min="0" value="${t.entryFee || 0}"
+                style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:#fff;
+                       border-radius:8px;font-size:14px;font-family:inherit;margin-bottom:14px;box-sizing:border-box;"
+                placeholder="Entry fee">
+
+            <p style="color:#ffd700;font-size:12px;font-weight:700;margin-bottom:8px;letter-spacing:.6px;">🏆 PRIZE POOL</p>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;">
+                <div>
+                    <label style="color:#888;font-size:11px;display:block;margin-bottom:3px;">1st Place (₹)</label>
+                    <input id="et-p1" type="number" min="0" value="${t.prize?.first || 0}"
+                        style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #333;color:#ffd700;
+                               border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="color:#888;font-size:11px;display:block;margin-bottom:3px;">2nd Place (₹)</label>
+                    <input id="et-p2" type="number" min="0" value="${t.prize?.second || 0}"
+                        style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #333;color:#c0c0c0;
+                               border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;">
+                </div>
+                <div>
+                    <label style="color:#888;font-size:11px;display:block;margin-bottom:3px;">3rd Place (₹)</label>
+                    <input id="et-p3" type="number" min="0" value="${t.prize?.third || 0}"
+                        style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #333;color:#cd7f32;
+                               border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;">
+                </div>
+            </div>
+
+            <div id="et-error" style="display:none;color:#ff4444;font-size:13px;margin-bottom:12px;
+                                      background:rgba(255,68,68,.08);border:1px solid #ff4444;border-radius:6px;padding:10px;"></div>
+
+            <button id="et-save-btn" onclick="window._saveEditTournament('${id}')"
+                style="width:100%;padding:14px;background:#ff6b35;color:#fff;border:none;border-radius:10px;
+                       font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .15s;margin-bottom:8px;">
+                💾 Save Changes
+            </button>
+            <button onclick="document.getElementById('adminEditModal').remove()"
+                style="width:100%;padding:12px;background:transparent;color:#666;border:1px solid #333;
+                       border-radius:10px;font-size:14px;cursor:pointer;font-family:inherit;">
+                Cancel
+            </button>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Close on backdrop click
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
+
+// ── Save handler for editTournament modal ──────────────────────────────────
+window._saveEditTournament = async function(id) {
+    if (!userProfile?.isAdmin) return;
+
+    const titleVal = document.getElementById('et-title')?.value.trim();
+    const feeVal   = Number(document.getElementById('et-fee')?.value)   || 0;
+    const p1Val    = Number(document.getElementById('et-p1')?.value)    || 0;
+    const p2Val    = Number(document.getElementById('et-p2')?.value)    || 0;
+    const p3Val    = Number(document.getElementById('et-p3')?.value)    || 0;
+    const errEl    = document.getElementById('et-error');
+    const saveBtn  = document.getElementById('et-save-btn');
+
+    if (!titleVal) {
+        errEl.textContent = 'Tournament name cannot be empty.';
+        errEl.style.display = 'block';
+        return;
+    }
+
+    saveBtn.textContent = 'Saving…';
+    saveBtn.disabled = true;
+    if (errEl) errEl.style.display = 'none';
+
+    try {
+        await updateDoc(doc(db, 'tournaments', id), {
+            title:    titleVal,
+            entryFee: feeVal,
+            prize:    { first: p1Val, second: p2Val, third: p3Val },
+            updatedAt: serverTimestamp()
+        });
+        showMessage('✅ Tournament updated successfully!');
+        document.getElementById('adminEditModal')?.remove();
+    } catch (err) {
+        console.error('[EDIT TOURNAMENT]', err);
+        if (errEl) {
+            errEl.textContent = 'Failed to save: ' + (err.message || 'Unknown error');
+            errEl.style.display = 'block';
+        }
+        saveBtn.textContent = '💾 Save Changes';
+        saveBtn.disabled = false;
+    }
+};
+
+// ── postponeTournament — admin reschedules a tournament ───────────────────
+window.postponeTournament = async function(id, title) {
+    if (!userProfile?.isAdmin) { showMessage("Not allowed"); return; }
+
+    const t = tournaments.find(x => x.id === id);
+    if (!t) { showMessage("Tournament not found"); return; }
+
+    const existing = document.getElementById('adminPostponeModal');
+    if (existing) existing.remove();
+
+    // Pre-fill current date/time if available
+    let curDate = '', curTime = '';
+    if (t.eventDate) {
+        try { curDate = new Date(t.eventDate).toISOString().split('T')[0]; } catch(e){}
+    }
+    if (t.eventTime) curTime = t.eventTime;
+
+    const overlay = document.createElement('div');
+    overlay.id = 'adminPostponeModal';
+    overlay.style.cssText = `
+        position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9500;
+        display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto;
+    `;
+
+    overlay.innerHTML = `
+        <div style="background:#111;border:1px solid #3b82f6;border-radius:16px;padding:28px 24px;
+                    width:100%;max-width:420px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                <h2 style="color:#3b82f6;margin:0;font-size:20px;">📅 Postpone Tournament</h2>
+                <button onclick="document.getElementById('adminPostponeModal').remove()"
+                    style="background:none;border:none;color:#666;font-size:22px;cursor:pointer;padding:0 6px;">&times;</button>
+            </div>
+
+            <p style="color:#888;font-size:13px;margin-bottom:18px;background:#1a1a1a;padding:12px;border-radius:8px;border-left:3px solid #3b82f6;">
+                Tournament: <strong style="color:#fff;">${title}</strong>
+            </p>
+
+            <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;letter-spacing:.4px;">NEW DATE</label>
+            <input id="pp-date" type="date" value="${curDate}"
+                style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:#fff;
+                       border-radius:8px;font-size:15px;font-family:inherit;margin-bottom:14px;box-sizing:border-box;color-scheme:dark;">
+
+            <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;letter-spacing:.4px;">NEW TIME (e.g. 8:00 PM IST)</label>
+            <input id="pp-time" type="text" value="${curTime}" placeholder="e.g. 8:00 PM IST"
+                style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:#fff;
+                       border-radius:8px;font-size:14px;font-family:inherit;margin-bottom:6px;box-sizing:border-box;">
+            <p style="color:#555;font-size:11px;margin-bottom:18px;">Leave time empty to keep the current time.</p>
+
+            <div id="pp-error" style="display:none;color:#ff4444;font-size:13px;margin-bottom:12px;
+                                      background:rgba(255,68,68,.08);border:1px solid #ff4444;border-radius:6px;padding:10px;"></div>
+
+            <button id="pp-save-btn" onclick="window._savePostponeTournament('${id}')"
+                style="width:100%;padding:14px;background:#3b82f6;color:#fff;border:none;border-radius:10px;
+                       font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .15s;margin-bottom:8px;">
+                📅 Confirm Postpone
+            </button>
+            <button onclick="document.getElementById('adminPostponeModal').remove()"
+                style="width:100%;padding:12px;background:transparent;color:#666;border:1px solid #333;
+                       border-radius:10px;font-size:14px;cursor:pointer;font-family:inherit;">
+                Cancel
+            </button>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+};
+
+// ── Save handler for postponeTournament modal ──────────────────────────────
+window._savePostponeTournament = async function(id) {
+    if (!userProfile?.isAdmin) return;
+
+    const dateVal  = document.getElementById('pp-date')?.value.trim();
+    const timeVal  = document.getElementById('pp-time')?.value.trim();
+    const errEl    = document.getElementById('pp-error');
+    const saveBtn  = document.getElementById('pp-save-btn');
+
+    if (!dateVal) {
+        if (errEl) { errEl.textContent = 'Please select a new date.'; errEl.style.display = 'block'; }
+        return;
+    }
+
+    saveBtn.textContent = 'Saving…';
+    saveBtn.disabled = true;
+    if (errEl) errEl.style.display = 'none';
+
+    try {
+        const updates = {
+            eventDate: dateVal,
+            updatedAt: serverTimestamp()
+        };
+        if (timeVal) updates.eventTime = timeVal;
+
+        await updateDoc(doc(db, 'tournaments', id), updates);
+
+        // Notify all participants about the new date
+        try {
+            const participantsSnap = await getDocs(collection(db, 'tournaments', id, 'participants'));
+            const batch = writeBatch(db);
+            participantsSnap.forEach(pDoc => {
+                const notifRef = doc(collection(db, 'users', pDoc.id, 'notifications'));
+                batch.set(notifRef, {
+                    type:      'admin_notice',
+                    title:     '📅 Tournament Rescheduled',
+                    message:   `The tournament has been postponed to ${dateVal}${timeVal ? ' at ' + timeVal : ''}.`,
+                    read:      false,
+                    popupShown: false,
+                    createdAt: serverTimestamp()
+                });
+            });
+            await batch.commit();
+        } catch (notifErr) {
+            console.warn('[POSTPONE] Could not send participant notifications:', notifErr);
+        }
+
+        showMessage('✅ Tournament rescheduled! Participants notified.');
+        document.getElementById('adminPostponeModal')?.remove();
+    } catch (err) {
+        console.error('[POSTPONE TOURNAMENT]', err);
+        if (errEl) {
+            errEl.textContent = 'Failed to save: ' + (err.message || 'Unknown error');
+            errEl.style.display = 'block';
+        }
+        saveBtn.textContent = '📅 Confirm Postpone';
+        saveBtn.disabled = false;
+    }
+};
+
 
 // ===============================
 // SCROLL VISIBILITY
