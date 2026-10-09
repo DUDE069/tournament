@@ -8974,17 +8974,30 @@ window.exitTeam = async function() {
                 batch.delete(teamRef);
 
                 // --- NEW LOGIC: Clean up active registrations ---
-                // Fetch the leader's upcoming registrations to know which tournaments to clean up
-                const upcomingSnap = await getDocs(collection(db, "users", currentUser.uid, "upcomingRegistrations"));
-                upcomingSnap.forEach((docSnap) => {
-                    const tid = docSnap.id;
-                    // Delete from tournament's upcomingRegistrations and verifications
+                const tidsToClean = new Set();
+                
+                // Fetch the leader's upcoming registrations and pending payments to find all interacted tournaments
+                const [upcomingSnap, pendingSnap] = await Promise.all([
+                    getDocs(collection(db, "users", currentUser.uid, "upcomingRegistrations")),
+                    getDocs(collection(db, "users", currentUser.uid, "pendingPayment"))
+                ]);
+                
+                upcomingSnap.forEach(docSnap => tidsToClean.add(docSnap.id));
+                pendingSnap.forEach(docSnap => tidsToClean.add(docSnap.id));
+
+                tidsToClean.forEach((tid) => {
+                    // Delete from tournament's pending collections
                     batch.delete(doc(db, "tournaments", tid, "upcomingRegistrations", currentUser.uid));
                     batch.delete(doc(db, "tournaments", tid, "verifications", currentUser.uid));
                     
-                    // Also clean up each member's personal upcomingRegistrations reference
+                    // 🔥 FIX GHOST SLOTS: Delete from approved slots and participants collections
+                    batch.delete(doc(db, "tournaments", tid, "slots", userProfile.teamId));
+                    batch.delete(doc(db, "tournaments", tid, "participants", currentUser.uid));
+                    
+                    // Also clean up each member's personal references
                     for (const memberUid of teamData.members) {
                         batch.delete(doc(db, "users", memberUid, "upcomingRegistrations", tid));
+                        batch.delete(doc(db, "users", memberUid, "pendingPayment", tid));
                     }
                 });
                 // ------------------------------------------------
