@@ -5034,3 +5034,53 @@ window.sendGlobalNotification = async function() {
         showToast('Error sending blast: ' + err.message, 'error');
     }
 };
+
+// ==========================================
+// 🚀 GLOBAL ADMIN ACTION INTERCEPTOR (LOGGING)
+// Automatically wraps all major UI actions to log them to the Admin Console
+// ==========================================
+(function() {
+    const ACTION_FUNCTIONS = [
+        "walletRefundTransaction", "resolveWithdrawal", "removeApplication", 
+        "viewStatusModal", "saveRoomDetails", "openNotifyModal", "sendTeamNotification", 
+        "viewApplicationDetails", "viewRejectedDetails", "approveUpcoming", 
+        "openRejectUpcomingModal", "confirmRejectUpcoming", "removeUpcoming", 
+        "adminLogin", "logout", "addTournament", "deleteTournament", 
+        "markTournamentCompleted", "addCalendarEvent", "deleteCalendarEvent", 
+        "editCalendarEvent", "updateCalendarEvent", "executeGlobalSearch", 
+        "searchTeamByCode", "openTeamDetailsModal", "openGlobalMessageModal", 
+        "sendGlobalTournamentMessage", "openGlobalRoomBlast", "sendGlobalRoomBlast", 
+        "openChangeRequestReview", "allowChangeRequest", "rejectChangeRequest", 
+        "kickTeamFromSlot", "promoteFromWaitlist", "openAdminReviewModal", 
+        "handleReviewDecision", "sendGlobalNotification", "moveToWaitlist", "deleteSlot", 
+        "openPayoutModal", "processPayout", "saveLeaderboardRow", "saveAllLeaderboardRows", 
+        "clearLeaderboard", "showUserAnalyticsDashboard", "saveAllTeamRankings", 
+        "openRewardModal", "submitReward", "runV2DataMigration", "deleteUserDoc", 
+        "openPostponeModal", "submitPostpone", "openEditTimingModal", "submitEditTiming"
+    ];
+
+    const originalFns = {};
+    ACTION_FUNCTIONS.forEach(fn => {
+        if (typeof window[fn] === 'function') {
+            originalFns[fn] = window[fn];
+            window[fn] = async function(...args) {
+                // Determine user-friendly action name
+                const humanName = fn.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+                
+                console.info(`[ACTION] Triggered '${humanName}'`);
+                try {
+                    const res = await originalFns[fn].apply(this, args);
+                    
+                    // Only log success for state-changing operations
+                    if (fn.match(/^(delete|remove|submit|save|approve|reject|send|update|add|mark|process|clear|kick|promote|allow)/)) {
+                        console.info(`[SUCCESS] '${humanName}' completed successfully.`);
+                    }
+                    return res;
+                } catch(err) {
+                    console.error(`[ERROR] '${humanName}' failed:`, err.message || err);
+                    throw err;
+                }
+            };
+        }
+    });
+})();
