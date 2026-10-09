@@ -763,6 +763,7 @@ window.userParticipantDocs = window.userParticipantDocs || {};
                     <h3>${t.title}</h3>
                     ${t.category !== 'limited' ? `<p class="entry"><b>Entry Fee:</b> ₹${t.entryFee || 0}</p>` : ''}
                     <p class="mode"><b>Mode:</b> ${t.mode || "N/A"}</p>
+                    ${t.totalSlots ? `<p class="mode" style="color:#00c9a7;"><b>🎯 Slot Size:</b> ${t.totalSlots} Teams</p>` : ''}
 
                     ${t.category === 'upcoming' && t.eventTime
                         ? `<p style="color:#3b82f6;font-size:13px;margin:4px 0;"><b>⏰ Time:</b> ${t.eventTime}</p>`
@@ -792,6 +793,14 @@ window.userParticipantDocs = window.userParticipantDocs || {};
 
                     ${timerHTML}
                     ${buttonHTML}
+
+                    <!-- ℹ️ INFO BUTTON -->
+                    <button onclick="window.showTournamentInfo(event)"
+                        style="margin-top:10px;width:100%;padding:8px 12px;background:transparent;color:#888;border:1px solid #333;border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit;letter-spacing:0.5px;transition:all 0.2s;"
+                        onmouseover="this.style.borderColor='#00ff88';this.style.color='#00ff88';"
+                        onmouseout="this.style.borderColor='#333';this.style.color='#888';">
+                        ℹ️ Important Info
+                    </button>
 
                     ${isAdminUser ? `
                     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
@@ -828,6 +837,118 @@ window.userParticipantDocs = window.userParticipantDocs || {};
     handleScrollVisibility();
     startTimers();
 }
+
+// ===============================
+// TOURNAMENT INFO POPUP
+// ===============================
+window.showTournamentInfo = function(event) {
+    if (event) event.stopPropagation();
+
+    // Remove any existing info popup
+    document.getElementById('npc-info-popup-overlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'npc-info-popup-overlay';
+    overlay.style.cssText = `
+        position: fixed; inset: 0; z-index: 99999;
+        background: rgba(0,0,0,0.85);
+        display: flex; align-items: center; justify-content: center;
+        padding: 20px; opacity: 0; transition: opacity 0.25s ease;
+    `;
+
+    overlay.innerHTML = `
+        <div id="npc-info-popup-card" style="
+            background: linear-gradient(135deg, #0f0f0f, #1a1a1a);
+            border: 1px solid #2a2a2a;
+            border-radius: 18px;
+            padding: 28px 24px;
+            max-width: 420px;
+            width: 100%;
+            transform: translateY(24px) scale(0.97);
+            transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.3s ease;
+            opacity: 0;
+            position: relative;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,255,136,0.08);
+        ">
+            <!-- Header -->
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:rgba(0,255,136,0.12);border:1px solid rgba(0,255,136,0.3);display:flex;align-items:center;justify-content:center;font-size:18px;">ℹ️</div>
+                    <div>
+                        <p style="color:#00ff88;font-weight:700;font-size:15px;letter-spacing:0.5px;margin:0;">NPC Esports</p>
+                        <p style="color:#555;font-size:11px;margin:0;letter-spacing:0.5px;">Official Guidelines</p>
+                    </div>
+                </div>
+                <button onclick="document.getElementById('npc-info-popup-overlay').remove()"
+                    style="width:30px;height:30px;border-radius:50%;background:#222;border:1px solid #333;color:#888;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;line-height:1;transition:all 0.2s;"
+                    onmouseover="this.style.background='#ff4444';this.style.color='#fff';this.style.borderColor='#ff4444'"
+                    onmouseout="this.style.background='#222';this.style.color='#888';this.style.borderColor='#333'">✕</button>
+            </div>
+
+            <!-- Divider -->
+            <div style="height:1px;background:linear-gradient(90deg,transparent,#2a2a2a,transparent);margin-bottom:20px;"></div>
+
+            <!-- Info Items -->
+            <div style="display:flex;flex-direction:column;gap:14px;">
+
+                <div style="display:flex;gap:12px;align-items:flex-start;padding:12px;background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.2);border-radius:10px;">
+                    <span style="font-size:20px;flex-shrink:0;margin-top:1px;">🛡️</span>
+                    <div>
+                        <p style="color:#3b82f6;font-size:13px;font-weight:700;margin:0 0 3px;">Team Registration</p>
+                        <p style="color:#aaa;font-size:12px;margin:0;line-height:1.6;">Having trouble registering or joining your team? Reach out to our support team — we're here to help you get started quickly.</p>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:12px;align-items:flex-start;padding:12px;background:rgba(0,255,136,0.05);border:1px solid rgba(0,255,136,0.15);border-radius:10px;">
+                    <span style="font-size:20px;flex-shrink:0;margin-top:1px;">💳</span>
+                    <div>
+                        <p style="color:#00ff88;font-size:13px;font-weight:700;margin:0 0 3px;">Secure Payments</p>
+                        <p style="color:#aaa;font-size:12px;margin:0;line-height:1.6;">All entry fees are processed directly through our official platform. Double-check the amount before submitting your payment.</p>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:12px;align-items:flex-start;padding:12px;background:rgba(255,68,68,0.06);border:1px solid rgba(255,68,68,0.2);border-radius:10px;">
+                    <span style="font-size:20px;flex-shrink:0;margin-top:1px;">⚠️</span>
+                    <div>
+                        <p style="color:#ff4444;font-size:13px;font-weight:700;margin:0 0 3px;">No Third-Party Agents</p>
+                        <p style="color:#aaa;font-size:12px;margin:0;line-height:1.6;">NPC Esports does <b style="color:#fff;">not</b> support any third-party agents or middlemen. Beware of scams — we never ask for payment outside this platform.</p>
+                    </div>
+                </div>
+
+                <div style="display:flex;gap:12px;align-items:flex-start;padding:12px;background:rgba(255,215,0,0.05);border:1px solid rgba(255,215,0,0.18);border-radius:10px;">
+                    <span style="font-size:20px;flex-shrink:0;margin-top:1px;">📲</span>
+                    <div>
+                        <p style="color:#ffd700;font-size:13px;font-weight:700;margin:0 0 3px;">Official Contact</p>
+                        <p style="color:#aaa;font-size:12px;margin:0;line-height:1.6;">For queries, disputes, or support — contact us directly via our <b style="color:#ffd700;">Instagram</b> or our official <b style="color:#ffd700;">Discount & Report</b> channel only.</p>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div style="margin-top:20px;text-align:center;">
+                <p style="color:#333;font-size:11px;letter-spacing:0.5px;">NPC Esports · Play Fair · Win Big</p>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    // Animate in
+    requestAnimationFrame(() => {
+        overlay.style.opacity = '1';
+        const card = document.getElementById('npc-info-popup-card');
+        if (card) {
+            card.style.transform = 'translateY(0) scale(1)';
+            card.style.opacity = '1';
+        }
+    });
+
+    // Close on backdrop click
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+};
 
 
 // ===============================

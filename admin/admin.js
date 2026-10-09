@@ -49,24 +49,179 @@
 import { db, auth } from "./firebase.js";
 
 // ===============================
-// GLOBAL LOGGING SYSTEM
+// ADMIN CONSOLE LOG SYSTEM
 // ===============================
-window.ENABLE_CONSOLE_LOGS = true; // Master Switch (Set to false to hide all logs)
+// All console.log/warn/error/info are intercepted and mirrored
+// into a floating, collapsible panel visible only in the admin UI.
+// This lets the admin see real-time data flow without DevTools.
+// ===============================
+window.ENABLE_CONSOLE_LOGS = true;
 
 const originalConsole = {
-    log: console.log,
-    error: console.error,
-    warn: console.warn,
-    info: console.info
+    log:   console.log.bind(console),
+    error: console.error.bind(console),
+    warn:  console.warn.bind(console),
+    info:  console.info.bind(console)
 };
 
-console.log = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.log(...args); };
-console.error = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.error(...args); };
-console.warn = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.warn(...args); };
-console.info = function(...args) { if (window.ENABLE_CONSOLE_LOGS) originalConsole.info(...args); };
+// ── Build the Admin Console Panel (DOM) ──────────────────────────────────────
+(function buildAdminConsole() {
+    if (document.getElementById('admin-console-panel')) return;
 
-window.addEventListener('error', e => console.error("Global JS Error:", e.message, "at", e.filename, "line", e.lineno));
-window.addEventListener('unhandledrejection', e => console.error("Unhandled Promise Rejection:", e.reason));
+    const panel = document.createElement('div');
+    panel.id = 'admin-console-panel';
+    panel.style.cssText = `
+        position: fixed; bottom: 16px; right: 16px; z-index: 99999;
+        width: 400px; max-width: calc(100vw - 32px);
+        background: #0a0a0a; border: 1px solid #222;
+        border-radius: 12px; font-family: 'Share Tech Mono', monospace;
+        font-size: 11px; box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+        transition: height 0.25s ease;
+        display: flex; flex-direction: column;
+    `;
+
+    panel.innerHTML = `
+        <div id="admin-console-header" style="
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 12px; background: #111; border-radius: 12px 12px 0 0;
+            border-bottom: 1px solid #222; cursor: pointer; user-select: none;
+        " onclick="window.toggleAdminConsole()">
+            <span style="color:#00ff88;font-weight:700;letter-spacing:1px;font-size:11px;">
+                ⚡ ADMIN CONSOLE
+            </span>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <span id="admin-console-count" style="background:#1a1a1a;color:#555;padding:2px 7px;border-radius:10px;font-size:10px;">0 logs</span>
+                <button onclick="event.stopPropagation(); window.clearAdminConsole()" 
+                    style="background:transparent;border:1px solid #333;color:#555;border-radius:4px;cursor:pointer;padding:2px 8px;font-size:10px;font-family:inherit;"
+                    onmouseover="this.style.borderColor='#ff4444';this.style.color='#ff4444'"
+                    onmouseout="this.style.borderColor='#333';this.style.color='#555'">Clear</button>
+                <span id="admin-console-toggle-icon" style="color:#555;font-size:14px;">▼</span>
+            </div>
+        </div>
+        <div id="admin-console-body" style="
+            height: 220px; overflow-y: auto; padding: 8px 0;
+            display: flex; flex-direction: column; gap: 0;
+        ">
+            <div style="color:#333;text-align:center;padding:20px 0;font-size:11px;">Console ready — logs will appear here</div>
+        </div>
+    `;
+
+    document.body.appendChild(panel);
+
+    // Scrollbar style
+    const style = document.createElement('style');
+    style.textContent = `
+        #admin-console-body::-webkit-scrollbar { width: 4px; }
+        #admin-console-body::-webkit-scrollbar-track { background: #111; }
+        #admin-console-body::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+    `;
+    document.head.appendChild(style);
+
+    window._adminConsoleCollapsed = false;
+    window._adminConsoleLogCount = 0;
+})();
+
+window.toggleAdminConsole = function() {
+    const body = document.getElementById('admin-console-body');
+    const icon = document.getElementById('admin-console-toggle-icon');
+    if (!body) return;
+    window._adminConsoleCollapsed = !window._adminConsoleCollapsed;
+    body.style.display = window._adminConsoleCollapsed ? 'none' : 'flex';
+    if (icon) icon.textContent = window._adminConsoleCollapsed ? '▲' : '▼';
+};
+
+window.clearAdminConsole = function() {
+    const body = document.getElementById('admin-console-body');
+    if (body) {
+        body.innerHTML = '<div style="color:#333;text-align:center;padding:20px 0;font-size:11px;">Cleared</div>';
+        window._adminConsoleLogCount = 0;
+        const countEl = document.getElementById('admin-console-count');
+        if (countEl) countEl.textContent = '0 logs';
+    }
+};
+
+window._adminLog = function(level, args) {
+    const body = document.getElementById('admin-console-body');
+    if (!body) return;
+
+    window._adminConsoleLogCount = (window._adminConsoleLogCount || 0) + 1;
+    const countEl = document.getElementById('admin-console-count');
+    if (countEl) countEl.textContent = window._adminConsoleLogCount + ' log' + (window._adminConsoleLogCount !== 1 ? 's' : '');
+
+    const colors = {
+        log:   { badge: '#333', text: '#00ff88', label: 'LOG' },
+        info:  { badge: '#1a3a5c', text: '#3b82f6', label: 'INF' },
+        warn:  { badge: '#3a2a00', text: '#ffd700', label: 'WRN' },
+        error: { badge: '#3a0000', text: '#ff4444', label: 'ERR' }
+    };
+    const c = colors[level] || colors.log;
+
+    const now = new Date();
+    const ts = now.getHours().toString().padStart(2,'0') + ':' +
+               now.getMinutes().toString().padStart(2,'0') + ':' +
+               now.getSeconds().toString().padStart(2,'0');
+
+    const msg = args.map(a => {
+        if (a === null) return 'null';
+        if (a === undefined) return 'undefined';
+        if (typeof a === 'object') {
+            try { return JSON.stringify(a, null, 0).substring(0, 300); }
+            catch(e) { return String(a); }
+        }
+        return String(a);
+    }).join(' ');
+
+    const row = document.createElement('div');
+    row.style.cssText = `
+        padding: 4px 12px; border-bottom: 1px solid #0f0f0f;
+        display: flex; gap: 8px; align-items: flex-start;
+        transition: background 0.15s;
+    `;
+    row.onmouseover = () => row.style.background = '#111';
+    row.onmouseout = () => row.style.background = 'transparent';
+
+    row.innerHTML = `
+        <span style="color:#444;flex-shrink:0;padding-top:1px;">${ts}</span>
+        <span style="background:${c.badge};color:${c.text};padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;flex-shrink:0;letter-spacing:1px;">${c.label}</span>
+        <span style="color:${c.text};word-break:break-all;line-height:1.5;opacity:0.9;">${msg.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
+    `;
+
+    // Remove "ready" placeholder on first log
+    if (body.children.length === 1 && body.children[0].style.textAlign === 'center') {
+        body.innerHTML = '';
+    }
+
+    body.appendChild(row);
+    body.scrollTop = body.scrollHeight;
+};
+
+// ── Intercept all console methods ────────────────────────────────────────────
+console.log = function(...args) {
+    if (window.ENABLE_CONSOLE_LOGS) originalConsole.log(...args);
+    window._adminLog('log', args);
+};
+console.error = function(...args) {
+    if (window.ENABLE_CONSOLE_LOGS) originalConsole.error(...args);
+    window._adminLog('error', args);
+};
+console.warn = function(...args) {
+    if (window.ENABLE_CONSOLE_LOGS) originalConsole.warn(...args);
+    window._adminLog('warn', args);
+};
+console.info = function(...args) {
+    if (window.ENABLE_CONSOLE_LOGS) originalConsole.info(...args);
+    window._adminLog('info', args);
+};
+
+window.addEventListener('error', e => {
+    originalConsole.error("Global JS Error:", e.message, "at", e.filename, "line", e.lineno);
+    window._adminLog('error', [`[GLOBAL] ${e.message} @ ${e.filename}:${e.lineno}`]);
+});
+window.addEventListener('unhandledrejection', e => {
+    originalConsole.error("Unhandled Promise Rejection:", e.reason);
+    window._adminLog('error', [`[PROMISE] ${e.reason}`]);
+});
+
 
 import {
     getFirestore, collection, doc, getDocs, getDoc, updateDoc, setDoc, deleteDoc,
@@ -104,16 +259,23 @@ let currentFieldStatuses = {};
 //  1. AUTH GUARD
 // ============================================================================
 onAuthStateChanged(auth, async (user) => {
-  if (!user) { showLoginUI(); return; }
+  if (!user) { 
+    console.log('[AUTH] No user session — showing login UI');
+    showLoginUI(); 
+    return; 
+  }
 
+  console.info('[AUTH] User session detected:', user.email);
   const userSnap = await getDoc(doc(db, "users", user.uid));
   if (!userSnap.exists() || userSnap.data().isAdmin !== true) {
+    console.warn('[AUTH] Access denied — not an admin account:', user.email);
     showToast("Access denied: not an admin account.", "error");
     await signOut(auth);
     showLoginUI();
     return;
   }
 
+  console.info('[AUTH] ✅ Admin verified:', user.email, '— Loading admin panel...');
   showAdminUI();
   initAdminListeners();
 });
@@ -122,15 +284,19 @@ function showLoginUI() {
   teardownAllListeners();
   document.getElementById("loginSection").style.display = "block";
   document.getElementById("adminPanel").style.display   = "none";
+  console.log('[UI] Login screen shown');
 }
 function showAdminUI() {
   document.getElementById("loginSection").style.display = "none";
   document.getElementById("adminPanel").style.display   = "block";
+  console.info('[UI] ✅ Admin panel shown');
 }
 function initAdminListeners() {
+  console.log('[INIT] Starting badge listener, tournament loader, and calendar loader...');
   startBadgeListener();
   loadTournaments();
   loadCalendarEvents();
+  console.log('[INIT] All admin listeners initialized');
 }
 
 // ============================================================================
@@ -1971,6 +2137,7 @@ window.addTournament = async function() {
     const originalText = btn.textContent;
     btn.textContent = "Adding...";
     btn.disabled = true;
+    console.info('[TOURNAMENT] Adding new tournament:', title, '| Category:', category);
 
     try {
         // Base Tournament Data
@@ -2045,7 +2212,8 @@ window.addTournament = async function() {
         }
 
         // Save Tournament to Firestore
-        await addDoc(collection(db, "tournaments"), tournamentData);
+        const newRef = await addDoc(collection(db, "tournaments"), tournamentData);
+        console.info('[TOURNAMENT] ✅ Saved to Firestore. ID:', newRef.id, '| Data:', JSON.stringify(tournamentData).substring(0,200));
         
         showToast(`${category.toUpperCase()} Tournament added successfully!`, "success");
         
@@ -2055,7 +2223,7 @@ window.addTournament = async function() {
         if (document.getElementById("tournamentFee")) document.getElementById("tournamentFee").value = "";
         
     } catch (err) {
-        console.error("Add Tournament Error:", err);
+        console.error("[TOURNAMENT] Add Tournament Error:", err.message, err);
         showToast("Error adding tournament", "error");
     } finally {
         btn.textContent = originalText;
@@ -2144,11 +2312,14 @@ window.markTournamentCompleted = async function(tournamentId) {
 
 function loadTournaments() {
   if (_listeners.tournaments) return;
+  console.log('[TOURNAMENTS] Starting real-time tournament listener...');
   const q = query(tournamentsRef, orderBy("createdAt", "desc"));
   _listeners.tournaments = onSnapshot(q, (snapshot) => {
     const box = document.getElementById("tournamentList");
     if (!box) return;
     box.innerHTML = "";
+    
+    console.log('[TOURNAMENTS] Snapshot received —', snapshot.size, 'tournaments loaded');
     
     // Store for periodic checks
     window._adminActiveTournaments = snapshot.docs;
