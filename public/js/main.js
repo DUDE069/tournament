@@ -7250,8 +7250,8 @@ window.createAccount = async function() {
                 return;
             }
 
-            const teamData = teamSnap.docs[0].data();
-            let currentMembers = teamData.members || [];
+            const teamDataInitial = teamSnap.docs[0].data();
+            let currentMembers = teamDataInitial.members || [];
             
             const actualTeamId = teamSnap.docs[0].id;
             
@@ -7273,23 +7273,45 @@ window.createAccount = async function() {
                  try {
                      await updateDoc(doc(db, "teams", actualTeamId), { members: activeMembers });
                  } catch (e) { console.warn("Could not purge ghost members:", e); }
-                 currentMembers = activeMembers;
             }
 
-            if (currentMembers.length >= (teamData.maxMembers || 5)) {
-                showMessage("Team is full.");
+            // ✅ NEW: TRANSACTION TO PREVENT RACE CONDITIONS
+            let finalTeamData;
+            try {
+                finalTeamData = await runTransaction(db, async (transaction) => {
+                    const teamRef = doc(db, "teams", actualTeamId);
+                    const tDoc = await transaction.get(teamRef);
+                    if (!tDoc.exists()) throw new Error("Team document does not exist.");
+                    
+                    const tData = tDoc.data();
+                    const members = tData.members || [];
+                    const maxMembers = tData.maxMembers || 5;
+                    
+                    if (members.length >= maxMembers) {
+                        throw new Error("Team is full.");
+                    }
+                    
+                    if (members.includes(uid)) {
+                        throw new Error("You are already in this team.");
+                    }
+                    
+                    // Atomically append the new member UID
+                    transaction.update(teamRef, { members: arrayUnion(uid) });
+                    return tData;
+                });
+            } catch (err) {
+                showMessage(err.message);
                 if (createBtn) { createBtn.disabled = false; createBtn.textContent = originalText; }
                 return;
             }
 
-            await updateDoc(doc(db, "teams", actualTeamId), { members: arrayUnion(uid) });
             userData.teamId = actualTeamId;
-            userData.teamName = teamData.teamName || teamData.name || "Unknown Team";
+            userData.teamName = finalTeamData.teamName || finalTeamData.name || "Unknown Team";
             userData.teamCode = enteredCode;
             userData.role = "member";
             localStorage.setItem("welcomeTeam", userData.teamName);
             // 🔄 ADD THIS NEW LINE: Sync past notifications from leader
-            await window.syncTeamNotifications(teamData.leaderId, uid);
+            await window.syncTeamNotifications(finalTeamData.leaderId, uid);
         }
 
         // ✅ V2 SECURE DATA SPLIT: Use a transaction-style write with immediate verification
@@ -8765,6 +8787,21 @@ window.cancelRegistrationUserSide = async function(tournamentId) {
         
         // Also remove from verifications if it's there
         batch.delete(doc(db, "tournaments", tournamentId, "verifications", uid));
+
+        // NEW LOGIC: Clean up the registration mirror for all team members
+        if (typeof userProfile !== 'undefined' && userProfile && userProfile.teamId) {
+            try {
+                const teamSnap = await getDoc(doc(db, "teams", userProfile.teamId));
+                if (teamSnap.exists()) {
+                    const members = teamSnap.data().members || [];
+                    for (const memberUid of members) {
+                        batch.delete(doc(db, "users", memberUid, "upcomingRegistrations", tournamentId));
+                    }
+                }
+            } catch (err) {
+                console.warn("Could not fetch team to cleanup members:", err);
+            }
+        }
         
         await batch.commit();
         showMessage("Registration cancelled successfully.");
@@ -8927,6 +8964,23 @@ window.exitTeam = async function() {
                 }
                 // Delete the team document
                 batch.delete(teamRef);
+
+                // --- NEW LOGIC: Clean up active registrations ---
+                // Fetch the leader's upcoming registrations to know which tournaments to clean up
+                const upcomingSnap = await getDocs(collection(db, "users", currentUser.uid, "upcomingRegistrations"));
+                upcomingSnap.forEach((docSnap) => {
+                    const tid = docSnap.id;
+                    // Delete from tournament's upcomingRegistrations and verifications
+                    batch.delete(doc(db, "tournaments", tid, "upcomingRegistrations", currentUser.uid));
+                    batch.delete(doc(db, "tournaments", tid, "verifications", currentUser.uid));
+                    
+                    // Also clean up each member's personal upcomingRegistrations reference
+                    for (const memberUid of teamData.members) {
+                        batch.delete(doc(db, "users", memberUid, "upcomingRegistrations", tid));
+                    }
+                });
+                // ------------------------------------------------
+
                 await batch.commit();
             } else {
                 // Regular member leaves

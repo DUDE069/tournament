@@ -2,9 +2,11 @@
   "name": "esports-tournament",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "replace.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test:rules": "jest tests/rules.test.js",
+    "test:server": "jest tests/server.test.js",
+    "test:all": "firebase emulators:exec \"jest\""
   },
   "repository": {
     "type": "git",
@@ -17,7 +19,9 @@
     "url": "https://github.com/DUDE069/tournament/issues"
   },
   "homepage": "https://github.com/DUDE069/tournament#readme",
-  "dependencies": {
-    "firebase": "^12.17.1"
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase-tools": "^15.33.0",
+    "jest": "^30.5.2"
   }
 }
