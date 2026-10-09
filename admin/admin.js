@@ -258,10 +258,12 @@ let currentFieldStatuses = {};
 // ============================================================================
 //  1. AUTH GUARD
 // ============================================================================
+window.isAdminSession = false;
+
 onAuthStateChanged(auth, async (user) => {
   if (!user) { 
-    console.log('[AUTH] No user session — showing login UI');
-    showLoginUI(); 
+    console.log('[AUTH] No user session — redirecting to home');
+    window.location.replace("/"); 
     return; 
   }
 
@@ -269,12 +271,11 @@ onAuthStateChanged(auth, async (user) => {
   const userSnap = await getDoc(doc(db, "users", user.uid));
   if (!userSnap.exists() || userSnap.data().isAdmin !== true) {
     console.warn('[AUTH] Access denied — not an admin account:', user.email);
-    showToast("Access denied: not an admin account.", "error");
-    await signOut(auth);
-    showLoginUI();
+    window.location.replace("/");
     return;
   }
 
+  window.isAdminSession = true;
   console.info('[AUTH] ✅ Admin verified:', user.email, '— Loading admin panel...');
   showAdminUI();
   initAdminListeners();
@@ -287,6 +288,7 @@ function showLoginUI() {
   console.log('[UI] Login screen shown');
 }
 function showAdminUI() {
+  if (!window.isAdminSession) return;
   document.getElementById("loginSection").style.display = "none";
   document.getElementById("adminPanel").style.display   = "block";
   console.info('[UI] ✅ Admin panel shown');
@@ -1053,6 +1055,7 @@ window.removeApplication = async function(tournamentId, userId) {
 //  ADDED: "Notify This Team" button + Room ID & Password management
 // ============================================================================
 window.viewStatusModal = async function(tournamentId, userId) {
+  if (!window.isAdminSession) return;
   // Store the listener so we can stop it when modal closes
   if (window._statusModalListener) {
     window._statusModalListener(); // Cleanup any existing listener
@@ -1313,6 +1316,7 @@ window.saveRoomDetails = async function(tournamentId, userId, teamId) {
 //  NEW: replaced Confirm Payment / Reject Payment buttons
 // ============================================================================
 window.openNotifyModal = function(tournamentId, userId, teamId, teamName) {
+  if (!window.isAdminSession) return;
   document.getElementById("notifyModalOverlay")?.remove();
 
   const overlay = document.createElement("div");

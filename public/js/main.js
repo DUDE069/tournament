@@ -102,6 +102,18 @@ window.escHtml = function(str) {
     });
 };
 
+const SYSTEM_MESSAGES = {
+    DPDP_CONSENT_PROCEED: "You must agree to the DPDP Act Privacy Terms before proceeding.",
+    DPDP_CONSENT_LOGIN: "You must agree to the DPDP Act Privacy Terms before logging in.",
+    DPDP_CONSENT_SIGNUP: "You must agree to the DPDP Act Privacy Terms before creating an account.",
+    AGE_REQUIREMENT: "Age must be between 12 and 60",
+    NICKNAME_REQUIRED: "Nickname is required",
+    UID_REQUIRED: "Game UID is required",
+    INVALID_TEAM_CODE: "Invalid team code. Please check with your team leader.",
+    TEAM_FULL: "Team is full.",
+    ALREADY_IN_TEAM: "You are already in this team."
+};
+
 window.playCustomSound = function(type) {
     try {
         if (!audioContext) {
@@ -2120,12 +2132,12 @@ window.googleSignIn = async function() {
     
     if (loginView && loginView.style.display !== "none") {
         if (loginConsent && !loginConsent.checked) {
-            showMessage("You must agree to the DPDP Act Privacy Terms before proceeding.");
+            showMessage(SYSTEM_MESSAGES.DPDP_CONSENT_PROCEED);
             return;
         }
     } else if (createView && createView.style.display !== "none") {
         if (signupConsent && !signupConsent.checked) {
-            showMessage("You must agree to the DPDP Act Privacy Terms before proceeding.");
+            showMessage(SYSTEM_MESSAGES.DPDP_CONSENT_PROCEED);
             return;
         }
     }
@@ -3753,7 +3765,7 @@ async function login() {
     const consent = document.getElementById("loginConsentCheckbox");
 
     if (consent && !consent.checked) {
-        showMessage("You must agree to the DPDP Act Privacy Terms before logging in.");
+        showMessage(SYSTEM_MESSAGES.DPDP_CONSENT_LOGIN);
         return;
     }
 
@@ -6823,7 +6835,7 @@ let resendCooldown = 0;
 window.sendSignupOTP = async function() {
     const consent = document.getElementById("signupConsentCheckbox");
     if (consent && !consent.checked) {
-        showMessage("You must agree to the DPDP Act Privacy Terms before creating an account.");
+        showMessage(SYSTEM_MESSAGES.DPDP_CONSENT_SIGNUP);
         return;
     }
 
@@ -6831,9 +6843,9 @@ window.sendSignupOTP = async function() {
     const nickname = document.getElementById("regNickname") ? document.getElementById("regNickname").value.trim() : "";
     const freeFireUid = document.getElementById("regUID") ? document.getElementById("regUID").value.trim() : "";
 
-    if (isNaN(age) || age < 12 || age > 60) { showMessage("Age must be between 12 and 60"); return; }
-    if (!nickname) { showMessage("Nickname is required"); return; }
-    if (!freeFireUid) { showMessage("Game UID is required"); return; }
+    if (isNaN(age) || age < 12 || age > 60) { showMessage(SYSTEM_MESSAGES.AGE_REQUIREMENT); return; }
+    if (!nickname) { showMessage(SYSTEM_MESSAGES.NICKNAME_REQUIRED); return; }
+    if (!freeFireUid) { showMessage(SYSTEM_MESSAGES.UID_REQUIRED); return; }
 
     const btn = document.getElementById("btnSendOTP");
     const originalText = btn.textContent;
@@ -7022,8 +7034,8 @@ window.saveProfileUpdate = async function() {
     const newFreeFireUid = document.getElementById("editFreeFireUid")?.value?.trim();
     const newAge = parseInt(document.getElementById("editAge")?.value);
 
-    if (isNaN(newAge) || newAge < 12 || newAge > 60) { showMessage("Age must be between 12 and 60"); return; }
-    if (!newNickname) { showMessage("Nickname cannot be empty"); return; }
+    if (isNaN(newAge) || newAge < 12 || newAge > 60) { showMessage(SYSTEM_MESSAGES.AGE_REQUIREMENT); return; }
+    if (!newNickname) { showMessage(SYSTEM_MESSAGES.NICKNAME_REQUIRED); return; }
 
     const btn = event?.target;
     const originalText = btn?.textContent;
