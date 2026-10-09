@@ -94,6 +94,14 @@ let currentStream = null;
 // const locallyShownPopups = new Set(); // Prevents infinite rollback loops - Replaced with sessionStorage
 let activeParticipantListeners = {}; // Store unsubscribe functions for participant listeners
 
+window.escHtml = function(str) {
+    if (!str) return '';
+    return String(str).replace(/[&<>"']/g, function(match) {
+        const escape = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+        return escape[match];
+    });
+};
+
 window.playCustomSound = function(type) {
     try {
         if (!audioContext) {
@@ -1508,7 +1516,7 @@ window.showTeamPaymentWarning = function(tournamentId) {
                     Do you want to continue to pay the amount, or do you want to consult with your teammates first?
                 </p>
                 <div style="display:flex;flex-direction:column;gap:10px;">
-                    <button onclick="document.getElementById('teamPaymentWarningModal').remove(); showPaymentInterface('${tournamentId}');" style="padding:12px;background:#00ff88;color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">
+                    <button onclick="document.getElementById('teamPaymentWarningModal').remove(); showPaymentInterface('${window.escHtml(tournamentId)}');" style="padding:12px;background:#00ff88;color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer;">
                         Continue to Pay Now
                     </button>
                     <button onclick="document.getElementById('teamPaymentWarningModal').remove();" style="padding:12px;background:transparent;color:#888;border:1px solid #444;border-radius:8px;font-weight:bold;cursor:pointer;">
@@ -4884,22 +4892,22 @@ function renderNotificationList(docs, listEl) {
         // Only show delete button for non-priority notifications
         const deleteBtn = isTopPriority
             ? `<span style="color:#ffd700; font-size:11px; padding:2px 6px; background:rgba(255,215,0,.15); border-radius:4px; font-weight:bold;">🔔 Priority</span>`
-            : `<span onclick="deleteNotification(event, '${d.id}')" style="color:#666; font-size:14px; cursor:pointer; padding: 0 4px; border-radius:4px; transition: color 0.2s;" onmouseover="this.style.color='#ff4444'" onmouseout="this.style.color='#666'" title="Remove">✖</span>`;
+            : `<span onclick="deleteNotification(event, '${window.escHtml(d.id)}')" style="color:#666; font-size:14px; cursor:pointer; padding: 0 4px; border-radius:4px; transition: color 0.2s;" onmouseover="this.style.color='#ff4444'" onmouseout="this.style.color='#666'" title="Remove">✖</span>`;
 
         return `
-            <div style="background:${bg};padding:14px 16px;margin-bottom:8px;border-radius:8px;
+            <div style="background:${window.escHtml(bg)};padding:14px 16px;margin-bottom:8px;border-radius:8px;
                 ${topPriorityBorder}cursor:pointer;display:flex;gap:12px;align-items:flex-start;
                 transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;"
                 onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.3)';"
                 onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';"
-                onclick="handleNotificationClick('${d.id}','${n.actionLink || ''}','${n.type || ''}')">
-                <div style="width:28px;height:28px;border-radius:50%;background:${color}22;color:${color};
+                onclick="handleNotificationClick('${window.escHtml(d.id)}','${window.escHtml(n.actionLink || '')}','${window.escHtml(n.type || '')}')">
+                <div style="width:28px;height:28px;border-radius:50%;background:${window.escHtml(color)}22;color:${window.escHtml(color)};
                     display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;">
                     ${icon}
                 </div>
                 <div style="flex:1;min-width:0;">
                     <div style="display:flex;justify-content:space-between;margin-bottom:4px;align-items:center;">
-                        <strong style="color:#fff;font-size:13px;">${n.title || ''}${starBadge}</strong>
+                        <strong style="color:#fff;font-size:13px;">${window.escHtml(n.title || '')}${starBadge}</strong>
                         
                         <div style="display:flex; gap:8px; align-items:center;">
                             ${!n.read ? '<span style="width:7px;height:7px;background:#ff4444;border-radius:50%;flex-shrink:0;"></span>' : ''}
@@ -4907,8 +4915,8 @@ function renderNotificationList(docs, listEl) {
                         </div>
 
                     </div>
-                    <p style="color:#aaa;font-size:12px;margin:0;line-height:1.4;">${n.message || ''}</p>
-                    <p style="color:#666;font-size:11px;margin:6px 0 0;">${time}</p>
+                    <p style="color:#aaa;font-size:12px;margin:0;line-height:1.4;">${window.escHtml(n.message || '')}</p>
+                    <p style="color:#666;font-size:11px;margin:6px 0 0;">${window.escHtml(time)}</p>
                 </div>
             </div>`;
     }).join('');
@@ -6805,7 +6813,7 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 
 // --- OTP System Variables ---
-let signupOTP = null;
+
 let otpExpiry = null;
 let resendCooldown = 0;
 
@@ -6882,25 +6890,13 @@ window.sendSignupOTP = async function() {
     } catch (err) {
         console.error("[SIGNUP] Error:", err.code || err.message);
         
-        // Ghost Account Recovery Flow
         if (err.code === 'auth/email-already-in-use') {
-            try {
-                await signInWithEmailAndPassword(auth, email, pass);
-                
-                // Account already exists! Skip to role selection
-                document.getElementById("signupStep1").style.display = "none";
-                document.getElementById("roleSelectionArea").style.display = "block";
-                const finalBtn = document.querySelector('#createView button[onclick="createAccount()"]');
-                if (finalBtn) finalBtn.style.display = "block";
-                
-                showMessage("Account found! Please finalize your profile below.");
-            } catch (loginErr) {
-                showMessage("⚠️ Email already registered. Please login instead.");
-                setTimeout(() => { 
-                    backToLogin(); 
-                    document.getElementById("loginEmail").value = email; 
-                }, 1500);
-            }
+            showMessage("⚠️ Email already registered. Please go to the Sign In screen to log in.");
+            setTimeout(() => { 
+                if (typeof backToLogin === 'function') backToLogin(); 
+                const loginEmailInput = document.getElementById("loginEmail");
+                if (loginEmailInput) loginEmailInput.value = email; 
+            }, 2500);
         } else {
             showMessage("Error: " + err.message.replace("Firebase: ", ""));
         }

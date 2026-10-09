@@ -1443,16 +1443,20 @@ async function sendDualNotification(userId, { type, title, message, extra = {}, 
       return;
   }
 
+  const ENABLE_PUSH_QUEUE = false; // Set to true when Firebase background workers are active
+
   try {
-    // 1. Write to legacy push queue for history
-    await addDoc(collection(db, "pushQueue", userId, "tasks"), {
-      type,
-      title,
-      message,
-      ...extra,
-      createdAt: serverTimestamp(),
-      sent:      true,
-    });
+    if (ENABLE_PUSH_QUEUE) {
+        // 1. Write to legacy push queue for history
+        await addDoc(collection(db, "pushQueue", userId, "tasks"), {
+          type,
+          title,
+          message,
+          ...extra,
+          createdAt: serverTimestamp(),
+          sent:      true,
+        });
+    }
 
     // 2. Actually trigger the push via our active REST API (Cloud Functions aren't deployed)
     fetch('https://npc-secure-backend.onrender.com/send-targeted', {
