@@ -594,7 +594,9 @@ window.filterTransactions = function() {
 
 window.approveTransaction = async function(tournamentId, docId, teamId, userId, utr, amount, collectionName = "verifications") {
   if (!confirm("Are you sure you want to approve this transaction? This will confirm their slot.")) return;
+  console.info(`[ACTION] Triggered 'Approve Payment' for ${teamId}`);
   try {
+    console.info(`[DATA OUT] Submitting update to ${collectionName} and slots...`);
     const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
     
     // 1. Mark verification as approved
@@ -658,7 +660,9 @@ window.approveTransaction = async function(tournamentId, docId, teamId, userId, 
     }
 
     showToast("Transaction approved successfully!");
+    console.info(`[DATA OUT] Transaction completed successfully.`);
   } catch (e) {
+    console.error(`[ERROR] Failed to execute approveTransaction: ${e.message}`);
     console.error("Error approving transaction:", e);
     alert("Error: " + e.message);
   }
@@ -666,7 +670,9 @@ window.approveTransaction = async function(tournamentId, docId, teamId, userId, 
 
 window.rejectPaymentTransaction = async function(tournamentId, docId, teamId, userId, collectionName = "verifications") {
   if (!confirm("Are you sure you want to REJECT this payment? The user will be notified to enter the correct UTR.")) return;
+  console.info(`[ACTION] Triggered 'Reject Payment' for ${teamId}`);
   try {
+    console.info(`[DATA OUT] Submitting update to ${collectionName} and slots...`);
     const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
     
     // 1. Mark verification as rejected
@@ -700,7 +706,9 @@ window.rejectPaymentTransaction = async function(tournamentId, docId, teamId, us
     });
 
     showToast("Payment rejected and user notified.", "warning");
+    console.info(`[DATA OUT] Transaction completed successfully.`);
   } catch (e) {
+    console.error(`[ERROR] Failed to execute rejectPaymentTransaction: ${e.message}`);
     console.error("Error rejecting transaction:", e);
     alert("Error: " + e.message);
   }
@@ -2907,6 +2915,7 @@ window.openTeamDetailsModal = async function(teamId) {
 // SLOT & WAITLIST MANAGEMENT
 // ==========================================
 window.manageTournamentSlots = async function(tournamentId) {
+    console.info("[ACTION] Triggered 'Manage Tournament' button - Opening slots view...");
     document.getElementById("statusModalOverlay")?.remove();
     const overlay = document.createElement("div");
     overlay.id = "statusModalOverlay";
@@ -2959,7 +2968,7 @@ window.manageTournamentSlots = async function(tournamentId) {
                 </button>
             </div>
             
-            <button onclick="document.getElementById('statusModalOverlay').remove()"
+            <button onclick="document.getElementById('statusModalOverlay').remove(); console.info('[UI] Closed management popup modal.');"
                     style="width:100%; margin-top:14px; padding:10px; background:#333; color:#fff; border:none; border-radius:8px; cursor:pointer; font-family:inherit;">
                 Close
             </button>
@@ -2969,6 +2978,7 @@ window.manageTournamentSlots = async function(tournamentId) {
     document.body.appendChild(overlay);
 
     try {
+        console.info("[DATA IN] Fetching slot management data...");
         // Fetch all contextual tournament sub-collections simultaneously to capture exact user form input states
         const [tSnap, slotsSnap, participantsSnap, verificationsSnap, upcomingSnap, leaderboardSnap] = await Promise.all([
             getDoc(doc(db, "tournaments", tournamentId)),
@@ -2978,6 +2988,7 @@ window.manageTournamentSlots = async function(tournamentId) {
             getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations")),
             getDocs(collection(db, "tournaments", tournamentId, "leaderboard"))
         ]);
+        console.info(`[DATA IN] Successfully loaded ${slotsSnap.size} slot items.`);
         
         const lbData = {};
         leaderboardSnap.forEach(d => { lbData[d.id] = d.data(); });
@@ -3309,6 +3320,7 @@ window.manageTournamentSlots = async function(tournamentId) {
         }
 
     } catch (e) {
+        console.error("[ERROR] Failed to execute slot fetch:", e.message || e);
         console.error("[SLOTS]", e);
         document.getElementById("table-container").innerHTML = `
             <p style="color:var(--red); padding:15px; text-align:center;">Error loading slots: Permission Denied or Invalid Data</p>
