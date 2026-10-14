@@ -1072,14 +1072,14 @@ document.getElementById('player5Container').style.display = 'none';
     // ✅ FIXED DYNAMIC TIMING (ONGOING)
     const joinStartTimeEl = document.getElementById("joinStartTime");
     if (joinStartTimeEl) {
-        if (tournament.eventDate && tournament.eventTime) {
-            const dateStr = new Date(tournament.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
-            joinStartTimeEl.textContent = `${dateStr} at ${tournament.eventTime}`;
-        } else if (tournament.endTime) {
+        if (tournament.endTime) {
             const matchDate = new Date(tournament.endTime);
             joinStartTimeEl.textContent = matchDate.toLocaleString('en-IN', {
-                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+                day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true
             });
+        } else if (tournament.eventDate && tournament.eventTime) {
+            const dateStr = new Date(tournament.eventDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+            joinStartTimeEl.textContent = `${dateStr} at ${tournament.eventTime}`;
         } else {
             joinStartTimeEl.textContent = "TBA";
         }
@@ -2017,9 +2017,27 @@ function startFirebaseListeners() {
         
         tournaments = snapshot.docs.map(d => {
             let t = d.data();
-            let eventDateTime = t.eventDate ? (t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}:00`) : new Date(t.eventDate)) : null;
+            let eventDateTime = null;
+            if (t.endTime && typeof t.endTime === 'number') {
+                eventDateTime = new Date(t.endTime);
+            } else if (t.eventDate) {
+                if (typeof t.eventDate === 'string' && t.eventDate.includes('T')) {
+                    eventDateTime = new Date(t.eventDate);
+                } else if (t.eventTime) {
+                    eventDateTime = new Date(`${t.eventDate}T${t.eventTime.length === 5 ? t.eventTime + ':00' : t.eventTime}`);
+                } else {
+                    eventDateTime = new Date(t.eventDate);
+                }
+            }
             
-            let transitionDateTime = t.transitionTime ? new Date(`${t.eventDate}T${t.transitionTime}:00`) : eventDateTime;
+            let transitionDateTime = eventDateTime;
+            if (t.transitionTime) {
+                if (typeof t.transitionTime === 'string' && t.transitionTime.includes('T')) {
+                    transitionDateTime = new Date(t.transitionTime);
+                } else if (t.eventDate) {
+                    transitionDateTime = new Date(`${t.eventDate}T${t.transitionTime.length === 5 ? t.transitionTime + ':00' : t.transitionTime}`);
+                }
+            }
             
             // CHECK IF TIME HAS PASSED (using transition time)
             let isTimePassed = transitionDateTime && transitionDateTime.getTime() <= now;
@@ -2031,7 +2049,7 @@ function startFirebaseListeners() {
                 // DYNAMIC OVERRIDE: If time passed, force it to 'ongoing' locally for all users
                 category: (t.category === 'upcoming' && isTimePassed) ? 'ongoing' : t.category,
                 status: (t.category === 'upcoming' && isTimePassed) ? 'live' : t.status,
-                endTime: t.endTime || (isTimePassed ? eventDateTime.getTime() : (t.createdAt?.toMillis?.() + (t.duration || 60) * 60000))
+                endTime: t.endTime || (isTimePassed && eventDateTime ? eventDateTime.getTime() : (t.createdAt?.toMillis?.() + (t.duration || 60) * 60000))
             };
         });
         

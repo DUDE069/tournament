@@ -2251,8 +2251,8 @@ window.deleteTournament = async function(id) {
     const tSnap = await getDoc(doc(db, "tournaments", id));
     const tData = tSnap.exists() ? tSnap.data() : {};
     const now = new Date();
-    const eventTime = tData.eventDate ? new Date(tData.eventDate) : null;
-    const isTournamentOver = eventTime && eventTime <= now;
+    const actualEnd = tData.endTime ? new Date(tData.endTime) : (tData.eventDate ? (tData.eventTime ? new Date(`${tData.eventDate}T${tData.eventTime}`) : new Date(tData.eventDate)) : null);
+    const isTournamentOver = actualEnd && actualEnd <= now;
 
     if (!isTournamentOver && (tData.category === "ongoing" || tData.status === "live")) {
       showToast("\u274c Cannot delete: This tournament is live/ongoing.", "error");
@@ -2361,15 +2361,43 @@ function loadTournaments() {
       div.className = "item-card";
 
       const isActive = (t.category === "ongoing" || t.status === "live");
-      const eventTime = t.eventDate ? new Date(t.eventDate) : null;
-      const isTournamentOver = eventTime && eventTime <= new Date();
+      const actualEnd = t.endTime ? new Date(t.endTime) : (t.eventDate ? (t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}`) : new Date(t.eventDate)) : null);
+      const isTournamentOver = actualEnd && actualEnd <= new Date();
+
+      // Format specific timing and real-time registration status
+      let timingDisplay = '';
+      let regStatusBadge = '';
+      const nowMs = Date.now();
+      const actualEndMs = actualEnd ? actualEnd.getTime() : null;
+
+      if (actualEndMs) {
+          const endDateObj = new Date(actualEndMs);
+          const timeFormatted = endDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+          const dateFormatted = endDateObj.toLocaleDateString([], { day: 'numeric', month: 'short' });
+          timingDisplay = ` · ⏰ <b>${dateFormatted}, ${timeFormatted}</b>`;
+          
+          if (t.category === 'ongoing' || t.status === 'live') {
+              if (actualEndMs > nowMs) {
+                  const minsLeft = Math.round((actualEndMs - nowMs) / 60000);
+                  const hrs = Math.floor(minsLeft / 60);
+                  const mins = minsLeft % 60;
+                  const leftStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                  regStatusBadge = ` <span style="background:#059669;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;">🟢 Reg Open (${leftStr} left)</span>`;
+              } else {
+                  regStatusBadge = ` <span style="background:#dc2626;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;">⚠️ Reg Ended</span>`;
+              }
+          }
+      } else if (t.eventDate) {
+          timingDisplay = ` · 📅 ${t.eventDate}${t.eventTime ? ` at ${t.eventTime}` : ''}`;
+      }
 
       const postponeBtn = isActive
         ? `<button class="btn-status" onclick="window.openPostponeModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}', '${t.eventDate || ''}', '${t.transitionTime || ''}')" style="background:#f97316;color:#fff;border:none;">🗓️ Postpone</button>`
         : '';
         
-      const editTimingBtn = isActive
-        ? `<button class="btn-status" onclick="window.openEditTimingModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}', '${t.eventDate || ''}', '${t.transitionTime || ''}')" style="background:#3b82f6;color:#fff;border:none;">✏️ Edit Timing</button>`
+      const canEditTiming = t.status !== 'completed';
+      const editTimingBtn = canEditTiming
+        ? `<button class="btn-status" onclick="window.openEditTimingModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}')" style="background:#3b82f6;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;">✏️ Edit Time</button>`
         : '';
 
       const deleteBtn = (isActive && !isTournamentOver)
@@ -2384,7 +2412,7 @@ function loadTournaments() {
         <div>
           <strong>${escHtml(t.title)}</strong><br>
           <small style="color:var(--muted); font-size:11px;">UID: <span style="user-select:all; background:#222; padding:2px 4px; border-radius:3px; color:#aaa; font-family:monospace; cursor:copy;" onclick="navigator.clipboard.writeText('${d.id}'); showToast('UID copied!', 'success');">${d.id}</span></small><br>
-          <small>₹${t.entryFee} · ${t.mode} · ${t.category}${t.eventDate ? ` · 📅 ${t.eventDate}` : ""}</small>
+          <small>₹${t.entryFee} · ${t.mode} · <b style="text-transform:uppercase;">${t.category}</b>${timingDisplay}${regStatusBadge}</small>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
           <button class="btn-status" onclick="manageTournamentSlots('${d.id}')" style="background:var(--gold);color:#000;border:none;">
@@ -2410,10 +2438,11 @@ async function checkAdminAutoPromotion(tId, t) {
         if (transitionDateTime <= now) {
             console.log(`[AUTO-ADMIN] Hidden timer triggered for ${t.title}. Moving to Ongoing...`);
             try {
+                const targetEndMs = t.endTime || (t.eventDate ? (t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}`).getTime() : new Date(t.eventDate).getTime()) : null);
                 await updateDoc(doc(db, "tournaments", tId), {
                     category: 'ongoing',
                     status: 'live',
-                    endTime: new Date(t.eventDate).getTime(),
+                    endTime: targetEndMs || (now.getTime() + 60 * 60 * 1000),
                     promotionNotified: true
                 });
 
@@ -2449,8 +2478,8 @@ async function checkAdminAutoPromotion(tId, t) {
     }
 
     // ── Phase 2: Urgent Match Start Warning (30-40 mins before start) ──
-    if (t.category === 'ongoing' && t.eventDate && !t.adminPhase2Notified) {
-        let matchStartTime = new Date(t.eventDate);
+    if (t.category === 'ongoing' && (t.endTime || t.eventDate) && !t.adminPhase2Notified) {
+        let matchStartTime = t.endTime ? new Date(t.endTime) : (t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}`) : new Date(t.eventDate));
         let timeDiffMinutes = (matchStartTime - now) / (1000 * 60);
 
         if (timeDiffMinutes <= 40 && timeDiffMinutes > 0) {
@@ -4931,75 +4960,445 @@ window.submitPostpone = async function(tournamentId) {
     }
 };
 
-window.openEditTimingModal = function(tournamentId, title, currentEventDate, currentTransitionTime) {
+window.openEditTimingModal = async function(tournamentId, optTitle, optEventDate, optTransitionTime) {
+    document.getElementById('editTimingModalOverlay')?.remove();
+
+    // Show initial loading modal while fetching latest doc
     const overlay = document.createElement("div");
     overlay.id = "editTimingModalOverlay";
-    overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index:10000; padding:20px;";
-    
-    const formatForInput = (isoStr) => {
-        if (!isoStr) return "";
-        const d = new Date(isoStr);
-        if (isNaN(d.getTime())) return "";
-        return d.getFullYear() + "-" + 
-               String(d.getMonth() + 1).padStart(2, '0') + "-" + 
-               String(d.getDate()).padStart(2, '0') + "T" + 
-               String(d.getHours()).padStart(2, '0') + ":" + 
-               String(d.getMinutes()).padStart(2, '0');
-    };
+    overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); display:flex; justify-content:center; align-items:center; z-index:10000; padding:20px; backdrop-filter:blur(4px);";
 
     overlay.innerHTML = `
-        <div style="background:#1a1a1a; padding:25px; border-radius:12px; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.5); border:1px solid #333;">
-            <h3 style="margin-top:0; color:#3b82f6;">✏️ Edit Tournament Timing</h3>
-            <p style="color:#aaa; font-size:13px; margin-bottom:20px;">
-                <strong>${title}</strong><br>
-                Directly edit the timing values without changing the status or sending notifications.
-            </p>
+        <div style="background:#16161c; padding:30px; border-radius:14px; width:100%; max-width:490px; box-shadow:0 20px 50px rgba(0,0,0,0.7); border:1px solid #2a2a35; color:#fff; text-align:center;">
+            <div style="font-size:28px; margin-bottom:12px;">⏳</div>
+            <div style="color:#aaa; font-size:14px;">Loading tournament details...</div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
 
-            <div style="margin-bottom:15px;">
-                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:5px;">Duration / Registration Ends (Date & Time):</label>
-                <input type="datetime-local" id="editEventDate" value="${formatForInput(currentEventDate)}" style="width:100%; padding:10px; background:#111; color:#fff; border:1px solid #444; border-radius:6px; font-family:inherit;">
-                <small style="color:#888; font-size:11px; display:block; margin-top:5px;">Updates eventDate and endTime.</small>
+    let t = null;
+    try {
+        const snap = await getDoc(doc(db, "tournaments", tournamentId));
+        if (snap.exists()) {
+            t = snap.data();
+        }
+    } catch (e) {
+        console.warn("Could not fetch fresh tournament doc:", e);
+    }
+
+    if (!t) {
+        // Fallback from active tournaments cache
+        const cached = window._adminActiveTournaments?.find(d => d.id === tournamentId);
+        t = cached ? cached.data() : { title: optTitle || "Tournament", eventDate: optEventDate, transitionTime: optTransitionTime };
+    }
+
+    const title = t.title || optTitle || "Tournament";
+    const category = t.category || "ongoing";
+    const isOngoing = category === "ongoing" || t.status === "live";
+
+    // Extract existing timing
+    let dateObj = null;
+    let initialDate = "";
+    let initialTime = "";
+
+    if (t.endTime && typeof t.endTime === 'number') {
+        dateObj = new Date(t.endTime);
+    } else if (t.eventDate) {
+        if (typeof t.eventDate === 'string' && t.eventDate.includes('T')) {
+            dateObj = new Date(t.eventDate);
+        } else if (t.eventTime) {
+            const timePart = t.eventTime.length === 5 ? t.eventTime + ':00' : t.eventTime;
+            dateObj = new Date(`${t.eventDate}T${timePart}`);
+        } else {
+            dateObj = new Date(t.eventDate);
+        }
+    }
+
+    const now = new Date();
+    if (!dateObj || isNaN(dateObj.getTime())) {
+        dateObj = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour in future by default
+    }
+
+    const pad = n => String(n).padStart(2, '0');
+    initialDate = `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}`;
+    initialTime = `${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
+
+    // Format current timing for display
+    const currentFormattedDate = dateObj.toLocaleDateString('en-IN', {
+        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
+    });
+    const currentFormattedTime = dateObj.toLocaleTimeString('en-IN', {
+        hour: '2-digit', minute: '2-digit', hour12: true
+    });
+
+    const isCurrentInFuture = dateObj.getTime() > now.getTime();
+    let currentStatusBadge = "";
+    if (isOngoing) {
+        if (isCurrentInFuture) {
+            const diffMins = Math.round((dateObj.getTime() - now.getTime()) / 60000);
+            const hrs = Math.floor(diffMins / 60);
+            const mins = diffMins % 60;
+            const leftStr = hrs > 0 ? `${hrs}h ${mins}m left` : `${mins}m left`;
+            currentStatusBadge = `<span style="background:#059669; color:#fff; font-size:11px; padding:3px 8px; border-radius:12px; font-weight:700;">🟢 REGISTRATION ACTIVE (${leftStr})</span>`;
+        } else {
+            const agoMins = Math.round((now.getTime() - dateObj.getTime()) / 60000);
+            const hrs = Math.floor(agoMins / 60);
+            const mins = agoMins % 60;
+            const agoStr = hrs > 0 ? `${hrs}h ${mins}m ago` : `${mins}m ago`;
+            currentStatusBadge = `<span style="background:#dc2626; color:#fff; font-size:11px; padding:3px 8px; border-radius:12px; font-weight:700;">⚠️ REGISTRATION ENDED (${agoStr})</span>`;
+        }
+    } else {
+        currentStatusBadge = `<span style="background:#3b82f6; color:#fff; font-size:11px; padding:3px 8px; border-radius:12px; font-weight:700;">📅 UPCOMING EVENT</span>`;
+    }
+
+    // Format transition time if any
+    let transitionInputVal = "";
+    if (t.transitionTime) {
+        const transDate = new Date(t.transitionTime);
+        if (!isNaN(transDate.getTime())) {
+            transitionInputVal = `${transDate.getFullYear()}-${pad(transDate.getMonth()+1)}-${pad(transDate.getDate())}T${pad(transDate.getHours())}:${pad(transDate.getMinutes())}`;
+        }
+    }
+
+    overlay.innerHTML = `
+        <div style="background:#16161c; padding:26px; border-radius:14px; width:100%; max-width:490px; box-shadow:0 20px 60px rgba(0,0,0,0.8); border:1px solid #2a2a35; color:#fff; max-height:90vh; overflow-y:auto; font-family:inherit;">
+            
+            <!-- Header -->
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <h3 style="margin:0; color:#3b82f6; font-size:18px;">✏️ Edit Tournament Timing</h3>
+                        <span style="background:#222; color:#aaa; font-size:10px; padding:2px 6px; border-radius:4px; text-transform:uppercase; border:1px solid #333;">${category}</span>
+                    </div>
+                    <div style="color:#eee; font-size:14px; font-weight:700; margin-top:4px;">${escHtml(title)}</div>
+                </div>
+                <button onclick="document.getElementById('editTimingModalOverlay').remove()" style="background:transparent; border:none; color:#888; font-size:20px; cursor:pointer; padding:0 4px;" title="Close">✕</button>
             </div>
 
-            <div style="margin-bottom:20px;">
-                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:5px;">Auto-Move to Ongoing (Date & Time):</label>
-                <input type="datetime-local" id="editTransitionTime" value="${formatForInput(currentTransitionTime)}" style="width:100%; padding:10px; background:#111; color:#fff; border:1px solid #444; border-radius:6px; font-family:inherit;">
-                <small style="color:#888; font-size:11px; display:block; margin-top:5px;">Updates transitionTime.</small>
+            <!-- Current Specific Timing Display Panel -->
+            <div style="background:#0e0e12; border:1px solid #262630; border-radius:10px; padding:14px; margin-bottom:18px;">
+                <div style="color:#888; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; margin-bottom:6px;">Current Configured Timing</div>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <div style="font-size:15px; font-weight:700; color:#00ff88; font-family:'Share Tech Mono', monospace;">
+                            📅 ${currentFormattedDate}
+                        </div>
+                        <div style="font-size:14px; font-weight:700; color:#fff; font-family:'Share Tech Mono', monospace; margin-top:2px;">
+                            ⏰ ${currentFormattedTime}
+                        </div>
+                    </div>
+                    <div>
+                        ${currentStatusBadge}
+                    </div>
+                </div>
+                ${isOngoing && !isCurrentInFuture ? `
+                    <div style="background:rgba(239,68,68,0.1); border-left:3px solid #ef4444; padding:6px 10px; border-radius:4px; margin-top:10px; font-size:11px; color:#fca5a5;">
+                        Registration is currently closed because the scheduled time passed. Provide a new future time below to <b>re-open and extend registration</b>!
+                    </div>
+                ` : ''}
             </div>
 
+            <!-- Input Fields: Date and Real Time -->
+            <div style="margin-bottom:14px;">
+                <label style="display:block; color:#ddd; font-size:13px; font-weight:600; margin-bottom:6px;">
+                    🗓️ Select Real-Time Date & Time
+                </label>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                    <div>
+                        <span style="display:block; color:#888; font-size:11px; margin-bottom:4px;">Event Date</span>
+                        <input type="date" id="editTourneyDate" value="${initialDate}" style="width:100%; box-sizing:border-box; padding:10px; background:#0b0b0e; color:#fff; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:13px;">
+                    </div>
+                    <div>
+                        <span style="display:block; color:#888; font-size:11px; margin-bottom:4px;">Clock Time (Real-Time)</span>
+                        <input type="time" id="editTourneyTime" value="${initialTime}" style="width:100%; box-sizing:border-box; padding:10px; background:#0b0b0e; color:#fff; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:13px;">
+                    </div>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; padding:0 2px;">
+                    <span style="color:#aaa; font-size:12px;">Real-Time Clock Readout:</span>
+                    <span id="editTourneyRealTimeDisplay" style="color:#00ff88; font-weight:700; font-size:13px; font-family:'Share Tech Mono', monospace;">--:--</span>
+                </div>
+            </div>
+
+            <!-- Quick Extend Presets -->
+            <div style="margin-bottom:16px;">
+                <span style="display:block; color:#888; font-size:11px; margin-bottom:6px;">⚡ Quick Presets (Extends from Now)</span>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button type="button" class="preset-btn" onclick="window.applyTimingPreset(15)" style="background:#222; border:1px solid #333; color:#ccc; padding:5px 9px; border-radius:6px; font-size:11px; cursor:pointer;">+15 Mins</button>
+                    <button type="button" class="preset-btn" onclick="window.applyTimingPreset(30)" style="background:#222; border:1px solid #333; color:#ccc; padding:5px 9px; border-radius:6px; font-size:11px; cursor:pointer;">+30 Mins</button>
+                    <button type="button" class="preset-btn" onclick="window.applyTimingPreset(60)" style="background:#222; border:1px solid #333; color:#ccc; padding:5px 9px; border-radius:6px; font-size:11px; cursor:pointer;">+1 Hour</button>
+                    <button type="button" class="preset-btn" onclick="window.applyTimingPreset(120)" style="background:#222; border:1px solid #333; color:#ccc; padding:5px 9px; border-radius:6px; font-size:11px; cursor:pointer;">+2 Hours</button>
+                    <button type="button" class="preset-btn" onclick="window.applyTimingPreset('tonight_10pm')" style="background:#222; border:1px solid #333; color:#ccc; padding:5px 9px; border-radius:6px; font-size:11px; cursor:pointer;">Tonight 10:00 PM</button>
+                    <button type="button" class="preset-btn" onclick="window.applyTimingPreset('tomorrow_11am')" style="background:#222; border:1px solid #333; color:#ccc; padding:5px 9px; border-radius:6px; font-size:11px; cursor:pointer;">Tomorrow 11:00 AM</button>
+                </div>
+            </div>
+
+            <!-- Live Registration Impact Preview -->
+            <div id="editTimingLivePreview" style="margin-bottom:16px;">
+                <!-- Updated dynamically by updateTimingPreview -->
+            </div>
+
+            <!-- Optional Upcoming Transition Time (Only if upcoming or transition already exists) -->
+            ${category === 'upcoming' || t.transitionTime ? `
+                <div style="background:#0e0e12; border:1px dashed #3b82f6; border-radius:8px; padding:12px; margin-bottom:16px;">
+                    <label style="display:block; color:#93c5fd; font-size:12px; font-weight:600; margin-bottom:4px;">
+                        🤖 Auto-Move to Ongoing (Date & Time)
+                    </label>
+                    <input type="datetime-local" id="editTourneyTransition" value="${transitionInputVal}" style="width:100%; box-sizing:border-box; padding:8px; background:#111; color:#fff; border:1px solid #444; border-radius:6px; font-family:inherit; font-size:12px;">
+                    <small style="color:#888; font-size:10px; display:block; margin-top:4px;">When this timer hits, tournament automatically switches to Ongoing & prompts payments.</small>
+                </div>
+            ` : ''}
+
+            <!-- Notification Option Checkbox -->
+            <div style="margin-bottom:18px;">
+                <label style="display:flex; align-items:center; gap:8px; color:#bbb; font-size:12px; cursor:pointer; user-select:none;">
+                    <input type="checkbox" id="editTourneyNotify" checked style="accent-color:#3b82f6; width:16px; height:16px;">
+                    <span>🔔 Notify registered teams about the extended registration deadline</span>
+                </label>
+            </div>
+
+            <!-- Action Buttons -->
             <div style="display:flex; gap:10px;">
-                <button onclick="document.getElementById('editTimingModalOverlay').remove()" style="flex:1; padding:10px; background:#333; color:#fff; border:none; border-radius:6px; cursor:pointer;">Cancel</button>
-                <button onclick="submitEditTiming('${tournamentId}')" style="flex:1; padding:10px; background:#3b82f6; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">Save Changes</button>
+                <button onclick="document.getElementById('editTimingModalOverlay').remove()" style="flex:1; padding:11px; background:#222; color:#ccc; border:1px solid #333; border-radius:8px; cursor:pointer; font-weight:600;">
+                    Cancel
+                </button>
+                <button id="editTimingSaveBtn" onclick="window.submitEditTiming('${tournamentId}')" style="flex:2; padding:11px; background:#3b82f6; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px;">
+                    💾 Save & Extend Time
+                </button>
             </div>
         </div>
     `;
 
-    document.body.appendChild(overlay);
+    // Attach listeners and preset handlers
+    window.applyTimingPreset = function(preset) {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        let target = new Date(now.getTime());
+
+        if (typeof preset === 'number') {
+            target = new Date(now.getTime() + preset * 60000);
+        } else if (preset === 'tonight_10pm') {
+            target.setHours(22, 0, 0, 0);
+            if (target.getTime() <= now.getTime()) {
+                target.setDate(target.getDate() + 1);
+            }
+        } else if (preset === 'tomorrow_11am') {
+            target.setDate(target.getDate() + 1);
+            target.setHours(11, 0, 0, 0);
+        }
+
+        const dateInput = document.getElementById("editTourneyDate");
+        const timeInput = document.getElementById("editTourneyTime");
+        if (dateInput && timeInput) {
+            dateInput.value = `${target.getFullYear()}-${pad(target.getMonth()+1)}-${pad(target.getDate())}`;
+            timeInput.value = `${pad(target.getHours())}:${pad(target.getMinutes())}`;
+            window.updateTimingPreview();
+        }
+    };
+
+    window.updateTimingPreview = function() {
+        const dateInput = document.getElementById("editTourneyDate");
+        const timeInput = document.getElementById("editTourneyTime");
+        const previewEl = document.getElementById("editTimingLivePreview");
+        const realTimeEl = document.getElementById("editTourneyRealTimeDisplay");
+        if (!previewEl || !dateInput || !timeInput) return;
+
+        const dVal = dateInput.value;
+        const tVal = timeInput.value;
+
+        if (realTimeEl && tVal) {
+            const [h, m] = tVal.split(':').map(Number);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const h12 = h % 12 || 12;
+            realTimeEl.textContent = `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+        }
+
+        if (!dVal || !tVal) {
+            previewEl.innerHTML = `<span style="color:#888; font-size:12px;">Please select date and time</span>`;
+            return;
+        }
+
+        const [y, m, d] = dVal.split('-').map(Number);
+        const [hh, mm] = tVal.split(':').map(Number);
+        const target = new Date(y, m - 1, d, hh, mm, 0, 0);
+        const nowMs = Date.now();
+        const diffMs = target.getTime() - nowMs;
+
+        const formattedTarget = target.toLocaleString('en-IN', {
+            day: 'numeric', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
+        });
+
+        if (diffMs > 0) {
+            const totalMins = Math.floor(diffMs / 60000);
+            const hrs = Math.floor(totalMins / 60);
+            const mins = totalMins % 60;
+            const timeFromNow = hrs > 0 ? `${hrs}h ${mins}m from now` : `${mins}m from now`;
+
+            previewEl.innerHTML = `
+                <div style="background:rgba(0,255,136,0.08); border:1px solid #00ff88; padding:12px; border-radius:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <span style="font-size:14px;">🟢</span>
+                        <strong style="color:#00ff88; font-size:12px;">Registration will be ALIVE & OPEN</strong>
+                    </div>
+                    <div style="color:#fff; font-size:14px; font-weight:700;">
+                        New Deadline: ${formattedTarget}
+                    </div>
+                    <div style="color:#aaa; font-size:11px; margin-top:2px;">
+                        ⏳ (${timeFromNow}) · Teams can join, submit UPI, and verify slots until this exact time.
+                    </div>
+                </div>
+            `;
+        } else {
+            const totalMinsAgo = Math.floor(-diffMs / 60000);
+            const hrsAgo = Math.floor(totalMinsAgo / 60);
+            const minsAgo = totalMinsAgo % 60;
+            const timeAgo = hrsAgo > 0 ? `${hrsAgo}h ${minsAgo}m ago` : `${minsAgo}m ago`;
+
+            previewEl.innerHTML = `
+                <div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:12px; border-radius:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <span style="font-size:14px;">⚠️</span>
+                        <strong style="color:#ef4444; font-size:12px;">Selected time is in the PAST</strong>
+                    </div>
+                    <div style="color:#fff; font-size:13px;">
+                        Time: ${formattedTarget} (${timeAgo})
+                    </div>
+                    <div style="color:#fca5a5; font-size:11px; margin-top:2px;">
+                        Registration will immediately be marked as ENDED / Match Started. Pick a future time to extend registration!
+                    </div>
+                </div>
+            `;
+        }
+    };
+
+    document.getElementById("editTourneyDate")?.addEventListener("input", window.updateTimingPreview);
+    document.getElementById("editTourneyTime")?.addEventListener("input", window.updateTimingPreview);
+    window.updateTimingPreview();
 };
 
 window.submitEditTiming = async function(tournamentId) {
-    const eventDateInput = document.getElementById("editEventDate").value;
-    const transitionTimeInput = document.getElementById("editTransitionTime").value;
+    const dateInput = document.getElementById("editTourneyDate");
+    const timeInput = document.getElementById("editTourneyTime");
+    const notifyInput = document.getElementById("editTourneyNotify");
+    const transitionInput = document.getElementById("editTourneyTransition");
+    const saveBtn = document.getElementById("editTimingSaveBtn");
 
-    if (!eventDateInput || !transitionTimeInput) {
-        showToast("Both Date/Time fields are required.", "error");
+    const dateVal = dateInput?.value;
+    const timeVal = timeInput?.value;
+    const notifyTeams = notifyInput?.checked;
+    const transitionVal = transitionInput?.value;
+
+    if (!dateVal || !timeVal) {
+        showToast("Please provide both Date and Time.", "error");
         return;
     }
 
-    try {
-        const docRef = doc(db, "tournaments", tournamentId);
-        
-        await updateDoc(docRef, {
-            eventDate: new Date(eventDateInput).toISOString(),
-            transitionTime: new Date(transitionTimeInput).toISOString(),
-            endTime: new Date(eventDateInput).getTime()
-        });
+    const [y, m, d] = dateVal.split('-').map(Number);
+    const [hh, mm] = timeVal.split(':').map(Number);
+    const targetDate = new Date(y, m - 1, d, hh, mm, 0, 0);
 
-        document.getElementById('editTimingModalOverlay').remove();
-        showToast("Tournament timing updated successfully!", "success");
+    if (isNaN(targetDate.getTime())) {
+        showToast("Invalid Date or Time entered.", "error");
+        return;
+    }
+
+    const targetTimeMs = targetDate.getTime();
+    const isFuture = targetTimeMs > Date.now();
+
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = `⏳ Updating...`;
+    }
+
+    try {
+        const tRef = doc(db, "tournaments", tournamentId);
+        const tSnap = await getDoc(tRef);
+        const tData = tSnap.exists() ? tSnap.data() : {};
+
+        const updates = {
+            eventDate: dateVal,
+            eventTime: timeVal,
+            endTime: targetTimeMs,
+            updatedAt: serverTimestamp()
+        };
+
+        // If tournament was ongoing or we are extending an ongoing tournament into the future
+        if (tData.category === 'ongoing' || tData.status === 'live' || (isFuture && tData.category !== 'limited')) {
+            // Keep registration alive
+            if (tData.category === 'ongoing') {
+                updates.status = 'live';
+            }
+            // Reset phase 2 alert so it alerts 30-40 mins before the NEW start time
+            updates.adminPhase2Notified = false;
+        }
+
+        // Handle upcoming transition time if provided
+        if (transitionVal) {
+            const transDate = new Date(transitionVal);
+            if (!isNaN(transDate.getTime())) {
+                updates.transitionTime = transDate.toISOString();
+                if (transDate.getTime() > Date.now()) {
+                    updates.promotionNotified = false;
+                }
+            }
+        }
+
+        await updateDoc(tRef, updates);
+
+        // Update linked calendar event if exists
+        try {
+            const titleQuery = tData.title ? query(calendarRef, where("title", "in", [`🏆 ${tData.title}`, `⚡ [Limited] ${tData.title}`, tData.title])) : null;
+            if (titleQuery) {
+                const calSnap = await getDocs(titleQuery);
+                if (!calSnap.empty) {
+                    await updateDoc(doc(db, "calendarEvents", calSnap.docs[0].id), {
+                        date: dateVal,
+                        updatedAt: serverTimestamp()
+                    });
+                }
+            }
+        } catch (calErr) {
+            console.warn("[EDIT TIMING] Calendar sync notice:", calErr);
+        }
+
+        // Send notifications to registered teams if requested
+        if (notifyTeams) {
+            try {
+                const [verifSnap, upcomSnap] = await Promise.all([
+                    getDocs(collection(db, "tournaments", tournamentId, "verifications")),
+                    getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
+                ]);
+                const allUids = new Set();
+                verifSnap.forEach(d => { if (d.data().status !== 'rejected') allUids.add(d.id); });
+                upcomSnap.forEach(d => { if (d.data().status !== 'rejected') allUids.add(d.id); });
+
+                const timeStr = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                const dateStr = targetDate.toLocaleDateString([], { day: 'numeric', month: 'short' });
+
+                const notifPromises = [...allUids].map(uid => sendDualNotification(uid, {
+                    type: "tournament_announcement",
+                    title: "⏰ Tournament Registration Extended",
+                    message: `Registration & match time for "${tData.title || 'Tournament'}" has been updated to ${dateStr} at ${timeStr}. Registration is currently OPEN!`,
+                    extra: { tournamentId },
+                    actionLink: `tournament=${tournamentId}`
+                }));
+                await Promise.all(notifPromises);
+            } catch (notifErr) {
+                console.warn("[EDIT TIMING] Notification dispatch:", notifErr);
+            }
+        }
+
+        document.getElementById('editTimingModalOverlay')?.remove();
+        const timeFormatted = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+        showToast(`✅ Tournament timing updated! Registration extended to ${timeFormatted}`, "success");
+
     } catch (err) {
         console.error("Edit Timing Error:", err);
         showToast("Failed to update timing: " + err.message, "error");
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = `💾 Save & Extend Time`;
+        }
     }
 };
 
