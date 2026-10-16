@@ -385,8 +385,8 @@ window.handleUpcomingRegister = async function(tournamentId) {
     document.getElementById("joinTournamentTitle").textContent  = tournament.title;
     document.getElementById("joinPrizeFirst").textContent       = tournament.prize?.first || 0;
     document.getElementById("prizeFirst").textContent           = tournament.prize?.first || 0;
-    document.getElementById("prizeSecond").textContent          = tournament.prize?.second || 0;
-    document.getElementById("prizeThird").textContent           = tournament.prize?.third || 0;
+    document.getElementById("prizeSecond").textContent          = (tournament.prize?.second !== null && tournament.prize?.second !== undefined && Number(tournament.prize?.second) > 0) ? tournament.prize.second : "None";
+    document.getElementById("prizeThird").textContent           = (tournament.prize?.third !== null && tournament.prize?.third !== undefined && Number(tournament.prize?.third) > 0) ? tournament.prize.third : "None";
     // ✅ FIX: Safe DOM updates to prevent null crashes
     const entryFeeDisplay = document.getElementById("joinEntryFeeDisplay");
     if (entryFeeDisplay) entryFeeDisplay.textContent = tournament.entryFee || 0;
@@ -795,8 +795,8 @@ window.userParticipantDocs = window.userParticipantDocs || {};
                              <p class="section-title">🏆 Prize Pool</p>
                              <div class="prize-list">
                                <span>1st: ₹${t.prize?.first || 0}</span>
-                               <span>2nd: ₹${t.prize?.second || 0}</span>
-                               <span>3rd: ₹${t.prize?.third || 0}</span>
+                               <span>2nd: ${(t.prize?.second !== null && t.prize?.second !== undefined && Number(t.prize?.second) > 0) ? `₹${t.prize.second}` : 'None'}</span>
+                               <span>3rd: ${(t.prize?.third !== null && t.prize?.third !== undefined && Number(t.prize?.third) > 0) ? `₹${t.prize.third}` : 'None'}</span>
                              </div>
                            </div>`
                         : t.title?.toLowerCase().includes("flash")
@@ -805,8 +805,8 @@ window.userParticipantDocs = window.userParticipantDocs || {};
                                  <p class="section-title">🏆 Prize Pool</p>
                                  <div class="prize-list">
                                    <span>1st: ₹${t.prize?.first || 0}</span>
-                                   <span>2nd: ₹${t.prize?.second || 0}</span>
-                                   <span>3rd: ₹${t.prize?.third || 0}</span>
+                                   <span>2nd: ${(t.prize?.second !== null && t.prize?.second !== undefined && Number(t.prize?.second) > 0) ? `₹${t.prize.second}` : 'None'}</span>
+                                   <span>3rd: ${(t.prize?.third !== null && t.prize?.third !== undefined && Number(t.prize?.third) > 0) ? `₹${t.prize.third}` : 'None'}</span>
                                  </div>
                                </div>`
                     }
@@ -1047,8 +1047,8 @@ document.getElementById('player5Container').style.display = 'none';
     const jtt = document.getElementById("joinTournamentTitle"); if(jtt) jtt.textContent = tournament.title;
     const jpf = document.getElementById("joinPrizeFirst"); if(jpf) jpf.textContent = tournament.prize?.first || 0;
     const pf = document.getElementById("prizeFirst"); if(pf) pf.textContent = tournament.prize?.first || 0;
-    const ps = document.getElementById("prizeSecond"); if(ps) ps.textContent = tournament.prize?.second || 0;
-    const pt = document.getElementById("prizeThird"); if(pt) pt.textContent = tournament.prize?.third || 0;
+    const ps = document.getElementById("prizeSecond"); if(ps) ps.textContent = (tournament.prize?.second !== null && tournament.prize?.second !== undefined && Number(tournament.prize?.second) > 0) ? tournament.prize.second : "None";
+    const pt = document.getElementById("prizeThird"); if(pt) pt.textContent = (tournament.prize?.third !== null && tournament.prize?.third !== undefined && Number(tournament.prize?.third) > 0) ? tournament.prize.third : "None";
     const jef = document.getElementById("joinEntryFeeDisplay"); if(jef) jef.textContent = tournament.entryFee;
     const _d2a = document.getElementById("joinEntryFeeDisplay2"); if (_d2a) _d2a.textContent = tournament.entryFee;
     const _pa = document.getElementById("paymentAmount"); if (_pa) _pa.textContent = tournament.entryFee;
@@ -1714,12 +1714,12 @@ window.openPaymentInterface = async function(tournamentId) {
                                 </div>
                                 <div>
                                     <div style="font-size:20px;color:#c0c0c0; text-shadow: 0 0 10px rgba(192,192,192,0.5);">🥈</div>
-                                    <div style="color:#fff;font-size:16px; font-weight:bold;">₹${tournament.prize?.second || 0}</div>
+                                    <div style="color:#fff;font-size:16px; font-weight:bold;">${(tournament.prize?.second !== null && tournament.prize?.second !== undefined && Number(tournament.prize?.second) > 0) ? `₹${tournament.prize.second}` : 'None'}</div>
                                     <div style="color:#888;font-size:12px; text-transform:uppercase;">2nd</div>
                                 </div>
                                 <div>
                                     <div style="font-size:18px;color:#cd7f32; text-shadow: 0 0 10px rgba(205,127,50,0.5);">🥉</div>
-                                    <div style="color:#fff;font-size:14px; font-weight:bold;">₹${tournament.prize?.third || 0}</div>
+                                    <div style="color:#fff;font-size:14px; font-weight:bold;">${(tournament.prize?.third !== null && tournament.prize?.third !== undefined && Number(tournament.prize?.third) > 0) ? `₹${tournament.prize.third}` : 'None'}</div>
                                     <div style="color:#888;font-size:12px; text-transform:uppercase;">3rd</div>
                                 </div>
                             </div>
@@ -4376,6 +4376,9 @@ async function editTournament(id) {
     const t = tournaments.find(x => x.id === id);
     if (!t) { showMessage("Tournament not found"); return; }
 
+    const isP2Null = (t.prize?.second === null || t.prize?.second === undefined || (typeof t.prize?.second === 'number' && t.prize?.second === 0 && t.prize?.secondNull));
+    const isP3Null = (t.prize?.third === null || t.prize?.third === undefined || (typeof t.prize?.third === 'number' && t.prize?.third === 0 && t.prize?.thirdNull));
+
     // --- Build the modal ---
     const existing = document.getElementById('adminEditModal');
     if (existing) existing.remove();
@@ -4388,45 +4391,95 @@ async function editTournament(id) {
     `;
 
     overlay.innerHTML = `
-        <div style="background:#111;border:1px solid #ff6b35;border-radius:16px;padding:28px 24px;
-                    width:100%;max-width:460px;max-height:90vh;overflow-y:auto;">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-                <h2 style="color:#ff6b35;margin:0;font-size:20px;">✏️ Edit Tournament</h2>
+        <div style="background:#111;border:1px solid #ff6b35;border-radius:16px;padding:26px 22px;
+                    width:100%;max-width:500px;max-height:90vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+                <h2 style="color:#ff6b35;margin:0;font-size:20px;">✏️ Edit Tournament Details</h2>
                 <button onclick="document.getElementById('adminEditModal').remove()"
                     style="background:none;border:none;color:#666;font-size:22px;cursor:pointer;padding:0 6px;">&times;</button>
             </div>
 
-            <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;letter-spacing:.4px;">TOURNAMENT NAME</label>
+            <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;letter-spacing:.4px;">TOURNAMENT NAME ✱</label>
             <input id="et-title" type="text" value="${(t.title||'').replace(/"/g,'&quot;')}"
-                style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:#fff;
-                       border-radius:8px;font-size:14px;font-family:inherit;margin-bottom:14px;box-sizing:border-box;"
+                style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;
+                       border-radius:8px;font-size:14px;font-family:inherit;margin-bottom:12px;box-sizing:border-box;"
                 placeholder="Tournament name">
 
-            <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;letter-spacing:.4px;">ENTRY FEE (₹)</label>
-            <input id="et-fee" type="number" min="0" value="${t.entryFee || 0}"
-                style="width:100%;padding:11px 14px;background:#1a1a1a;border:1px solid #333;color:#fff;
-                       border-radius:8px;font-size:14px;font-family:inherit;margin-bottom:14px;box-sizing:border-box;"
-                placeholder="Entry fee">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
+                <div>
+                    <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;letter-spacing:.4px;">ENTRY FEE (₹)</label>
+                    <input id="et-fee" type="number" min="0" value="${t.entryFee || 0}"
+                        style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid #333;color:#00ff88;
+                               border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;font-weight:700;"
+                        placeholder="Entry fee">
+                </div>
+                <div>
+                    <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;letter-spacing:.4px;">SLOT SIZE / CAPACITY</label>
+                    <input id="et-slots" type="number" min="2" max="100" value="${t.totalSlots || 12}"
+                        style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid #333;color:#ffc107;
+                               border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;font-weight:700;"
+                        placeholder="e.g. 12">
+                </div>
+            </div>
 
-            <p style="color:#ffd700;font-size:12px;font-weight:700;margin-bottom:8px;letter-spacing:.6px;">🏆 PRIZE POOL</p>
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
                 <div>
-                    <label style="color:#888;font-size:11px;display:block;margin-bottom:3px;">1st Place (₹)</label>
-                    <input id="et-p1" type="number" min="0" value="${t.prize?.first || 0}"
-                        style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #333;color:#ffd700;
-                               border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;">
+                    <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;letter-spacing:.4px;">MODE</label>
+                    <select id="et-mode" style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;
+                                              border-radius:8px;font-size:13px;font-family:inherit;box-sizing:border-box;">
+                        <option value="Solo" ${t.mode === 'Solo' ? 'selected' : ''}>Solo</option>
+                        <option value="Duo" ${t.mode === 'Duo' ? 'selected' : ''}>Duo</option>
+                        <option value="Squad" ${t.mode === 'Squad' ? 'selected' : ''}>Squad</option>
+                        <option value="Any" ${t.mode === 'Any' ? 'selected' : ''}>Any</option>
+                    </select>
                 </div>
                 <div>
-                    <label style="color:#888;font-size:11px;display:block;margin-bottom:3px;">2nd Place (₹)</label>
-                    <input id="et-p2" type="number" min="0" value="${t.prize?.second || 0}"
-                        style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #333;color:#c0c0c0;
-                               border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;">
+                    <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;letter-spacing:.4px;">EVENT TIME</label>
+                    <input id="et-time" type="time" value="${t.eventTime || ''}"
+                        style="width:100%;padding:9px 10px;background:#1a1a1a;border:1px solid #333;color:#fff;
+                               border-radius:8px;font-size:13px;font-family:inherit;box-sizing:border-box;">
                 </div>
-                <div>
-                    <label style="color:#888;font-size:11px;display:block;margin-bottom:3px;">3rd Place (₹)</label>
-                    <input id="et-p3" type="number" min="0" value="${t.prize?.third || 0}"
-                        style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #333;color:#cd7f32;
-                               border-radius:8px;font-size:14px;font-family:inherit;box-sizing:border-box;">
+            </div>
+
+            <div style="margin-bottom:14px;">
+                <label style="color:#888;font-size:12px;display:block;margin-bottom:4px;letter-spacing:.4px;">EVENT DATE</label>
+                <input id="et-date" type="date" value="${t.eventDate || ''}"
+                    style="width:100%;padding:10px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;
+                           border-radius:8px;font-size:13px;font-family:inherit;box-sizing:border-box;">
+            </div>
+
+            <div style="background:#161616;border:1px solid #2a2a2a;border-radius:10px;padding:12px;margin-bottom:18px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                    <p style="color:#ffd700;font-size:12px;font-weight:700;margin:0;letter-spacing:.5px;">🏆 PRIZE POOL DISTRIBUTION</p>
+                    <span id="et-total-preview" style="color:#00ff88;font-size:11px;font-weight:700;font-family:monospace;">Total: ₹0</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:6px;">
+                    <div>
+                        <label style="color:#ffd700;font-size:10px;display:block;margin-bottom:3px;font-weight:700;">1st Place (₹)</label>
+                        <input id="et-p1" type="number" min="0" value="${t.prize?.first || 0}"
+                            style="width:100%;padding:8px;background:#111;border:1px solid #333;color:#ffd700;
+                                   border-radius:6px;font-size:13px;font-family:inherit;box-sizing:border-box;font-weight:700;">
+                    </div>
+                    <div>
+                        <label style="color:#c0c0c0;font-size:10px;display:block;margin-bottom:3px;font-weight:700;">2nd Place (₹)</label>
+                        <input id="et-p2" type="number" min="0" value="${isP2Null ? 0 : (t.prize?.second || 0)}"
+                            style="width:100%;padding:8px;background:#111;border:1px solid #333;color:#c0c0c0;
+                                   border-radius:6px;font-size:13px;font-family:inherit;box-sizing:border-box;font-weight:700;">
+                        <label style="display:flex;align-items:center;gap:4px;margin-top:4px;color:#888;font-size:10px;cursor:pointer;">
+                            <input type="checkbox" id="et-no-p2" ${isP2Null ? 'checked' : ''} style="accent-color:#ff6b35;">
+                            <span>Null (None)</span>
+                        </label>
+                    </div>
+                    <div>
+                        <label style="color:#cd7f32;font-size:10px;display:block;margin-bottom:3px;font-weight:700;">3rd Place (₹)</label>
+                        <input id="et-p3" type="number" min="0" value="${isP3Null ? 0 : (t.prize?.third || 0)}"
+                            style="width:100%;padding:8px;background:#111;border:1px solid #333;color:#cd7f32;
+                                   border-radius:6px;font-size:13px;font-family:inherit;box-sizing:border-box;font-weight:700;">
+                        <label style="display:flex;align-items:center;gap:4px;margin-top:4px;color:#888;font-size:10px;cursor:pointer;">
+                            <input type="checkbox" id="et-no-p3" ${isP3Null ? 'checked' : ''} style="accent-color:#ff6b35;">
+                            <span>Null (None)</span>
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -4435,18 +4488,41 @@ async function editTournament(id) {
 
             <button id="et-save-btn" onclick="window._saveEditTournament('${id}')"
                 style="width:100%;padding:14px;background:#ff6b35;color:#fff;border:none;border-radius:10px;
-                       font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .15s;margin-bottom:8px;">
+                       font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:opacity .15s;margin-bottom:8px;">
                 💾 Save Changes
             </button>
             <button onclick="document.getElementById('adminEditModal').remove()"
-                style="width:100%;padding:12px;background:transparent;color:#666;border:1px solid #333;
-                       border-radius:10px;font-size:14px;cursor:pointer;font-family:inherit;">
+                style="width:100%;padding:11px;background:transparent;color:#666;border:1px solid #333;
+                       border-radius:10px;font-size:13px;cursor:pointer;font-family:inherit;">
                 Cancel
             </button>
         </div>
     `;
 
     document.body.appendChild(overlay);
+
+    const updatePreview = () => {
+        const p1 = Math.max(0, Number(document.getElementById('et-p1')?.value) || 0);
+        const noP2 = document.getElementById('et-no-p2')?.checked;
+        const p2 = noP2 ? 0 : Math.max(0, Number(document.getElementById('et-p2')?.value) || 0);
+        const noP3 = document.getElementById('et-no-p3')?.checked;
+        const p3 = noP3 ? 0 : Math.max(0, Number(document.getElementById('et-p3')?.value) || 0);
+
+        const p2Input = document.getElementById('et-p2');
+        if (p2Input) { p2Input.disabled = noP2; p2Input.style.opacity = noP2 ? '0.35' : '1'; }
+        const p3Input = document.getElementById('et-p3');
+        if (p3Input) { p3Input.disabled = noP3; p3Input.style.opacity = noP3 ? '0.35' : '1'; }
+
+        const totalEl = document.getElementById('et-total-preview');
+        if (totalEl) totalEl.textContent = `Total: ₹${(p1 + p2 + p3).toLocaleString('en-IN')}`;
+    };
+
+    document.getElementById('et-p1')?.addEventListener('input', updatePreview);
+    document.getElementById('et-p2')?.addEventListener('input', updatePreview);
+    document.getElementById('et-p3')?.addEventListener('input', updatePreview);
+    document.getElementById('et-no-p2')?.addEventListener('change', updatePreview);
+    document.getElementById('et-no-p3')?.addEventListener('change', updatePreview);
+    updatePreview();
 
     // Close on backdrop click
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
@@ -4458,9 +4534,17 @@ window._saveEditTournament = async function(id) {
 
     const titleVal = document.getElementById('et-title')?.value.trim();
     const feeVal   = Number(document.getElementById('et-fee')?.value)   || 0;
+    const slotsVal = Math.max(2, Number(document.getElementById('et-slots')?.value) || 12);
+    const modeVal  = document.getElementById('et-mode')?.value || 'Solo';
+    const dateVal  = document.getElementById('et-date')?.value || '';
+    const timeVal  = document.getElementById('et-time')?.value || '';
+
     const p1Val    = Number(document.getElementById('et-p1')?.value)    || 0;
-    const p2Val    = Number(document.getElementById('et-p2')?.value)    || 0;
-    const p3Val    = Number(document.getElementById('et-p3')?.value)    || 0;
+    const noP2     = document.getElementById('et-no-p2')?.checked;
+    const p2Val    = noP2 ? null : (Number(document.getElementById('et-p2')?.value) || 0);
+    const noP3     = document.getElementById('et-no-p3')?.checked;
+    const p3Val    = noP3 ? null : (Number(document.getElementById('et-p3')?.value) || 0);
+
     const errEl    = document.getElementById('et-error');
     const saveBtn  = document.getElementById('et-save-btn');
 
@@ -4475,14 +4559,47 @@ window._saveEditTournament = async function(id) {
     if (errEl) errEl.style.display = 'none';
 
     try {
-        await updateDoc(doc(db, 'tournaments', id), {
-            title:    titleVal,
-            entryFee: feeVal,
-            prize:    { first: p1Val, second: p2Val, third: p3Val },
-            updatedAt: serverTimestamp()
-        });
+        const prizeObj = {
+            first: p1Val,
+            second: p2Val,
+            third: p3Val,
+            secondNull: !!noP2,
+            thirdNull: !!noP3
+        };
+
+        const updates = {
+            title:      titleVal,
+            entryFee:   feeVal,
+            totalSlots: slotsVal,
+            mode:       modeVal,
+            prize:      prizeObj,
+            updatedAt:  serverTimestamp()
+        };
+
+        if (dateVal) updates.eventDate = dateVal;
+        if (timeVal) updates.eventTime = timeVal;
+        if (dateVal && timeVal) {
+            const [y, m, d] = dateVal.split('-').map(Number);
+            const [hh, mm] = timeVal.split(':').map(Number);
+            const target = new Date(y, m - 1, d, hh, mm, 0, 0);
+            if (!isNaN(target.getTime())) {
+                updates.endTime = target.getTime();
+            }
+        }
+
+        await updateDoc(doc(db, 'tournaments', id), updates);
+
+        // Update local memory tournament
+        const localT = tournaments.find(x => x.id === id);
+        if (localT) {
+            Object.assign(localT, updates);
+        }
+
         showMessage('✅ Tournament updated successfully!');
         document.getElementById('adminEditModal')?.remove();
+        if (typeof renderTournaments === 'function') {
+            renderTournaments();
+        }
     } catch (err) {
         console.error('[EDIT TOURNAMENT]', err);
         if (errEl) {
@@ -5357,8 +5474,8 @@ async function showApprovedReviewInterface(tournamentId, userId) {
         document.getElementById("joinTournamentTitle").textContent = tournament.title;
         document.getElementById("joinPrizeFirst").textContent = tournament.prize?.first || 0;
         document.getElementById("prizeFirst").textContent = tournament.prize?.first || 0;
-        document.getElementById("prizeSecond").textContent = tournament.prize?.second || 0;
-        document.getElementById("prizeThird").textContent = tournament.prize?.third || 0;
+        document.getElementById("prizeSecond").textContent = (tournament.prize?.second !== null && tournament.prize?.second !== undefined && Number(tournament.prize?.second) > 0) ? tournament.prize.second : "None";
+        document.getElementById("prizeThird").textContent = (tournament.prize?.third !== null && tournament.prize?.third !== undefined && Number(tournament.prize?.third) > 0) ? tournament.prize.third : "None";
         const _jed = document.getElementById("joinEntryFeeDisplay"); if (_jed) _jed.textContent = tournament.entryFee;
         const _d2c = document.getElementById("joinEntryFeeDisplay2"); if (_d2c) _d2c.textContent = tournament.entryFee;
         const _pa = document.getElementById("paymentAmount"); if (_pa) _pa.textContent = tournament.entryFee;
@@ -7563,8 +7680,8 @@ window.editRejectedApplication = async function(tournamentId) {
         const _jtt = document.getElementById("joinTournamentTitle"); if (_jtt) _jtt.textContent = tournament.title;
         const _jpf = document.getElementById("joinPrizeFirst"); if (_jpf) _jpf.textContent = tournament.prize?.first || 0;
         const _pf = document.getElementById("prizeFirst"); if (_pf) _pf.textContent = tournament.prize?.first || 0;
-        const _ps = document.getElementById("prizeSecond"); if (_ps) _ps.textContent = tournament.prize?.second || 0;
-        const _pt = document.getElementById("prizeThird"); if (_pt) _pt.textContent = tournament.prize?.third || 0;
+        const _ps = document.getElementById("prizeSecond"); if (_ps) _ps.textContent = (tournament.prize?.second !== null && tournament.prize?.second !== undefined && Number(tournament.prize?.second) > 0) ? tournament.prize.second : "None";
+        const _pt = document.getElementById("prizeThird"); if (_pt) _pt.textContent = (tournament.prize?.third !== null && tournament.prize?.third !== undefined && Number(tournament.prize?.third) > 0) ? tournament.prize.third : "None";
         const _jef = document.getElementById("joinEntryFeeDisplay"); if (_jef) _jef.textContent = tournament.entryFee || 0;
         const _jef2 = document.getElementById("joinEntryFeeDisplay2"); if (_jef2) _jef2.textContent = tournament.entryFee || 0;
         const _pa = document.getElementById("paymentAmount"); if (_pa) _pa.textContent = tournament.entryFee || 0;

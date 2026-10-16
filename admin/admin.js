@@ -2400,6 +2400,10 @@ function loadTournaments() {
         ? `<button class="btn-status" onclick="window.openEditTimingModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}')" style="background:#3b82f6;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;">✏️ Edit Time</button>`
         : '';
 
+      const editDetailsBtn = canEditTiming
+        ? `<button class="btn-status" onclick="window.openEditTournamentModal('${d.id}')" style="background:#ff6b35;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;font-weight:700;" title="Edit tournament name, entry fee, prizes, slot size, timing, and rules">✏️ Edit Details</button>`
+        : '';
+
       const deleteBtn = (isActive && !isTournamentOver)
         ? `<button class="btn-delete" disabled title="Cannot delete: tournament is active or ongoing" style="opacity:0.35;cursor:not-allowed;" onclick="event.preventDefault();">🔒 Delete</button>`
         : `<button class="btn-delete" onclick="deleteTournament('${d.id}')">Delete</button>`;
@@ -2408,16 +2412,23 @@ function loadTournaments() {
         ? `<button class="btn-status" onclick="markTournamentCompleted('${d.id}')" style="background:#3b82f6;color:#fff;border:none;">🏆 Publish Results</button>`
         : `<button class="btn-status" onclick="window.renderAdminLeaderboardGrid('${d.id}')" style="background:#00ff88;color:#000;border:none;">🏆 Edit Leaderboard</button>`;
 
+      const p1Disp = `₹${t.prize?.first || 0}`;
+      const p2Disp = (t.prize?.second !== null && t.prize?.second !== undefined && Number(t.prize?.second) > 0) ? `₹${t.prize.second}` : 'None';
+      const p3Disp = (t.prize?.third !== null && t.prize?.third !== undefined && Number(t.prize?.third) > 0) ? `₹${t.prize.third}` : 'None';
+      const slotsDisp = t.totalSlots ? ` · 🎯 Slots: <b>${t.totalSlots}</b>` : '';
+      const prizesDisp = ` · 🏆 Prizes: ${p1Disp} / ${p2Disp} / ${p3Disp}`;
+
       div.innerHTML = `
         <div>
           <strong>${escHtml(t.title)}</strong><br>
           <small style="color:var(--muted); font-size:11px;">UID: <span style="user-select:all; background:#222; padding:2px 4px; border-radius:3px; color:#aaa; font-family:monospace; cursor:copy;" onclick="navigator.clipboard.writeText('${d.id}'); showToast('UID copied!', 'success');">${d.id}</span></small><br>
-          <small>₹${t.entryFee} · ${t.mode} · <b style="text-transform:uppercase;">${t.category}</b>${timingDisplay}${regStatusBadge}</small>
+          <small>₹${t.entryFee} · ${t.mode} · <b style="text-transform:uppercase;">${t.category}</b>${slotsDisp}${prizesDisp}${timingDisplay}${regStatusBadge}</small>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
           <button class="btn-status" onclick="manageTournamentSlots('${d.id}')" style="background:var(--gold);color:#000;border:none;">
             🎯 Manage Slots
           </button>
+          ${editDetailsBtn}
           ${postponeBtn}
           ${editTimingBtn}
           ${completeBtn}
@@ -5402,6 +5413,492 @@ window.submitEditTiming = async function(tournamentId) {
     }
 };
 
+// ==========================================
+// ✏️ COMPREHENSIVE TOURNAMENT EDITING MODAL
+// Allows full editing of: Title, Category, Mode, Entry Fee, Slot Size (Lobby Capacity),
+// Prize Pool (1st, 2nd, 3rd with Null/None options for half lobbies), Timing, and Details
+// ==========================================
+
+window.openEditTournamentModal = async function(tournamentId) {
+    document.getElementById('editTournamentModalOverlay')?.remove();
+
+    // Loading overlay
+    const overlay = document.createElement("div");
+    overlay.id = "editTournamentModalOverlay";
+    overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); display:flex; justify-content:center; align-items:center; z-index:10000; padding:16px; backdrop-filter:blur(5px);";
+    overlay.innerHTML = `
+        <div style="background:#16161c; padding:28px; border-radius:14px; width:100%; max-width:440px; box-shadow:0 20px 50px rgba(0,0,0,0.7); border:1px solid #2a2a35; color:#fff; text-align:center;">
+            <div style="font-size:32px; margin-bottom:10px;">⏳</div>
+            <div style="color:#aaa; font-size:14px; font-weight:600;">Fetching tournament data...</div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    let t = null;
+    try {
+        const snap = await getDoc(doc(db, "tournaments", tournamentId));
+        if (snap.exists()) {
+            t = snap.data();
+        }
+    } catch (e) {
+        console.warn("[EDIT TOURNAMENT] Could not fetch fresh doc:", e);
+    }
+
+    if (!t) {
+        const cached = window._adminActiveTournaments?.find(d => d.id === tournamentId);
+        t = cached ? cached.data() : null;
+    }
+
+    if (!t) {
+        overlay.innerHTML = `
+            <div style="background:#16161c; padding:24px; border-radius:14px; width:100%; max-width:400px; border:1px solid #ff4444; color:#fff; text-align:center;">
+                <p style="color:#ff6b6b; font-size:16px; margin:0 0 15px 0;">Tournament not found.</p>
+                <button onclick="document.getElementById('editTournamentModalOverlay').remove()" style="padding:8px 18px; background:#333; color:#fff; border:none; border-radius:6px; cursor:pointer;">Close</button>
+            </div>
+        `;
+        return;
+    }
+
+    const title = t.title || "";
+    const category = t.category || "ongoing";
+    const mode = t.mode || "Solo";
+    const entryFee = Number(t.entryFee) || 0;
+    const totalSlots = Math.max(2, Number(t.totalSlots) || 12);
+    const duration = Number(t.duration) || 60;
+    const infoParagraph = t.infoParagraph || "";
+
+    const p1 = (t.prize?.first !== undefined && t.prize?.first !== null) ? Number(t.prize.first) : 0;
+    const isP2Null = (t.prize?.second === null || t.prize?.second === undefined || (typeof t.prize?.second === 'number' && t.prize?.second === 0 && t.prize?.secondNull));
+    const p2 = isP2Null ? 0 : (Number(t.prize?.second) || 0);
+
+    const isP3Null = (t.prize?.third === null || t.prize?.third === undefined || (typeof t.prize?.third === 'number' && t.prize?.third === 0 && t.prize?.thirdNull));
+    const p3 = isP3Null ? 0 : (Number(t.prize?.third) || 0);
+
+    // Timing extraction
+    let dateObj = null;
+    let initialDate = t.eventDate || "";
+    let initialTime = t.eventTime || "";
+
+    if (t.endTime && typeof t.endTime === 'number') {
+        dateObj = new Date(t.endTime);
+    } else if (t.eventDate) {
+        if (typeof t.eventDate === 'string' && t.eventDate.includes('T')) {
+            dateObj = new Date(t.eventDate);
+        } else if (t.eventTime) {
+            const timePart = t.eventTime.length === 5 ? t.eventTime + ':00' : t.eventTime;
+            dateObj = new Date(`${t.eventDate}T${timePart}`);
+        } else {
+            dateObj = new Date(t.eventDate);
+        }
+    }
+
+    const pad = n => String(n).padStart(2, '0');
+    if (dateObj && !isNaN(dateObj.getTime())) {
+        if (!initialDate) initialDate = `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}`;
+        if (!initialTime) initialTime = `${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
+    }
+
+    let transitionVal = "";
+    if (t.transitionTime) {
+        const transDate = new Date(t.transitionTime);
+        if (!isNaN(transDate.getTime())) {
+            transitionVal = `${transDate.getFullYear()}-${pad(transDate.getMonth()+1)}-${pad(transDate.getDate())}T${pad(transDate.getHours())}:${pad(transDate.getMinutes())}`;
+        }
+    }
+
+    overlay.innerHTML = `
+        <div style="background:#16161c; padding:26px; border-radius:14px; width:100%; max-width:580px; box-shadow:0 20px 60px rgba(0,0,0,0.85); border:1px solid #2a2a35; color:#fff; max-height:90vh; overflow-y:auto; font-family:inherit;">
+            
+            <!-- Header -->
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; border-bottom:1px solid #262632; padding-bottom:12px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <h3 style="margin:0; color:#ff6b35; font-size:18px; font-weight:700;">✏️ Edit Tournament Details</h3>
+                        <span style="background:#222; color:#00ff88; font-size:10px; padding:2px 8px; border-radius:4px; text-transform:uppercase; border:1px solid #333; font-weight:700;">${category}</span>
+                    </div>
+                    <div style="color:#aaa; font-size:12px; margin-top:3px;">UID: <span style="font-family:monospace; color:#888;">${tournamentId}</span></div>
+                </div>
+                <button onclick="document.getElementById('editTournamentModalOverlay').remove()" style="background:transparent; border:none; color:#888; font-size:22px; cursor:pointer; padding:0 6px;" title="Close">✕</button>
+            </div>
+
+            <!-- Title Field -->
+            <div style="margin-bottom:14px;">
+                <label style="display:block; color:#ddd; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px;">
+                    Tournament Title / Name ✱
+                </label>
+                <input type="text" id="editTourneyTitle" value="${escHtml(title)}" placeholder="e.g. Free Fire Champions Cup" style="width:100%; box-sizing:border-box; padding:10px 12px; background:#0e0e12; color:#fff; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:14px;">
+            </div>
+
+            <!-- Category & Mode -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+                <div>
+                    <label style="display:block; color:#ddd; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px;">Category</label>
+                    <select id="editTourneyCategory" style="width:100%; box-sizing:border-box; padding:10px 12px; background:#0e0e12; color:#fff; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:13px;">
+                        <option value="ongoing" ${category === 'ongoing' ? 'selected' : ''}>Ongoing / Live</option>
+                        <option value="upcoming" ${category === 'upcoming' ? 'selected' : ''}>Upcoming</option>
+                        <option value="limited" ${category === 'limited' ? 'selected' : ''}>Limited / Special</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block; color:#ddd; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px;">Mode</label>
+                    <select id="editTourneyMode" style="width:100%; box-sizing:border-box; padding:10px 12px; background:#0e0e12; color:#fff; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:13px;">
+                        <option value="Solo" ${mode === 'Solo' ? 'selected' : ''}>Solo</option>
+                        <option value="Duo" ${mode === 'Duo' ? 'selected' : ''}>Duo</option>
+                        <option value="Squad" ${mode === 'Squad' ? 'selected' : ''}>Squad</option>
+                        <option value="Any" ${mode === 'Any' ? 'selected' : ''}>Any</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Entry Fee & Slot Size (Lobby Capacity) -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+                <div>
+                    <label style="display:block; color:#ddd; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px;">
+                        Entry Fee (₹)
+                    </label>
+                    <input type="number" id="editTourneyFee" min="0" value="${entryFee}" placeholder="0" style="width:100%; box-sizing:border-box; padding:10px 12px; background:#0e0e12; color:#00ff88; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:14px; font-weight:700;">
+                </div>
+                <div>
+                    <label style="display:block; color:#ddd; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px;">
+                        Slot Size / Max Teams
+                    </label>
+                    <input type="number" id="editTourneySlots" min="2" max="100" value="${totalSlots}" placeholder="12" style="width:100%; box-sizing:border-box; padding:10px 12px; background:#0e0e12; color:#ffc107; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:14px; font-weight:700;">
+                </div>
+            </div>
+            <div style="background:rgba(255, 193, 7, 0.08); border-left:3px solid #ffc107; padding:7px 10px; border-radius:4px; margin-bottom:16px; font-size:11px; color:#ffe082; line-height:1.4;">
+                💡 <b>Lobby Resizing:</b> If the tournament was planned for 12 teams but only 6 joined, reduce slot size here (e.g., 6) so slot management and room sync adapt immediately.
+            </div>
+
+            <!-- Prize Pool Distribution -->
+            <div style="background:#0e0e12; border:1px solid #282834; border-radius:10px; padding:14px; margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <label style="color:#ffd700; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">
+                        🏆 Prize Pool Distribution
+                    </label>
+                    <span id="editTourneyTotalPrizeBadge" style="background:#1f2937; color:#10b981; font-size:12px; font-weight:700; padding:2px 8px; border-radius:6px; font-family:monospace; border:1px solid #374151;">
+                        Total: ₹0
+                    </span>
+                </div>
+                <p style="color:#888; font-size:11px; margin:0 0 10px 0;">
+                    Reduce prizes or set 3rd/2nd position to <b>Null / None</b> if the lobby was half-full or not awarded:
+                </p>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:8px;">
+                    <div>
+                        <span style="color:#ffd700; font-size:11px; font-weight:700; display:block; margin-bottom:3px;">🥇 1st Place (₹)</span>
+                        <input type="number" id="editTourneyP1" min="0" value="${p1}" placeholder="0" style="width:100%; box-sizing:border-box; padding:9px; background:#16161c; color:#ffd700; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:13px; font-weight:700;">
+                    </div>
+                    <div>
+                        <span style="color:#c0c0c0; font-size:11px; font-weight:700; display:block; margin-bottom:3px;">🥈 2nd Place (₹)</span>
+                        <input type="number" id="editTourneyP2" min="0" value="${p2}" placeholder="0" style="width:100%; box-sizing:border-box; padding:9px; background:#16161c; color:#c0c0c0; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:13px; font-weight:700;">
+                        <label style="display:flex; align-items:center; gap:5px; margin-top:5px; color:#aaa; font-size:10px; cursor:pointer; user-select:none;">
+                            <input type="checkbox" id="editTourneyNoP2" ${isP2Null ? 'checked' : ''} style="accent-color:#ff6b35; width:13px; height:13px;">
+                            <span>No 2nd Prize (Null)</span>
+                        </label>
+                    </div>
+                    <div>
+                        <span style="color:#cd7f32; font-size:11px; font-weight:700; display:block; margin-bottom:3px;">🥉 3rd Place (₹)</span>
+                        <input type="number" id="editTourneyP3" min="0" value="${p3}" placeholder="0" style="width:100%; box-sizing:border-box; padding:9px; background:#16161c; color:#cd7f32; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:13px; font-weight:700;">
+                        <label style="display:flex; align-items:center; gap:5px; margin-top:5px; color:#aaa; font-size:10px; cursor:pointer; user-select:none;">
+                            <input type="checkbox" id="editTourneyNoP3" ${isP3Null ? 'checked' : ''} style="accent-color:#ff6b35; width:13px; height:13px;">
+                            <span>No 3rd Prize (Null)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Timing & Schedule -->
+            <div style="background:#0e0e12; border:1px solid #282834; border-radius:10px; padding:14px; margin-bottom:16px;">
+                <label style="display:block; color:#60a5fa; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">
+                    ⏰ Timing & Duration
+                </label>
+                
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+                    <div>
+                        <span style="color:#888; font-size:11px; display:block; margin-bottom:3px;">Event Date</span>
+                        <input type="date" id="editTourneyDate" value="${initialDate}" style="width:100%; box-sizing:border-box; padding:9px; background:#16161c; color:#fff; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:12px;">
+                    </div>
+                    <div>
+                        <span style="color:#888; font-size:11px; display:block; margin-bottom:3px;">Event Clock Time</span>
+                        <input type="time" id="editTourneyTime" value="${initialTime}" style="width:100%; box-sizing:border-box; padding:9px; background:#16161c; color:#fff; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:12px;">
+                    </div>
+                    <div>
+                        <span style="color:#888; font-size:11px; display:block; margin-bottom:3px;">Duration (Mins)</span>
+                        <input type="number" id="editTourneyDuration" min="10" value="${duration}" style="width:100%; box-sizing:border-box; padding:9px; background:#16161c; color:#fff; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:12px;">
+                    </div>
+                </div>
+
+                <!-- Quick Presets -->
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+                    <span style="color:#777; font-size:10px; align-self:center; margin-right:2px;">Quick Extends:</span>
+                    <button type="button" onclick="window.applyEditTourneyTimingPreset(15)" style="background:#222; border:1px solid #333; color:#ccc; padding:4px 8px; border-radius:5px; font-size:10px; cursor:pointer;">+15m</button>
+                    <button type="button" onclick="window.applyEditTourneyTimingPreset(30)" style="background:#222; border:1px solid #333; color:#ccc; padding:4px 8px; border-radius:5px; font-size:10px; cursor:pointer;">+30m</button>
+                    <button type="button" onclick="window.applyEditTourneyTimingPreset(60)" style="background:#222; border:1px solid #333; color:#ccc; padding:4px 8px; border-radius:5px; font-size:10px; cursor:pointer;">+1h</button>
+                    <button type="button" onclick="window.applyEditTourneyTimingPreset(120)" style="background:#222; border:1px solid #333; color:#ccc; padding:4px 8px; border-radius:5px; font-size:10px; cursor:pointer;">+2h</button>
+                    <button type="button" onclick="window.applyEditTourneyTimingPreset('tonight_10pm')" style="background:#222; border:1px solid #333; color:#ccc; padding:4px 8px; border-radius:5px; font-size:10px; cursor:pointer;">Tonight 10PM</button>
+                    <button type="button" onclick="window.applyEditTourneyTimingPreset('tomorrow_11am')" style="background:#222; border:1px solid #333; color:#ccc; padding:4px 8px; border-radius:5px; font-size:10px; cursor:pointer;">Tomorrow 11AM</button>
+                </div>
+
+                <!-- Transition Time for Upcoming -->
+                <div id="editTourneyTransitionContainer" style="${category === 'upcoming' || t.transitionTime ? 'display:block;' : 'display:none;'} margin-top:10px; padding-top:10px; border-top:1px dashed #333;">
+                    <label style="display:block; color:#f87171; font-size:11px; font-weight:700; margin-bottom:3px;">
+                        [HIDDEN] Auto-Move to Ongoing (Date & Time)
+                    </label>
+                    <input type="datetime-local" id="editTourneyTransition" value="${transitionVal}" style="width:100%; box-sizing:border-box; padding:8px; background:#16161c; color:#fff; border:1px solid #444; border-radius:6px; font-family:inherit; font-size:12px;">
+                </div>
+            </div>
+
+            <!-- Custom Info Paragraph / Rules -->
+            <div style="margin-bottom:16px;">
+                <label style="display:block; color:#ddd; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px;">
+                    Custom Details, Rules & Announcements
+                </label>
+                <textarea id="editTourneyInfo" rows="3" placeholder="Enter custom rules, details, or explanation for why prizes or slots were adjusted..." style="width:100%; box-sizing:border-box; padding:10px 12px; background:#0e0e12; color:#fff; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:13px; resize:vertical;">${escHtml(infoParagraph)}</textarea>
+            </div>
+
+            <!-- Notify Teams Checkbox -->
+            <div style="margin-bottom:18px;">
+                <label style="display:flex; align-items:center; gap:8px; color:#bbb; font-size:12px; cursor:pointer; user-select:none;">
+                    <input type="checkbox" id="editTourneyNotify" checked style="accent-color:#ff6b35; width:16px; height:16px;">
+                    <span>🔔 Notify registered teams about these changes (prizes, slot size, or timing)</span>
+                </label>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('editTournamentModalOverlay').remove()" style="flex:1; padding:12px; background:#222; color:#ccc; border:1px solid #333; border-radius:8px; cursor:pointer; font-weight:600; font-size:14px;">
+                    Cancel
+                </button>
+                <button id="editTourneySaveBtn" onclick="window.submitEditTournament('${tournamentId}')" style="flex:2; padding:12px; background:#ff6b35; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:center; gap:6px;">
+                    💾 Save Changes
+                </button>
+            </div>
+        </div>
+    `;
+
+    // Dynamic Prize Handlers
+    window.updateEditTourneyPrizeSummary = function() {
+        const p1El = document.getElementById("editTourneyP1");
+        const p2El = document.getElementById("editTourneyP2");
+        const p3El = document.getElementById("editTourneyP3");
+        const noP2 = document.getElementById("editTourneyNoP2")?.checked;
+        const noP3 = document.getElementById("editTourneyNoP3")?.checked;
+        const badge = document.getElementById("editTourneyTotalPrizeBadge");
+
+        if (p2El) {
+            p2El.disabled = !!noP2;
+            p2El.style.opacity = noP2 ? "0.35" : "1";
+            p2El.style.textDecoration = noP2 ? "line-through" : "none";
+        }
+        if (p3El) {
+            p3El.disabled = !!noP3;
+            p3El.style.opacity = noP3 ? "0.35" : "1";
+            p3El.style.textDecoration = noP3 ? "line-through" : "none";
+        }
+
+        const p1Val = Math.max(0, Number(p1El?.value) || 0);
+        const p2Val = noP2 ? 0 : Math.max(0, Number(p2El?.value) || 0);
+        const p3Val = noP3 ? 0 : Math.max(0, Number(p3El?.value) || 0);
+        const total = p1Val + p2Val + p3Val;
+
+        if (badge) {
+            badge.textContent = `Total: ₹${total.toLocaleString('en-IN')}`;
+        }
+    };
+
+    window.applyEditTourneyTimingPreset = function(preset) {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        let target = new Date(now.getTime());
+
+        if (typeof preset === 'number') {
+            target = new Date(now.getTime() + preset * 60000);
+        } else if (preset === 'tonight_10pm') {
+            target.setHours(22, 0, 0, 0);
+            if (target.getTime() <= now.getTime()) {
+                target.setDate(target.getDate() + 1);
+            }
+        } else if (preset === 'tomorrow_11am') {
+            target.setDate(target.getDate() + 1);
+            target.setHours(11, 0, 0, 0);
+        }
+
+        const dateInput = document.getElementById("editTourneyDate");
+        const timeInput = document.getElementById("editTourneyTime");
+        if (dateInput && timeInput) {
+            dateInput.value = `${target.getFullYear()}-${pad(target.getMonth()+1)}-${pad(target.getDate())}`;
+            timeInput.value = `${pad(target.getHours())}:${pad(target.getMinutes())}`;
+        }
+    };
+
+    // Category change handler to show/hide transition time
+    document.getElementById("editTourneyCategory")?.addEventListener("change", function(e) {
+        const transCont = document.getElementById("editTourneyTransitionContainer");
+        if (transCont) {
+            transCont.style.display = (e.target.value === 'upcoming') ? 'block' : 'none';
+        }
+    });
+
+    document.getElementById("editTourneyP1")?.addEventListener("input", window.updateEditTourneyPrizeSummary);
+    document.getElementById("editTourneyP2")?.addEventListener("input", window.updateEditTourneyPrizeSummary);
+    document.getElementById("editTourneyP3")?.addEventListener("input", window.updateEditTourneyPrizeSummary);
+    document.getElementById("editTourneyNoP2")?.addEventListener("change", window.updateEditTourneyPrizeSummary);
+    document.getElementById("editTourneyNoP3")?.addEventListener("change", window.updateEditTourneyPrizeSummary);
+
+    window.updateEditTourneyPrizeSummary();
+};
+
+window.submitEditTournament = async function(tournamentId) {
+    const saveBtn = document.getElementById("editTourneySaveBtn");
+    const titleVal = document.getElementById("editTourneyTitle")?.value.trim();
+    const categoryVal = document.getElementById("editTourneyCategory")?.value || "ongoing";
+    const modeVal = document.getElementById("editTourneyMode")?.value || "Solo";
+    const feeVal = Math.max(0, Number(document.getElementById("editTourneyFee")?.value) || 0);
+    const slotsVal = Math.max(2, Number(document.getElementById("editTourneySlots")?.value) || 12);
+    const durationVal = Math.max(5, Number(document.getElementById("editTourneyDuration")?.value) || 60);
+
+    const p1Val = Math.max(0, Number(document.getElementById("editTourneyP1")?.value) || 0);
+    const noP2 = document.getElementById("editTourneyNoP2")?.checked;
+    const p2Val = noP2 ? null : Math.max(0, Number(document.getElementById("editTourneyP2")?.value) || 0);
+    const noP3 = document.getElementById("editTourneyNoP3")?.checked;
+    const p3Val = noP3 ? null : Math.max(0, Number(document.getElementById("editTourneyP3")?.value) || 0);
+
+    const dateVal = document.getElementById("editTourneyDate")?.value;
+    const timeVal = document.getElementById("editTourneyTime")?.value;
+    const transitionVal = document.getElementById("editTourneyTransition")?.value;
+    const infoVal = document.getElementById("editTourneyInfo")?.value.trim() || "";
+    const notifyTeams = document.getElementById("editTourneyNotify")?.checked;
+
+    if (!titleVal) {
+        showToast("Tournament title is required.", "error");
+        return;
+    }
+
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = `⏳ Saving...`;
+    }
+
+    try {
+        const tRef = doc(db, "tournaments", tournamentId);
+        const snap = await getDoc(tRef);
+        const tData = snap.exists() ? snap.data() : {};
+
+        const prizeObj = {
+            first: p1Val,
+            second: p2Val,
+            third: p3Val,
+            secondNull: !!noP2,
+            thirdNull: !!noP3
+        };
+
+        const updates = {
+            title: titleVal,
+            category: categoryVal,
+            mode: modeVal,
+            entryFee: feeVal,
+            totalSlots: slotsVal,
+            duration: durationVal,
+            prize: prizeObj,
+            infoParagraph: infoVal,
+            updatedAt: serverTimestamp()
+        };
+
+        let targetTimeMs = null;
+        if (dateVal && timeVal) {
+            const [y, m, d] = dateVal.split('-').map(Number);
+            const [hh, mm] = timeVal.split(':').map(Number);
+            const targetDate = new Date(y, m - 1, d, hh, mm, 0, 0);
+            if (!isNaN(targetDate.getTime())) {
+                targetTimeMs = targetDate.getTime();
+                updates.eventDate = dateVal;
+                updates.eventTime = timeVal;
+                updates.endTime = targetTimeMs;
+
+                const isFuture = targetTimeMs > Date.now();
+                if (categoryVal === 'ongoing' || tData.category === 'ongoing' || tData.status === 'live' || (isFuture && categoryVal !== 'limited')) {
+                    if (categoryVal === 'ongoing') {
+                        updates.status = 'live';
+                    }
+                    updates.adminPhase2Notified = false;
+                }
+            }
+        } else if (dateVal) {
+            updates.eventDate = dateVal;
+        }
+
+        if (transitionVal) {
+            const transDate = new Date(transitionVal);
+            if (!isNaN(transDate.getTime())) {
+                updates.transitionTime = transDate.toISOString();
+                if (transDate.getTime() > Date.now()) {
+                    updates.promotionNotified = false;
+                }
+            }
+        }
+
+        await updateDoc(tRef, updates);
+
+        // Sync with calendarEvents if applicable
+        try {
+            const calTitles = [`🏆 ${tData.title}`, `⚡ [Limited] ${tData.title}`, tData.title, `🏆 ${titleVal}`];
+            const titleQuery = query(calendarRef, where("title", "in", calTitles));
+            const calSnap = await getDocs(titleQuery);
+            if (!calSnap.empty) {
+                const calDoc = calSnap.docs[0];
+                const calUpdates = {
+                    title: categoryVal === 'limited' ? `⚡ [Limited] ${titleVal}` : `🏆 ${titleVal}`,
+                    prize: p1Val || 'Special',
+                    updatedAt: serverTimestamp()
+                };
+                if (dateVal) calUpdates.date = dateVal;
+                await updateDoc(doc(db, "calendarEvents", calDoc.id), calUpdates);
+            }
+        } catch (calErr) {
+            console.warn("[EDIT TOURNAMENT] Calendar sync notice:", calErr);
+        }
+
+        // Notify registered participants if requested
+        if (notifyTeams) {
+            try {
+                const [verifSnap, upcomSnap] = await Promise.all([
+                    getDocs(collection(db, "tournaments", tournamentId, "verifications")),
+                    getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
+                ]);
+                const allUids = new Set();
+                verifSnap.forEach(d => { if (d.data().status !== 'rejected') allUids.add(d.id); });
+                upcomSnap.forEach(d => { if (d.data().status !== 'rejected') allUids.add(d.id); });
+
+                const p2Display = noP2 ? "None" : `₹${p2Val}`;
+                const p3Display = noP3 ? "None" : `₹${p3Val}`;
+                const msg = `Tournament "${titleVal}" updated: 1st ₹${p1Val}, 2nd ${p2Display}, 3rd ${p3Display} · Slots: ${slotsVal} teams · Fee: ₹${feeVal}${dateVal ? ` · Event: ${dateVal} ${timeVal || ''}` : ''}. Check tournament details for latest info!`;
+
+                const notifPromises = [...allUids].map(uid => sendDualNotification(uid, {
+                    type: "tournament_announcement",
+                    title: "🏆 Tournament Details Updated",
+                    message: msg,
+                    extra: { tournamentId },
+                    actionLink: `tournament=${tournamentId}`
+                }));
+                await Promise.all(notifPromises);
+            } catch (notifErr) {
+                console.warn("[EDIT TOURNAMENT] Notification dispatch error:", notifErr);
+            }
+        }
+
+        document.getElementById('editTournamentModalOverlay')?.remove();
+        showToast("✅ Tournament details updated successfully!", "success");
+
+    } catch (err) {
+        console.error("[EDIT TOURNAMENT] Save error:", err);
+        showToast("Failed to update tournament: " + err.message, "error");
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = `💾 Save Changes`;
+        }
+    }
+};
+
 window.sendGlobalNotification = async function() {
     const title = document.getElementById('globalNotifTitle').value.trim();
     const body = document.getElementById('globalNotifMsg').value.trim();
@@ -5455,7 +5952,8 @@ window.sendGlobalNotification = async function() {
         "openPayoutModal", "processPayout", "saveLeaderboardRow", "saveAllLeaderboardRows", 
         "clearLeaderboard", "showUserAnalyticsDashboard", "saveAllTeamRankings", 
         "openRewardModal", "submitReward", "runV2DataMigration", "deleteUserDoc", 
-        "openPostponeModal", "submitPostpone", "openEditTimingModal", "submitEditTiming"
+        "openPostponeModal", "submitPostpone", "openEditTimingModal", "submitEditTiming",
+        "openEditTournamentModal", "submitEditTournament"
     ];
 
     const originalFns = {};
