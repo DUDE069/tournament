@@ -82,6 +82,9 @@ let tournaments         = [];
 let currentUser         = null;
 let userProfile         = null;
 let profileLoadPromise  = null; // NEW: Track profile loading
+let _initialAuthResolved = false;
+let _initialAuthResolveFn = null;
+const _authReadyPromise = new Promise(resolve => { _initialAuthResolveFn = resolve; });
 let calendarEvents      = [];
 let currentCalendarDate = new Date();
 let unsubNotifications  = null;
@@ -780,16 +783,87 @@ window.userParticipantDocs = window.userParticipantDocs || {};
         const card = `
             <div class="card" style="position:relative; ${cardStyle}">
                 <div>
-                    <h3>${t.title}</h3>
-                    ${t.category !== 'limited' ? `<p class="entry"><b>Entry Fee:</b> ₹${t.entryFee || 0}</p>` : ''}
-                    <p class="mode"><b>Mode:</b> ${t.mode || "N/A"}</p>
-                    ${t.totalSlots ? `<p class="mode" style="color:#00c9a7;"><b>🎯 Slot Size:</b> ${t.totalSlots} Teams</p>` : ''}
+                    <!-- CARD HEADER: TITLE & ACTION CLUSTER (INFO, SHARE, 3-DOTS) -->
+                    <div class="card-header-bar">
+                        <h3 class="card-header-title">${t.title}</h3>
+                        <div class="card-header-actions">
+                            <!-- Direct Share Icon -->
+                            <button type="button" class="card-icon-btn share-btn" onclick="event.stopPropagation(); window.shareTournament('${t.id}')" title="Share Tournament" aria-label="Share Tournament">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="18" cy="5" r="3"></circle>
+                                    <circle cx="6" cy="12" r="3"></circle>
+                                    <circle cx="18" cy="19" r="3"></circle>
+                                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                                </svg>
+                            </button>
 
-                    ${t.category === 'upcoming' && t.eventTime
-                        ? `<p style="color:#3b82f6;font-size:13px;margin:4px 0;"><b>⏰ Time:</b> ${t.eventTime}</p>`
-                        : ''
-                    }
+                            <!-- Direct Info Icon -->
+                            <button type="button" class="card-icon-btn" onclick="event.stopPropagation(); window.showTournamentInfo(event)" title="Tournament Guidelines" aria-label="Tournament Guidelines">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                </svg>
+                            </button>
 
+                            <!-- Three-Dots More Options Menu Button -->
+                            <button type="button" class="card-icon-btn" onclick="event.stopPropagation(); window.toggleTourneyDropdown('${t.id}')" title="More options" aria-label="More options">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="5" r="1.5"></circle>
+                                    <circle cx="12" cy="12" r="1.5"></circle>
+                                    <circle cx="12" cy="19" r="1.5"></circle>
+                                </svg>
+                            </button>
+
+                            <!-- Three-Dots Dropdown Menu -->
+                            <div id="tourney-dropdown-${t.id}" class="npc-tourney-dropdown">
+                                <button type="button" class="npc-tourney-dropdown-item" onclick="event.stopPropagation(); window.closeAllTourneyDropdowns(); window.showTournamentInfo(event);">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                                    <span>Tournament Info</span>
+                                </button>
+                                <button type="button" class="npc-tourney-dropdown-item" onclick="event.stopPropagation(); window.closeAllTourneyDropdowns(); window.shareTournament('${t.id}');">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+                                    <span>Share Link</span>
+                                </button>
+                                ${isAdminUser ? `
+                                <div style="height:1px;background:#2a2a34;margin:3px 0;"></div>
+                                <button type="button" class="npc-tourney-dropdown-item admin-edit" onclick="event.stopPropagation(); window.closeAllTourneyDropdowns(); editTournament('${t.id}');">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff6b35" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                    <span>Edit Tournament</span>
+                                </button>
+                                <button type="button" class="npc-tourney-dropdown-item admin-postpone" onclick="event.stopPropagation(); window.closeAllTourneyDropdowns(); postponeTournament('${t.id}','${(t.title||'').replace(/'/g,"\\\\'")}');">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                    <span>Postpone Tournament</span>
+                                </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- COMPACT META CHIPS GRID -->
+                    <div class="tourney-meta-grid">
+                        <div class="tourney-meta-chip">
+                            <span>🎮</span> <span>Mode: <b>${t.mode || "N/A"}</b></span>
+                        </div>
+                        ${t.category !== 'limited' ? `
+                        <div class="tourney-meta-chip">
+                            <span>💰</span> <span>Entry: <b style="color:#00ff88;">₹${t.entryFee || 0}</b></span>
+                        </div>` : `
+                        <div class="tourney-meta-chip">
+                            <span>⚡</span> <span>Access: <b style="color:#ffd700;">Special</b></span>
+                        </div>`}
+                        ${t.totalSlots ? `
+                        <div class="tourney-meta-chip">
+                            <span>🎯</span> <span>Slots: <b style="color:#00c9a7;">${t.totalSlots} Teams</b></span>
+                        </div>` : ''}
+                        ${t.category === 'upcoming' && t.eventTime ? `
+                        <div class="tourney-meta-chip">
+                            <span>⏰</span> <span>Time: <b style="color:#3b82f6;">${t.eventTime}</b></span>
+                        </div>` : ''}
+                    </div>
+
+                    <!-- PRIZE POOL -->
                     ${t.category === 'limited'
                         ? `<div class="prize-box">
                              <p class="section-title">🏆 Prize Pool</p>
@@ -813,43 +887,6 @@ window.userParticipantDocs = window.userParticipantDocs || {};
 
                     ${timerHTML}
                     ${buttonHTML}
-
-                    <!-- ℹ️ INFO & 🔗 SHARE BUTTONS -->
-                    <div style="display:flex;gap:8px;margin-top:10px;">
-                        <button onclick="window.showTournamentInfo(event)"
-                            style="flex:1;padding:8px 10px;background:transparent;color:#aaa;border:1px solid #333;border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px;transition:all 0.2s;"
-                            onmouseover="this.style.borderColor='#00ff88';this.style.color='#00ff88';"
-                            onmouseout="this.style.borderColor='#333';this.style.color='#aaa';">
-                            ℹ️ Info
-                        </button>
-                        <button onclick="window.shareTournament('${t.id}')"
-                            style="flex:1;padding:8px 10px;background:rgba(0,255,136,0.06);color:#00ff88;border:1px solid rgba(0,255,136,0.3);border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;"
-                            onmouseover="this.style.borderColor='#00ff88';this.style.background='rgba(0,255,136,0.15)';"
-                            onmouseout="this.style.borderColor='rgba(0,255,136,0.3)';this.style.background='rgba(0,255,136,0.06)';">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                <circle cx="18" cy="5" r="3"></circle>
-                                <circle cx="6" cy="12" r="3"></circle>
-                                <circle cx="18" cy="19" r="3"></circle>
-                                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
-                                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
-                            </svg>
-                            Share
-                        </button>
-                    </div>
-
-                    ${isAdminUser ? `
-                    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
-                        <button onclick="editTournament('${t.id}')"
-                            style="flex:1;min-width:90px;padding:8px 12px;background:#ff6b35;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit;transition:opacity .15s;"
-                            onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">
-                            ✏️ Edit
-                        </button>
-                        <button onclick="postponeTournament('${t.id}','${(t.title||'').replace(/'/g,"\\'")}')"
-                            style="flex:1;min-width:90px;padding:8px 12px;background:#3b82f6;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;font-family:inherit;transition:opacity .15s;"
-                            onmouseover="this.style.opacity='.8'" onmouseout="this.style.opacity='1'">
-                            📅 Postpone
-                        </button>
-                    </div>` : ""}
                 </div>
             </div>`;
 
@@ -1037,6 +1074,31 @@ window.shareTournament = function(tournamentId) {
     }
 };
 
+// ==========================================
+// TOURNAMENT DROPDOWN & THREE-DOTS MENU
+// ==========================================
+window.toggleTourneyDropdown = function(tourneyId) {
+    const el = document.getElementById(`tourney-dropdown-${tourneyId}`);
+    if (!el) return;
+    const isShown = el.classList.contains("active");
+    window.closeAllTourneyDropdowns();
+    if (!isShown) {
+        el.classList.add("active");
+    }
+};
+
+window.closeAllTourneyDropdowns = function() {
+    document.querySelectorAll(".npc-tourney-dropdown.active").forEach(d => {
+        d.classList.remove("active");
+    });
+};
+
+document.addEventListener("click", (e) => {
+    if (!e.target.closest(".card-header-actions")) {
+        window.closeAllTourneyDropdowns();
+    }
+});
+
 window.closeShareModal = function() {
     const modal = document.getElementById("shareTournamentModal");
     if (modal) {
@@ -1057,15 +1119,26 @@ window.copyShareTournamentLink = async function() {
             document.execCommand("copy");
         }
         const copyText = document.getElementById("shareCopyText");
-        if (copyText) copyText.textContent = "Copied! ✅";
+        const copyBtn = document.getElementById("shareCopyBtn");
+        if (copyText) copyText.textContent = "Copied! ✓";
+        if (copyBtn) copyBtn.classList.add("copied");
         showMessage("Tournament link copied to clipboard! 📋", "success");
         setTimeout(() => {
             if (copyText) copyText.textContent = "Copy";
-        }, 2500);
+            if (copyBtn) copyBtn.classList.remove("copied");
+        }, 2200);
     } catch (e) {
         input.select();
-        document.execCommand("copy");
+        try { document.execCommand("copy"); } catch (err) {}
+        const copyText = document.getElementById("shareCopyText");
+        const copyBtn = document.getElementById("shareCopyBtn");
+        if (copyText) copyText.textContent = "Copied! ✓";
+        if (copyBtn) copyBtn.classList.add("copied");
         showMessage("Tournament link copied to clipboard! 📋", "success");
+        setTimeout(() => {
+            if (copyText) copyText.textContent = "Copy";
+            if (copyBtn) copyBtn.classList.remove("copied");
+        }, 2200);
     }
 };
 
@@ -1080,6 +1153,18 @@ window.shareViaApp = function(platform) {
         window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank');
     } else if (platform === 'telegram') {
         window.open(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`, '_blank');
+    } else if (platform === 'facebook') {
+        window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank');
+    } else if (platform === 'x') {
+        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`, '_blank');
+    } else if (platform === 'messages') {
+        window.location.href = `sms:?body=${encodeURIComponent(shareText)}`;
+    } else if (platform === 'embed') {
+        const embedCode = `<iframe src="${shareUrl}" width="100%" height="450" frameborder="0" allowfullscreen></iframe>`;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(embedCode);
+        }
+        showMessage("Embed code copied to clipboard! 📋", "success");
     } else if (platform === 'native') {
         if (navigator.share) {
             navigator.share({
@@ -1093,15 +1178,25 @@ window.shareViaApp = function(platform) {
     }
 };
 
-window.checkAndHandleDeepLink = function() {
+window.checkAndHandleDeepLink = async function() {
     const urlParams = new URLSearchParams(window.location.search);
     const targetTourneyId = urlParams.get('tournament') || urlParams.get('join');
     if (!targetTourneyId) return;
 
     console.log("[DEEP LINK] Found target tournament:", targetTourneyId);
 
-    // If user is not logged in, prompt to log in / sign up
-    if (!currentUser || !isLoggedIn) {
+    // Fast Auth Check: Wait for initial auth state resolution (up to 1200ms)
+    if (!_initialAuthResolved && !auth.currentUser) {
+        await Promise.race([
+            _authReadyPromise,
+            new Promise(res => setTimeout(res, 1200))
+        ]);
+    }
+
+    const authedUser = currentUser || auth.currentUser;
+
+    // If user is truly not logged in after auth check
+    if (!authedUser) {
         sessionStorage.setItem("pending_tournament_redirect", targetTourneyId);
         showMessage("Please sign in or create an account to register for this tournament! 🏆");
         setTimeout(() => {
@@ -1110,18 +1205,31 @@ window.checkAndHandleDeepLink = function() {
         return;
     }
 
-    // User is logged in! Check if tournament exists in memory
-    const targetTourney = tournaments.find(t => t.id === targetTourneyId);
-    if (!targetTourney) {
-        console.warn("[DEEP LINK] Tournament ID not in memory list:", targetTourneyId);
-        return;
-    }
+    // User is logged in! (NPC user)
+    // CRITICAL: Ensure login modal is NEVER displayed
+    if (typeof closeModal === 'function') closeModal();
+    const loginModal = document.getElementById("loginModal");
+    if (loginModal) loginModal.style.display = "none";
+    sessionStorage.removeItem("pending_tournament_redirect");
 
     // Clean URL query parameters smoothly
     const cleanUrl = new URL(window.location);
     cleanUrl.searchParams.delete('tournament');
     cleanUrl.searchParams.delete('join');
     window.history.replaceState({}, document.title, cleanUrl);
+
+    // Look for target tournament
+    let targetTourney = tournaments.find(t => t.id === targetTourneyId);
+    if (!targetTourney) {
+        // Wait briefly if tournaments are still populating
+        await new Promise(res => setTimeout(res, 350));
+        targetTourney = tournaments.find(t => t.id === targetTourneyId);
+    }
+
+    if (!targetTourney) {
+        console.warn("[DEEP LINK] Tournament ID not in memory list:", targetTourneyId);
+        return;
+    }
 
     // Scroll towards tournaments
     const sec = document.getElementById("tournaments");
@@ -1134,7 +1242,7 @@ window.checkAndHandleDeepLink = function() {
         } else {
             handleJoin(targetTourneyId);
         }
-    }, 400);
+    }, 250);
 };
 
 
@@ -2474,6 +2582,10 @@ async function handleGoogleError(error) {
 
 // 2. Modify the auth state to only handle private data (notifications)
 onAuthStateChanged(auth, async (user) => {
+    if (!_initialAuthResolved) {
+        _initialAuthResolved = true;
+        if (typeof _initialAuthResolveFn === 'function') _initialAuthResolveFn(user);
+    }
     if (user) {
         AppLog.success("[AUTH] Successfully switched to login account!");
         AppLog.info("[AUTH] Browser remembered the user: " + (user.email || "Unknown"));
@@ -2812,8 +2924,10 @@ onAuthStateChanged(auth, async (user) => {
         }
         window.userParticipantDocs = {};
 
-        // NEW LOGIC: Show login popup to unauthenticated users once per session
-        if (!sessionStorage.getItem('npc_auth_popup_shown')) {
+        // Show login popup to unauthenticated users once per session (unless visiting via deep link)
+        const hasTourneyDeepLink = new URLSearchParams(window.location.search).has('tournament') ||
+                                   new URLSearchParams(window.location.search).has('join');
+        if (!hasTourneyDeepLink && !sessionStorage.getItem('npc_auth_popup_shown')) {
             sessionStorage.setItem('npc_auth_popup_shown', 'true');
             setTimeout(() => {
                 if (!currentUser && typeof openLogin === 'function') {
@@ -8783,6 +8897,8 @@ window.closeShareModal         = window.closeShareModal;
 window.copyShareTournamentLink = window.copyShareTournamentLink;
 window.shareViaApp             = window.shareViaApp;
 window.checkAndHandleDeepLink  = window.checkAndHandleDeepLink;
+window.toggleTourneyDropdown   = window.toggleTourneyDropdown;
+window.closeAllTourneyDropdowns = window.closeAllTourneyDropdowns;
 
 // New exports
 window.handleJoinNowTutorial   = handleJoinNowTutorial;

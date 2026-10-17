@@ -983,12 +983,13 @@
   </div>
   <!-- ══ END LOGIN MODAL ════════════════════════════════════ -->
 
-  <!-- ══ SHARE TOURNAMENT MODAL ════════════════════════════ -->
+  <!-- ══ SHARE TOURNAMENT MODAL (YOUTUBE-STYLE SLEEK & COMPACT) ══ -->
   <div id="shareTournamentModal" class="modal-overlay" onclick="if(event.target === this) closeShareModal()">
-    <div class="modal-card" style="max-width: 440px; text-align: left;">
-      <div class="modal-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div class="share-modal-card" style="text-align: left;">
+      <!-- MODAL HEADER -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
         <div style="display:flex; align-items:center; gap:10px;">
-          <div style="width:36px; height:36px; border-radius:10px; background:rgba(0,255,136,0.12); border:1px solid rgba(0,255,136,0.3); display:flex; align-items:center; justify-content:center; color:#00ff88;">
+          <div style="width:34px; height:34px; border-radius:10px; background:rgba(0,255,136,0.12); border:1px solid rgba(0,255,136,0.3); display:flex; align-items:center; justify-content:center; color:#00ff88; flex-shrink:0;">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="18" cy="5" r="3"></circle>
               <circle cx="6" cy="12" r="3"></circle>
@@ -998,50 +999,119 @@
             </svg>
           </div>
           <div>
-            <h3 style="color:#fff; margin:0; font-size:17px; font-weight:700;">Share Tournament</h3>
-            <p style="color:#888; margin:2px 0 0; font-size:12px;">Share link to invite teammates or friends</p>
+            <h3 style="color:#fff; margin:0; font-size:16px; font-weight:700; letter-spacing:0.3px;">Share Tournament</h3>
+            <p style="color:#888; margin:1px 0 0; font-size:11.5px;">Invite your squad or friends directly</p>
           </div>
         </div>
-        <button class="close-modal" onclick="closeShareModal()" style="background:none; border:none; font-size:20px; color:#888; cursor:pointer;">×</button>
+        <button type="button" class="close-modal" onclick="closeShareModal()" aria-label="Close" style="background:#222; border:1px solid #333; width:28px; height:28px; border-radius:50%; font-size:15px; color:#aaa; cursor:pointer; display:flex; align-items:center; justify-content:center; line-height:1; transition:all 0.2s;">✕</button>
       </div>
 
-      <!-- TOURNAMENT PREVIEW CARD -->
-      <div id="sharePreviewCard" style="background:#141416; border:1px solid #27272a; border-radius:12px; padding:14px; margin-bottom:16px;">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
-          <h4 id="shareTourneyTitle" style="color:#00ff88; margin:0; font-size:15px; font-weight:700;">Tournament</h4>
-          <span id="shareTourneyCategory" style="font-size:11px; font-weight:700; text-transform:uppercase; padding:3px 8px; border-radius:12px; background:rgba(0,255,136,0.12); color:#00ff88;">Active</span>
+      <!-- TOURNAMENT MINI PREVIEW PILL/CARD -->
+      <div id="sharePreviewCard" style="background:#111114; border:1px solid #27272e; border-radius:12px; padding:10px 12px; margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+          <span id="shareTourneyTitle" style="color:#00ff88; font-weight:700; font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:240px;">Tournament</span>
+          <span id="shareTourneyCategory" style="font-size:10px; font-weight:700; text-transform:uppercase; padding:2px 7px; border-radius:10px; background:rgba(0,255,136,0.12); color:#00ff88; flex-shrink:0;">Active</span>
         </div>
-        <div id="shareTourneyMeta" style="display:flex; gap:12px; color:#888; font-size:12px; flex-wrap:wrap; margin-top:6px;">
-          <span>🎮 <span id="shareTourneyMode" style="color:#ddd;">Squad</span></span>
-          <span>💰 Entry: <span id="shareTourneyEntry" style="color:#ddd;">₹0</span></span>
-          <span>🏆 Prize: <span id="shareTourneyPrize" style="color:#ffd700;">₹0</span></span>
+        <div id="shareTourneyMeta" style="display:flex; gap:10px; color:#9ca3af; font-size:11.5px; flex-wrap:wrap;">
+          <span>🎮 <span id="shareTourneyMode" style="color:#e5e7eb;">Squad</span></span>
+          <span>💰 Entry: <span id="shareTourneyEntry" style="color:#e5e7eb;">₹0</span></span>
+          <span>🏆 Prize: <span id="shareTourneyPrize" style="color:#ffd700; font-weight:700;">₹0</span></span>
         </div>
       </div>
 
-      <!-- SHAREABLE LINK INPUT -->
-      <div style="margin-bottom:16px;">
-        <label style="display:block; color:#aaa; font-size:12px; font-weight:600; margin-bottom:6px;">Direct Registration Link</label>
-        <div style="display:flex; gap:8px;">
-          <input type="text" id="shareLinkInput" readonly style="flex:1; background:#0b0b0e; border:1px solid #333; color:#00ff88; padding:10px 12px; border-radius:8px; font-size:12px; font-family:monospace; outline:none; box-sizing:border-box;">
-          <button type="button" id="shareCopyBtn" onclick="copyShareTournamentLink()" style="background:#00ff88; color:#000; border:none; padding:10px 16px; border-radius:8px; font-weight:700; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:6px; transition:transform 0.15s, background 0.15s; white-space:nowrap;">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-            <span id="shareCopyText">Copy</span>
+      <!-- SHARE APPS CAROUSEL (YOUTUBE-STYLE CIRCULAR ICONS) -->
+      <div style="margin-bottom:14px;">
+        <div style="font-size:12px; font-weight:700; color:#e5e7eb; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+          <span>Share</span>
+          <span style="font-size:11px; color:#6b7280; font-weight:normal;">Scroll for more →</span>
+        </div>
+        
+        <div class="share-apps-row" id="shareAppsRow">
+          <!-- WhatsApp -->
+          <button type="button" class="share-app-item" onclick="shareViaApp('whatsapp')">
+            <div class="share-app-circle" style="background:#25D366;">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12.031 2C6.496 2 2 6.495 2 12.03c0 1.942.553 3.766 1.517 5.323L2 22l4.821-1.488A9.99 9.99 0 0 0 12.03 22c5.536 0 10.031-4.495 10.031-10.031S17.567 2 12.031 2zm5.727 14.127c-.244.685-1.218 1.258-1.748 1.332-.486.068-1.118.098-3.328-.816-2.581-1.066-4.225-3.69-4.354-3.861-.129-.171-1.042-1.39-1.042-2.651 0-1.261.658-1.882.893-2.14.234-.258.513-.323.685-.323.171 0 .343.003.493.01.157.008.368-.06.575.437.215.514.73 1.776.794 1.905.064.129.107.279.021.45-.086.172-.129.279-.257.43-.129.15-.27.334-.386.449-.129.128-.264.269-.114.526.15.257.666 1.096 1.43 1.776.982.875 1.81 1.147 2.068 1.275.257.129.407.108.558-.064.15-.172.643-.751.815-1.009.172-.257.343-.215.579-.128.236.086 1.493.704 1.75 1.833.257.128.429.193.493.3.064.107.064.622-.18 1.307z"/>
+              </svg>
+            </div>
+            <span class="share-app-label">WhatsApp</span>
+          </button>
+
+          <!-- Telegram -->
+          <button type="button" class="share-app-item" onclick="shareViaApp('telegram')">
+            <div class="share-app-circle" style="background:#0088cc;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.05-.18c-.06-.05-.14-.03-.21-.02-.09.02-1.49.95-4.22 2.79-.4.27-.76.41-1.08.4-.36-.01-1.04-.2-1.55-.37-.63-.2-1.12-.31-1.08-.66.02-.18.27-.36.74-.55 2.92-1.27 4.86-2.11 5.83-2.52 2.78-1.16 3.35-1.36 3.73-1.36.08 0 .27.02.39.12.1.08.13.19.14.27-.01.06.01.24 0 .34z"/>
+              </svg>
+            </div>
+            <span class="share-app-label">Telegram</span>
+          </button>
+
+          <!-- Facebook -->
+          <button type="button" class="share-app-item" onclick="shareViaApp('facebook')">
+            <div class="share-app-circle" style="background:#1877F2;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+              </svg>
+            </div>
+            <span class="share-app-label">Facebook</span>
+          </button>
+
+          <!-- Messages / SMS -->
+          <button type="button" class="share-app-item" onclick="shareViaApp('messages')">
+            <div class="share-app-circle" style="background:#2563eb;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z"/>
+              </svg>
+            </div>
+            <span class="share-app-label">Messages</span>
+          </button>
+
+          <!-- X (Twitter) -->
+          <button type="button" class="share-app-item" onclick="shareViaApp('x')">
+            <div class="share-app-circle" style="background:#000000; border:1px solid #333;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              </svg>
+            </div>
+            <span class="share-app-label">X</span>
+          </button>
+
+          <!-- Embed -->
+          <button type="button" class="share-app-item" onclick="shareViaApp('embed')">
+            <div class="share-app-circle" style="background:#27272a; border:1px solid #3f3f46;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="16 18 22 12 16 6"></polyline>
+                <polyline points="8 6 2 12 8 18"></polyline>
+              </svg>
+            </div>
+            <span class="share-app-label">Embed</span>
+          </button>
+
+          <!-- More / Three dots -->
+          <button type="button" class="share-app-item" id="shareNativeBtn" onclick="shareViaApp('native')">
+            <div class="share-app-circle" style="background:#27272a; border:1px solid #3f3f46;">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="1.5"></circle>
+                <circle cx="19" cy="12" r="1.5"></circle>
+                <circle cx="5" cy="12" r="1.5"></circle>
+              </svg>
+            </div>
+            <span class="share-app-label">More</span>
           </button>
         </div>
       </div>
 
-      <!-- QUICK SHARE OPTIONS -->
+      <!-- DIRECT LINK PILL BOX (EXACT MATCH TO YOUTUBE SCREENSHOT) -->
       <div>
-        <label style="display:block; color:#888; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Quick Share</label>
-        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px;">
-          <button type="button" class="share-option-btn" onclick="shareViaApp('whatsapp')" style="background:#25D366; color:#fff;">
-            WhatsApp
-          </button>
-          <button type="button" class="share-option-btn" onclick="shareViaApp('telegram')" style="background:#0088cc; color:#fff;">
-            Telegram
-          </button>
-          <button type="button" class="share-option-btn" onclick="shareViaApp('native')" id="shareNativeBtn" style="background:#3b82f6; color:#fff;">
-            More...
+        <div class="share-link-box">
+          <input type="text" id="shareLinkInput" readonly value="https://...">
+          <button type="button" id="shareCopyBtn" class="share-copy-pill" onclick="copyShareTournamentLink()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span id="shareCopyText">Copy</span>
           </button>
         </div>
       </div>
