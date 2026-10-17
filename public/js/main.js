@@ -176,15 +176,15 @@ if ('scrollRestoration' in history) {
 }
 
 // ===============================
-// WEBVIEW DETECTION (Hide APK buttons in App)
+// NATIVE APP DETECTION (Hide APK buttons only in App)
 // ===============================
 document.addEventListener('DOMContentLoaded', () => {
-    const isWebView = /(wv|WebView|Android.*Version\/[\d.]+.*Chrome\/)/i.test(navigator.userAgent);
-    if (isWebView) {
+    // Only hide APK download buttons if running inside our dedicated Native Android App
+    if (window.AndroidBridge) {
         document.querySelectorAll('.apk-download-btn, .apk-download-btn-container').forEach(el => {
             el.style.display = 'none';
         });
-        console.log("WebView detected. Hiding APK download buttons.");
+        console.log("Native Android App detected. Hiding APK download buttons.");
     }
     
     // Set hero button text based on whether tutorial is completed
@@ -814,13 +814,28 @@ window.userParticipantDocs = window.userParticipantDocs || {};
                     ${timerHTML}
                     ${buttonHTML}
 
-                    <!-- ℹ️ INFO BUTTON -->
-                    <button onclick="window.showTournamentInfo(event)"
-                        style="margin-top:10px;width:100%;padding:8px 12px;background:transparent;color:#888;border:1px solid #333;border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit;letter-spacing:0.5px;transition:all 0.2s;"
-                        onmouseover="this.style.borderColor='#00ff88';this.style.color='#00ff88';"
-                        onmouseout="this.style.borderColor='#333';this.style.color='#888';">
-                        ℹ️ Important Info
-                    </button>
+                    <!-- ℹ️ INFO & 🔗 SHARE BUTTONS -->
+                    <div style="display:flex;gap:8px;margin-top:10px;">
+                        <button onclick="window.showTournamentInfo(event)"
+                            style="flex:1;padding:8px 10px;background:transparent;color:#aaa;border:1px solid #333;border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:5px;transition:all 0.2s;"
+                            onmouseover="this.style.borderColor='#00ff88';this.style.color='#00ff88';"
+                            onmouseout="this.style.borderColor='#333';this.style.color='#aaa';">
+                            ℹ️ Info
+                        </button>
+                        <button onclick="window.shareTournament('${t.id}')"
+                            style="flex:1;padding:8px 10px;background:rgba(0,255,136,0.06);color:#00ff88;border:1px solid rgba(0,255,136,0.3);border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:6px;transition:all 0.2s;"
+                            onmouseover="this.style.borderColor='#00ff88';this.style.background='rgba(0,255,136,0.15)';"
+                            onmouseout="this.style.borderColor='rgba(0,255,136,0.3)';this.style.background='rgba(0,255,136,0.06)';">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="18" cy="5" r="3"></circle>
+                                <circle cx="6" cy="12" r="3"></circle>
+                                <circle cx="18" cy="19" r="3"></circle>
+                                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                            </svg>
+                            Share
+                        </button>
+                    </div>
 
                     ${isAdminUser ? `
                     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
@@ -856,6 +871,16 @@ window.userParticipantDocs = window.userParticipantDocs || {};
 
     handleScrollVisibility();
     startTimers();
+
+    // Check for deep-linked tournament on initial render
+    if (!window._hasCheckedDeepLink && tournaments.length > 0) {
+        window._hasCheckedDeepLink = true;
+        setTimeout(() => {
+            if (typeof window.checkAndHandleDeepLink === 'function') {
+                window.checkAndHandleDeepLink();
+            }
+        }, 150);
+    }
 }
 
 // ===============================
@@ -968,6 +993,148 @@ window.showTournamentInfo = function(event) {
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) overlay.remove();
     });
+};
+
+
+// ==========================================
+// SHARE TOURNAMENT & DEEP LINK SYSTEM
+// ==========================================
+window.currentShareTournament = null;
+
+window.shareTournament = function(tournamentId) {
+    const tourney = tournaments.find(t => t.id === tournamentId);
+    if (!tourney) {
+        showMessage("Tournament not found");
+        return;
+    }
+    window.currentShareTournament = tourney;
+
+    const shareUrl = `${window.location.origin}${window.location.pathname}?tournament=${encodeURIComponent(tourney.id)}`;
+
+    // Populate Share Modal elements
+    const modal = document.getElementById("shareTournamentModal");
+    const titleEl = document.getElementById("shareTourneyTitle");
+    const catEl = document.getElementById("shareTourneyCategory");
+    const modeEl = document.getElementById("shareTourneyMode");
+    const entryEl = document.getElementById("shareTourneyEntry");
+    const prizeEl = document.getElementById("shareTourneyPrize");
+    const inputEl = document.getElementById("shareLinkInput");
+    const copyText = document.getElementById("shareCopyText");
+
+    if (titleEl) titleEl.textContent = tourney.title || "Esports Tournament";
+    if (catEl) {
+        catEl.textContent = tourney.category === "upcoming" ? "Upcoming" : (tourney.category === "limited" ? "Limited" : "Ongoing");
+    }
+    if (modeEl) modeEl.textContent = tourney.mode || "Squad";
+    if (entryEl) entryEl.textContent = tourney.category === 'limited' ? 'Free / TBA' : `₹${tourney.entryFee || 0}`;
+    if (prizeEl) prizeEl.textContent = `₹${tourney.prize?.first || 0}`;
+    if (inputEl) inputEl.value = shareUrl;
+    if (copyText) copyText.textContent = "Copy";
+
+    if (modal) {
+        modal.classList.add("active");
+        modal.style.display = "flex";
+    }
+};
+
+window.closeShareModal = function() {
+    const modal = document.getElementById("shareTournamentModal");
+    if (modal) {
+        modal.classList.remove("active");
+        modal.style.display = "none";
+    }
+};
+
+window.copyShareTournamentLink = async function() {
+    const input = document.getElementById("shareLinkInput");
+    if (!input || !input.value) return;
+
+    try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(input.value);
+        } else {
+            input.select();
+            document.execCommand("copy");
+        }
+        const copyText = document.getElementById("shareCopyText");
+        if (copyText) copyText.textContent = "Copied! ✅";
+        showMessage("Tournament link copied to clipboard! 📋", "success");
+        setTimeout(() => {
+            if (copyText) copyText.textContent = "Copy";
+        }, 2500);
+    } catch (e) {
+        input.select();
+        document.execCommand("copy");
+        showMessage("Tournament link copied to clipboard! 📋", "success");
+    }
+};
+
+window.shareViaApp = function(platform) {
+    const tourney = window.currentShareTournament;
+    if (!tourney) return;
+
+    const shareUrl = `${window.location.origin}${window.location.pathname}?tournament=${encodeURIComponent(tourney.id)}`;
+    const shareText = `🔥 Register now for ${tourney.title} on NPC Esports! Prize Pool: ₹${tourney.prize?.first || 0}. Compete here: ${shareUrl}`;
+
+    if (platform === 'whatsapp') {
+        window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`, '_blank');
+    } else if (platform === 'telegram') {
+        window.open(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(shareText)}`, '_blank');
+    } else if (platform === 'native') {
+        if (navigator.share) {
+            navigator.share({
+                title: tourney.title || 'NPC Esports Tournament',
+                text: shareText,
+                url: shareUrl
+            }).catch(() => {});
+        } else {
+            window.copyShareTournamentLink();
+        }
+    }
+};
+
+window.checkAndHandleDeepLink = function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetTourneyId = urlParams.get('tournament') || urlParams.get('join');
+    if (!targetTourneyId) return;
+
+    console.log("[DEEP LINK] Found target tournament:", targetTourneyId);
+
+    // If user is not logged in, prompt to log in / sign up
+    if (!currentUser || !isLoggedIn) {
+        sessionStorage.setItem("pending_tournament_redirect", targetTourneyId);
+        showMessage("Please sign in or create an account to register for this tournament! 🏆");
+        setTimeout(() => {
+            if (typeof openLogin === 'function') openLogin();
+        }, 400);
+        return;
+    }
+
+    // User is logged in! Check if tournament exists in memory
+    const targetTourney = tournaments.find(t => t.id === targetTourneyId);
+    if (!targetTourney) {
+        console.warn("[DEEP LINK] Tournament ID not in memory list:", targetTourneyId);
+        return;
+    }
+
+    // Clean URL query parameters smoothly
+    const cleanUrl = new URL(window.location);
+    cleanUrl.searchParams.delete('tournament');
+    cleanUrl.searchParams.delete('join');
+    window.history.replaceState({}, document.title, cleanUrl);
+
+    // Scroll towards tournaments
+    const sec = document.getElementById("tournaments");
+    if (sec) sec.scrollIntoView({ behavior: "smooth" });
+
+    // Open tournament registration immediately
+    setTimeout(() => {
+        if (targetTourney.category === "upcoming") {
+            handleUpcomingRegister(targetTourneyId);
+        } else {
+            handleJoin(targetTourneyId);
+        }
+    }, 400);
 };
 
 
@@ -1181,50 +1348,41 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
         const submitBtn  = document.getElementById("joinSubmitBtn");
-
-        // Fix 4: Show blocking "Please Wait" overlay immediately on click
-        const existingWait = document.getElementById('submitWaitOverlay');
-        if (existingWait) existingWait.remove();
-        const waitOverlay = document.createElement('div');
-        waitOverlay.id = 'submitWaitOverlay';
-        waitOverlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.9);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;';
-        waitOverlay.innerHTML = `
-          <div style="width:50px;height:50px;border:4px solid #333;border-top-color:#00ff88;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
-          <p style="color:#fff;font-size:17px;font-weight:600;text-align:center;max-width:280px;line-height:1.5;">Please wait a moment while we verify your details.<br><span style='color:#888;font-size:13px;'>You will be notified shortly.</span></p>
-          <button onclick="document.getElementById('submitWaitOverlay')?.remove(); document.getElementById('joinSubmitBtn').disabled=false;" style="margin-top:20px;padding:10px 20px;background:#333;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">Cancel Verification</button>
-        `;
-        if (!document.getElementById('spinKeyframe')) {
-            const s = document.createElement('style'); s.id='spinKeyframe';
-            s.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
-            document.head.appendChild(s);
-        }
-        document.body.appendChild(waitOverlay);
-        if (submitBtn) { submitBtn.disabled = true; }
-
         const processing = document.getElementById("processingOverlay");
 
-        // Get tournament type
+        // 2. Validate Tournament data
         const tournamentId = window.currentJoiningTournament;
         const isUpcoming = window.currentTournamentCategory === 'upcoming';
         const tournament = tournaments.find(t => t.id === tournamentId);
         
         if (!tournament) {
-            showMessage("Tournament data not found");
+            showMessage("Tournament data not found. Please refresh and try again.");
             return;
         }
 
-        // 2. NEW: Collect Detailed Player Data (UID + Nickname + Type)
+        // 3. Check Authentication & User Profile
+        if (!auth.currentUser) {
+            showMessage("Please sign in first to register for this tournament.");
+            return;
+        }
+
+        if (!userProfile || !userProfile.teamId) {
+            showMessage("Please create or join a team first before registering!");
+            return;
+        }
+
+        // 4. Collect Detailed Player Data (UID + Nickname + Type)
         const p1Uid = document.getElementById("uidPlayer1")?.value.trim();
         const p1Nick = document.getElementById("nickPlayer1")?.value.trim();
         const p2Uid = document.getElementById("uidPlayer2")?.value.trim();
         const p2Nick = document.getElementById("nickPlayer2")?.value.trim();
-        const p2Type = document.getElementById("typePlayer2")?.value;
+        const p2Type = document.getElementById("typePlayer2")?.value || "friend";
         const p3Uid = document.getElementById("uidPlayer3")?.value.trim();
         const p3Nick = document.getElementById("nickPlayer3")?.value.trim();
-        const p3Type = document.getElementById("typePlayer3")?.value;
+        const p3Type = document.getElementById("typePlayer3")?.value || "friend";
         const p4Uid = document.getElementById("uidPlayer4")?.value.trim();
         const p4Nick = document.getElementById("nickPlayer4")?.value.trim();
-        const p4Type = document.getElementById("typePlayer4")?.value;
+        const p4Type = document.getElementById("typePlayer4")?.value || "friend";
 
         // Validate that all required detailed fields are filled
         if (!p1Uid || !p1Nick || !p2Uid || !p2Nick || !p3Uid || !p3Nick || !p4Uid || !p4Nick) {
@@ -1241,16 +1399,15 @@ document.addEventListener("DOMContentLoaded", function() {
             { uid: p4Uid, nickname: p4Nick, type: p4Type }
         ];
 
-        // Keep the old simple array so the Admin Panel doesn't break!
-        // ✅ Part 2.3: Apply Deduplication to member arrays
+        // Apply Deduplication to member arrays
         const uids = window.getDeduplicatedTeamMembers([p1Uid, p2Uid, p3Uid, p4Uid], p1Uid);
 
-        // NEW: Capture Optional 5th Player if enabled
+        // Capture Optional 5th Player if enabled
         const p5Enabled = document.getElementById("enablePlayer5")?.checked;
         if (p5Enabled) {
             const p5Uid = document.getElementById("uidPlayer5")?.value.trim();
             const p5Nick = document.getElementById("nickPlayer5")?.value.trim();
-            const p5Type = document.getElementById("typePlayer5")?.value;
+            const p5Type = document.getElementById("typePlayer5")?.value || "friend";
 
             if (!p5Uid || !p5Nick) {
                 showMessage("Please fill out the 5th Substitute Player's UID and Nickname.");
@@ -1258,8 +1415,9 @@ document.addEventListener("DOMContentLoaded", function() {
             }
             playersData.push({ uid: p5Uid, nickname: p5Nick, type: p5Type });
         }
+
         // Validate phone
-        const phoneRaw = document.getElementById("joinPhone").value.trim();
+        const phoneRaw = document.getElementById("joinPhone")?.value.trim() || "";
         if (!phoneRaw || !/^\d{10}$/.test(phoneRaw)) {
             showMessage("Please enter valid 10-digit phone number");
             return;
@@ -1267,22 +1425,51 @@ document.addEventListener("DOMContentLoaded", function() {
         const formattedPhone = "+91" + phoneRaw;
 
         // Validate email
-        const backupEmail = document.getElementById("joinBackupEmail").value.trim();
+        const backupEmail = document.getElementById("joinBackupEmail")?.value.trim() || "";
         if (!backupEmail || !backupEmail.includes('@')) {
             showMessage("Please enter valid backup email");
             return;
         }
 
         // Validate Payout UPI ID
-        const payoutUpiId = document.getElementById("joinPayoutUpiId").value.trim();
+        const payoutUpiId = document.getElementById("joinPayoutUpiId")?.value.trim() || "";
         if (!payoutUpiId || !payoutUpiId.includes('@')) {
             showMessage("Please enter a valid Payout UPI ID (e.g. name@ybl)");
             return;
         }
 
-        // Show loading
-        submitBtn.disabled = true;
-        submitBtn.textContent = isUpcoming ? "Registering..." : "Sending...";
+        // ========================================================
+        // ALL VALIDATIONS PASSED: Show blocking "Please Wait" overlay
+        // ========================================================
+        const existingWait = document.getElementById('submitWaitOverlay');
+        if (existingWait) existingWait.remove();
+        const waitOverlay = document.createElement('div');
+        waitOverlay.id = 'submitWaitOverlay';
+        waitOverlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:20px;';
+        waitOverlay.innerHTML = `
+          <div style="width:50px;height:50px;border:4px solid #333;border-top-color:#00ff88;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+          <p style="color:#fff;font-size:17px;font-weight:600;text-align:center;max-width:290px;line-height:1.5;">Please wait a moment while we verify your details.<br><span style='color:#888;font-size:13px;'>Submitting squad registration...</span></p>
+          <button id="cancelWaitBtn" type="button" style="margin-top:15px;padding:10px 22px;background:#333;color:#fff;border:1px solid #555;border-radius:6px;cursor:pointer;font-weight:bold;font-size:13px;">Cancel</button>
+        `;
+        if (!document.getElementById('spinKeyframe')) {
+            const s = document.createElement('style'); s.id='spinKeyframe';
+            s.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+            document.head.appendChild(s);
+        }
+        document.body.appendChild(waitOverlay);
+        document.getElementById('cancelWaitBtn')?.addEventListener('click', () => {
+            document.getElementById('submitWaitOverlay')?.remove();
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = isUpcoming ? "Register Team →" : "Submit for Verification →";
+            }
+        });
+
+        // Show loading state on button
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = isUpcoming ? "Registering..." : "Sending...";
+        }
         if (processing) processing.style.display = "flex";
 
         // Read Payment Choice
@@ -1302,34 +1489,39 @@ document.addEventListener("DOMContentLoaded", function() {
         }
 
        try {
-            if (!auth.currentUser) {
-                throw new Error("User not authenticated");
-            }
             const userId = auth.currentUser.uid;
             const teamIdToCheck = userProfile.teamId;
             
             // Determine if this is a brand new application or an edit of a rejected one
             const isEditing = window.originalApplicationData !== undefined && window.originalApplicationData !== null;
 
-            // ✅ FIX: Check for double registrations by the same team securely via backend
+            // ✅ FIX: Check for double registrations by the same team securely via backend (with 6s timeout)
             if (!isEditing && teamIdToCheck) {
                 try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 6000);
                     const checkResp = await fetch('https://npc-secure-backend.onrender.com/check-duplicate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ tournamentId, uids })
+                        body: JSON.stringify({ tournamentId, uids }),
+                        signal: controller.signal
                     });
-                    const checkResult = await checkResp.json();
-                    if (checkResult.isDuplicate) {
-                        showMessage("❌ " + checkResult.message);
-                        submitBtn.disabled = false;
-                        submitBtn.textContent = isUpcoming ? "Register Now" : "Send Details";
-                        if (processing) processing.style.display = "none";
-                        document.getElementById('submitWaitOverlay')?.remove();
-                        return;
+                    clearTimeout(timeoutId);
+                    if (checkResp.ok) {
+                        const checkResult = await checkResp.json();
+                        if (checkResult.isDuplicate) {
+                            document.getElementById('submitWaitOverlay')?.remove();
+                            if (submitBtn) {
+                                submitBtn.disabled = false;
+                                submitBtn.textContent = isUpcoming ? "Register Team →" : "Submit for Verification →";
+                            }
+                            if (processing) processing.style.display = "none";
+                            showMessage("❌ " + checkResult.message);
+                            return;
+                        }
                     }
                 } catch(e) {
-                    console.warn('Backend duplicate check failed, proceeding...', e);
+                    console.warn('Backend duplicate check skipped or timed out, proceeding...', e);
                 }
             }
 
@@ -2353,6 +2545,23 @@ onAuthStateChanged(auth, async (user) => {
         AppLog.success("[FIREBASE] All firebase rules are active. Profile data loaded.");
         sessionStorage.removeItem("npc_fresh_registration");
         isLoggedIn = true;
+
+        // Deep Link: Automatically open pending tournament registration if user was redirected to sign-in
+        const pendingTourneyId = sessionStorage.getItem("pending_tournament_redirect");
+        if (pendingTourneyId && userProfile) {
+            sessionStorage.removeItem("pending_tournament_redirect");
+            if (typeof closeModal === 'function') closeModal();
+            setTimeout(() => {
+                const targetTourney = tournaments.find(t => t.id === pendingTourneyId);
+                if (targetTourney) {
+                    if (targetTourney.category === "upcoming") {
+                        handleUpcomingRegister(pendingTourneyId);
+                    } else {
+                        handleJoin(pendingTourneyId);
+                    }
+                }
+            }, 600);
+        }
         
         if (userProfile && !userProfile.dpdpConsented) {
             if (window.openDpdpModal) {
@@ -3767,13 +3976,19 @@ function closeModal() {
 function showCreate() {
     document.getElementById("loginView").style.display  = "none";
     document.getElementById("createView").style.display = "block";
-    document.querySelector(".back-btn").style.display   = "block";
+    const backBtn = document.querySelector(".back-btn");
+    if (backBtn) backBtn.style.display = "block";
+    document.getElementById("tabLogin")?.classList.remove("active");
+    document.getElementById("tabRegister")?.classList.add("active");
 }
 
 function backToLogin() {
     document.getElementById("createView").style.display = "none";
     document.getElementById("loginView").style.display  = "block";
-    document.querySelector(".back-btn").style.display   = "none";
+    const backBtn = document.querySelector(".back-btn");
+    if (backBtn) backBtn.style.display = "none";
+    document.getElementById("tabLogin")?.classList.add("active");
+    document.getElementById("tabRegister")?.classList.remove("active");
 }
 
 
@@ -3806,6 +4021,22 @@ async function login() {
         
         closeModal();
         showMessage("Login successful");
+
+        // Deep Link: Automatically open pending tournament registration
+        const pendingTourneyId = sessionStorage.getItem("pending_tournament_redirect");
+        if (pendingTourneyId) {
+            sessionStorage.removeItem("pending_tournament_redirect");
+            setTimeout(() => {
+                const targetTourney = tournaments.find(t => t.id === pendingTourneyId);
+                if (targetTourney) {
+                    if (targetTourney.category === "upcoming") {
+                        handleUpcomingRegister(pendingTourneyId);
+                    } else {
+                        handleJoin(pendingTourneyId);
+                    }
+                }
+            }, 600);
+        }
 
         const welcomeTeam = localStorage.getItem("welcomeTeam");
         if (welcomeTeam) {
@@ -5490,10 +5721,15 @@ async function showApprovedReviewInterface(tournamentId, userId) {
         
         // Fill locked user data (NON-EDITABLE)
         const verifiedTick = regData.status === "approved" ? ' <span style="color:#00ff88;font-size:11px;margin-left:5px;">✓ Verified</span>' : '';
-        document.getElementById("joinDisplayEmail").innerHTML = userProfile.email + verifiedTick;
-        document.getElementById("joinDisplayAge").innerHTML = (userProfile.age + " years") + verifiedTick;
-        document.getElementById("joinDisplayTeam").innerHTML = (regData.teamName || userProfile.teamName) + verifiedTick;
-        document.getElementById("joinDisplayCode").innerHTML = ("Code: " + (userProfile.teamCode || "N/A")) + verifiedTick;
+        const displayEmail = userProfile?.email || currentUser?.email || regData.leaderEmail || "N/A";
+        const displayAge   = userProfile?.age ? (userProfile.age + " years") : "N/A";
+        const displayTeam  = regData.teamName || userProfile?.teamName || "N/A";
+        const displayCode  = "Code: " + (userProfile?.teamCode || regData.teamCode || "N/A");
+
+        const emailEl = document.getElementById("joinDisplayEmail"); if (emailEl) emailEl.innerHTML = displayEmail + verifiedTick;
+        const ageEl   = document.getElementById("joinDisplayAge");   if (ageEl)   ageEl.innerHTML   = displayAge + verifiedTick;
+        const teamEl  = document.getElementById("joinDisplayTeam");  if (teamEl)  teamEl.innerHTML  = displayTeam + verifiedTick;
+        const codeEl  = document.getElementById("joinDisplayCode");  if (codeEl)  codeEl.innerHTML  = displayCode + verifiedTick;
         
       // Inside showApprovedReviewInterface in main.js
         // Populate and lock player UID/Nickname fields
@@ -5628,8 +5864,12 @@ if (submitBtn) {
             showPaymentInterface(tournamentId); // This will render the success screen directly
         };
     } else if (regData.status === 'pending') {
-        submitBtn.textContent = "Verifying...";
+        submitBtn.textContent = "⏳ Verification in Progress — Admin Review Pending";
         submitBtn.disabled = true;
+        submitBtn.style.background = "#1f2937";
+        submitBtn.style.color = "#ffd700";
+        submitBtn.style.border = "1px solid #ffd700";
+        submitBtn.style.cursor = "not-allowed";
         submitBtn.onclick = (e) => e.preventDefault();
         
         // Hide guidelines container since they can't pay yet
@@ -5746,7 +5986,7 @@ if (submitBtn) {
                             const res = await fetch('https://npc-secure-backend.onrender.com/pay-later', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ tournamentId, userId: currentUser.uid, teamId: userProfile.teamId })
+                                body: JSON.stringify({ tournamentId, userId: currentUser.uid, teamId: userProfile?.teamId || regData.teamId || "" })
                             });
                             const data = await res.json();
                             document.getElementById('customPopup').remove();
@@ -8538,6 +8778,11 @@ window.viewTransactionHistory  = viewTransactionHistory;
 window.reportCheater           = reportCheater;
 window.showReferralModal       = showReferralModal;
 window.handleNotifyMe          = window.handleNotifyMe;
+window.shareTournament         = window.shareTournament;
+window.closeShareModal         = window.closeShareModal;
+window.copyShareTournamentLink = window.copyShareTournamentLink;
+window.shareViaApp             = window.shareViaApp;
+window.checkAndHandleDeepLink  = window.checkAndHandleDeepLink;
 
 // New exports
 window.handleJoinNowTutorial   = handleJoinNowTutorial;
