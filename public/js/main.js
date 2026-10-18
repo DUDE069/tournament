@@ -81,7 +81,9 @@ let selectedRole        = "";
 let tournaments         = [];
 let currentUser         = null;
 let userProfile         = null;
-let profileLoadPromise  = null; // NEW: Track profile loading
+let _profileReadyResolveFn = null;
+let _profileReadyPromise = new Promise(resolve => { _profileReadyResolveFn = resolve; });
+let profileLoadPromise  = _profileReadyPromise; // Track profile loading
 let _initialAuthResolved = false;
 let _initialAuthResolveFn = null;
 const _authReadyPromise = new Promise(resolve => { _initialAuthResolveFn = resolve; });
@@ -1185,11 +1187,11 @@ window.checkAndHandleDeepLink = async function() {
 
     console.log("[DEEP LINK] Found target tournament:", targetTourneyId);
 
-    // Fast Auth Check: Wait for initial auth state resolution (up to 1200ms)
+    // Fast Auth Check: Wait for initial auth state resolution (up to 2500ms)
     if (!_initialAuthResolved && !auth.currentUser) {
         await Promise.race([
             _authReadyPromise,
-            new Promise(res => setTimeout(res, 1200))
+            new Promise(res => setTimeout(res, 2500))
         ]);
     }
 
@@ -1212,6 +1214,28 @@ window.checkAndHandleDeepLink = async function() {
     if (loginModal) loginModal.style.display = "none";
     sessionStorage.removeItem("pending_tournament_redirect");
 
+    // Wait for userProfile to resolve from Firestore so we don't falsely claim profile is incomplete!
+    if (!userProfile && _profileReadyPromise) {
+        try {
+            await Promise.race([
+                _profileReadyPromise,
+                new Promise(res => setTimeout(res, 3500))
+            ]);
+        } catch (e) {
+            console.warn("[DEEP LINK] Profile wait timeout");
+        }
+    }
+
+    // Fallback: If userProfile still not set in memory, attempt a direct getDoc
+    if (!userProfile && authedUser) {
+        try {
+            const snap = await getDoc(doc(db, "users", authedUser.uid));
+            if (snap.exists()) {
+                userProfile = snap.data();
+            }
+        } catch (e) {}
+    }
+
     // Clean URL query parameters smoothly
     const cleanUrl = new URL(window.location);
     cleanUrl.searchParams.delete('tournament');
@@ -1222,7 +1246,7 @@ window.checkAndHandleDeepLink = async function() {
     let targetTourney = tournaments.find(t => t.id === targetTourneyId);
     if (!targetTourney) {
         // Wait briefly if tournaments are still populating
-        await new Promise(res => setTimeout(res, 350));
+        await new Promise(res => setTimeout(res, 500));
         targetTourney = tournaments.find(t => t.id === targetTourneyId);
     }
 
@@ -2045,6 +2069,17 @@ window.openPaymentInterface = async function(tournamentId) {
                             <p style="color:#333;margin:5px 0 0;font-family:monospace;font-size:14px; background:#f5f5f5; padding:5px; border-radius:4px; display:inline-block;">
                                 riaz-1@ptyes
                             </p>
+                            <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;">
+                                <a href="upi://pay?pa=riaz-1@ptyes&pn=NPC%20Esports&am=${regData.entryFee || 0}&cu=INR" 
+                                   onclick="window.location.href='upi://pay?pa=riaz-1@ptyes&pn=NPC%20Esports&am=${regData.entryFee || 0}&cu=INR';"
+                                   style="display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#00ff88,#00cc6a);color:#000;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;box-shadow:0 4px 14px rgba(0,255,136,0.3);">
+                                    ⚡ Pay with UPI App (GPay / PhonePe / Paytm)
+                                </a>
+                                <button type="button" onclick="navigator.clipboard.writeText('riaz-1@ptyes'); showMessage('UPI ID copied to clipboard! 📋', 'success');" 
+                                    style="background:#1a1a1a;color:#aaa;border:1px solid #333;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;gap:6px;">
+                                    📋 Copy UPI ID: <span style="color:#fff;font-family:monospace;font-weight:bold;">riaz-1@ptyes</span>
+                                </button>
+                            </div>
                         </div>
 
                         <div style="background:#0f0f0f;padding:20px;border-radius:8px;border:1px solid #ffd700; position: relative;">
@@ -2598,6 +2633,7 @@ onAuthStateChanged(auth, async (user) => {
             snap = await getDoc(userRef);
         } catch (e) {
             console.error("[GHOST] getDoc failed:", e);
+            if (typeof _profileReadyResolveFn === 'function') _profileReadyResolveFn(null);
             return;
         }
         
@@ -2618,6 +2654,8 @@ onAuthStateChanged(auth, async (user) => {
                 console.warn("[AUTH] Could not fetch private data");
             }
         }
+        
+        if (typeof _profileReadyResolveFn === 'function') _profileReadyResolveFn(userProfile);
         
         // ==========================================
         // 🚨 STRICT LIMBO GUARD (Profile Completeness)
@@ -2909,7 +2947,9 @@ onAuthStateChanged(auth, async (user) => {
             unsubNotifications(); 
             unsubNotifications = null; 
         }
-        if (profileLoadPromise) profileLoadPromise = null;
+        if (typeof _profileReadyResolveFn === 'function') _profileReadyResolveFn(null);
+        _profileReadyPromise = new Promise(resolve => { _profileReadyResolveFn = resolve; });
+        profileLoadPromise = _profileReadyPromise;
         
         currentUser = null;
         userProfile = null;
@@ -4673,14 +4713,56 @@ function joinDiscord() {
 // ===============================
 // TOAST MESSAGE
 // ===============================
-function showMessage(msg) {
+let _toastTimeout = null;
+function showMessage(msg, type = "info") {
     const toast = document.getElementById("toast");
-    if (toast) {
-        toast.innerText = msg;
-        toast.classList.add("show");
-        setTimeout(() => toast.classList.remove("show"), 3000);
+    if (!toast) return;
+
+    if (_toastTimeout) clearTimeout(_toastTimeout);
+
+    let icon = "🔔";
+    let borderColor = "rgba(0, 255, 136, 0.5)";
+    let glowColor = "rgba(0, 255, 136, 0.2)";
+
+    const str = String(msg || "");
+    if (str.includes("✓") || str.includes("📋") || str.includes("copied") || str.includes("Copied") || type === "success" || str.includes("🎉") || str.includes("verified") || str.includes("saved") || str.includes("Saved")) {
+        icon = "📋";
+        borderColor = "rgba(0, 255, 136, 0.65)";
+        glowColor = "rgba(0, 255, 136, 0.25)";
+    } else if (str.includes("⚠️") || str.includes("agree") || str.includes("Terms") || str.includes("Please") || str.includes("sign in") || str.includes("Sign in") || type === "warning") {
+        icon = "⚠️";
+        borderColor = "rgba(255, 170, 0, 0.65)";
+        glowColor = "rgba(255, 170, 0, 0.25)";
+    } else if (str.includes("❌") || str.includes("failed") || str.includes("Failed") || str.includes("Error") || str.includes("error") || str.includes("Not allowed") || type === "error") {
+        icon = "❌";
+        borderColor = "rgba(255, 68, 68, 0.65)";
+        glowColor = "rgba(255, 68, 68, 0.25)";
     }
+
+    toast.style.borderColor = borderColor;
+    toast.style.boxShadow = `0 14px 40px rgba(0,0,0,0.85), 0 0 24px ${glowColor}`;
+
+    const cleanMsg = typeof window.escHtml === 'function' 
+        ? window.escHtml(str) 
+        : str.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    toast.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:10px;pointer-events:none;">
+        <span style="font-size:18px;flex-shrink:0;line-height:1;">${icon}</span>
+        <span style="flex:1;word-break:break-word;line-height:1.4;">${cleanMsg}</span>
+    </div>`;
+
+    toast.onclick = () => {
+        toast.classList.remove("show");
+        if (_toastTimeout) clearTimeout(_toastTimeout);
+    };
+
+    toast.classList.add("show");
+    _toastTimeout = setTimeout(() => {
+        toast.classList.remove("show");
+    }, 3200);
 }
+window.showMessage = showMessage;
+window.showToast = showMessage;
 
 // ===============================
 // TOURNAMENT MANAGEMENT (ADMIN)
@@ -8184,6 +8266,24 @@ const originalOpenDashboard = window.openDashboard;
 window.openDashboard = window._newOpenDashboard = async function(type) {
     if (!currentUser) { openLogin(); return; }
 
+    if (!userProfile && _profileReadyPromise) {
+        try {
+            await Promise.race([
+                _profileReadyPromise,
+                new Promise(res => setTimeout(res, 3000))
+            ]);
+        } catch(e) {}
+    }
+
+    if (!userProfile) {
+        try {
+            const snap = await getDoc(doc(db, "users", currentUser.uid));
+            if (snap.exists()) {
+                userProfile = snap.data();
+            }
+        } catch(e) {}
+    }
+
     if (!userProfile) {
         const popup = document.getElementById("dashboardPopup");
         const content = document.getElementById("dashboardContent");
@@ -8212,7 +8312,25 @@ window.openDashboard = window._newOpenDashboard = async function(type) {
 // 3. FIX THE "JOIN NOW SAYS CREATE TEAM" BUG
 const originalHandleJoin = window.handleJoin;
 window.handleJoin = async function(tournamentId) {
-    if (currentUser && !userProfile) {
+    if ((currentUser || auth.currentUser) && !userProfile && _profileReadyPromise) {
+        try {
+            await Promise.race([
+                _profileReadyPromise,
+                new Promise(res => setTimeout(res, 3000))
+            ]);
+        } catch(e) {}
+    }
+    if ((currentUser || auth.currentUser) && !userProfile) {
+        try {
+            const u = currentUser || auth.currentUser;
+            const snap = await getDoc(doc(db, "users", u.uid));
+            if (snap.exists()) {
+                userProfile = snap.data();
+            }
+        } catch(e) {}
+    }
+    const isFreshReg = sessionStorage.getItem("npc_fresh_registration") === "true";
+    if (currentUser && !userProfile && !isFreshReg) {
         showMessage("Please finish your profile setup first!");
         window.openTeamSetup();
         return;
@@ -8222,7 +8340,25 @@ window.handleJoin = async function(tournamentId) {
 
 const originalUpcoming = window.handleUpcomingRegister;
 window.handleUpcomingRegister = async function(tournamentId) {
-    if (currentUser && !userProfile) {
+    if ((currentUser || auth.currentUser) && !userProfile && _profileReadyPromise) {
+        try {
+            await Promise.race([
+                _profileReadyPromise,
+                new Promise(res => setTimeout(res, 3000))
+            ]);
+        } catch(e) {}
+    }
+    if ((currentUser || auth.currentUser) && !userProfile) {
+        try {
+            const u = currentUser || auth.currentUser;
+            const snap = await getDoc(doc(db, "users", u.uid));
+            if (snap.exists()) {
+                userProfile = snap.data();
+            }
+        } catch(e) {}
+    }
+    const isFreshReg = sessionStorage.getItem("npc_fresh_registration") === "true";
+    if (currentUser && !userProfile && !isFreshReg) {
         showMessage("Please finish your profile setup first!");
         window.openTeamSetup();
         return;

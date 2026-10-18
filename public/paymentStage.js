@@ -301,9 +301,14 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
         <p style="color:#aaa;font-size:14px;margin-bottom:8px;">Scan to Pay</p>
         <div id="qrcodeContainer" style="background:#fff;padding:12px;border-radius:10px;display:inline-block;margin-bottom:16px;"></div>
 
-        <a id="openUpiLink" href="#" style="display:block;background:#3b82f6;color:#fff;padding:12px;border-radius:8px;text-decoration:none;font-weight:bold;margin-bottom:20px;">
-          Open UPI App (Mobile)
-        </a>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">
+          <a id="openUpiLink" href="#" style="display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#00ff88,#00cc6a);color:#000;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;box-shadow:0 4px 14px rgba(0,255,136,0.3);transition:transform 0.15s;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
+            ⚡ Pay with UPI App (GPay / PhonePe / Paytm)
+          </a>
+          <button type="button" onclick="navigator.clipboard.writeText('riaz-1@ptyes'); if(typeof showToast==='function') showToast('UPI ID copied: riaz-1@ptyes', 'success'); else if(typeof showMessage==='function') showMessage('UPI ID copied: riaz-1@ptyes', 'success');" style="background:#1a1a1a;color:#aaa;border:1px solid #333;padding:8px 12px;border-radius:6px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;gap:6px;">
+            📋 Copy UPI ID: <span style="color:#fff;font-family:monospace;font-weight:bold;">riaz-1@ptyes</span>
+          </button>
+        </div>
       </div>
       
       <div style="text-align:left;margin-bottom:16px;">
@@ -375,7 +380,12 @@ function renderPaymentUI(data, tournamentName, tournamentId, entryFee) {
       if (amountEl) amountEl.textContent = `₹ ${amount}`;
       
       const upiLink = document.getElementById('openUpiLink');
-      if (upiLink) upiLink.href = upiUri;
+      if (upiLink) {
+        upiLink.href = upiUri;
+        upiLink.onclick = () => {
+          window.location.href = upiUri;
+        };
+      }
       
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiUri)}`;
       if (window.AppLog) AppLog.info("[PAYMENT] QR code generated locally");

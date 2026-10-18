@@ -690,6 +690,51 @@ section {
     transform: translateY(0);
 }
 
+/* ══════════════════════════════════════════════════════
+   TOAST / FLOATING NOTIFICATION POPUP
+   Compact, sleek, centered notification pill
+══════════════════════════════════════════════════════ */
+#toast {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.92);
+    background: rgba(14, 14, 18, 0.96);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    color: #ffffff;
+    border: 1px solid rgba(0, 255, 136, 0.45);
+    border-radius: 14px;
+    padding: 14px 22px;
+    font-size: 13.5px;
+    font-weight: 600;
+    line-height: 1.45;
+    text-align: center;
+    max-width: min(90vw, 360px);
+    width: max-content;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 24px rgba(0, 255, 136, 0.2);
+    z-index: 100000;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+                visibility 0.22s;
+    user-select: none;
+    cursor: pointer;
+}
+
+#toast.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+}
+
+#toast:hover {
+    transform: translate(-50%, -50%) scale(1.02);
+}
+
 /* ── Signup step fade transition ── */
 .signup-step {
     animation: stepFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
