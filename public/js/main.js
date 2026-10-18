@@ -2485,12 +2485,16 @@ window.googleSignIn = async function() {
     
     if (loginView && loginView.style.display !== "none") {
         if (loginConsent && !loginConsent.checked) {
-            showMessage(SYSTEM_MESSAGES.DPDP_CONSENT_PROCEED);
+            loginConsent.closest('.auth-consent-box')?.classList.add('shake-highlight');
+            setTimeout(() => loginConsent.closest('.auth-consent-box')?.classList.remove('shake-highlight'), 800);
+            showMessage(SYSTEM_MESSAGES.DPDP_CONSENT_PROCEED, "warning");
             return;
         }
     } else if (createView && createView.style.display !== "none") {
         if (signupConsent && !signupConsent.checked) {
-            showMessage(SYSTEM_MESSAGES.DPDP_CONSENT_PROCEED);
+            signupConsent.closest('.auth-consent-box')?.classList.add('shake-highlight');
+            setTimeout(() => signupConsent.closest('.auth-consent-box')?.classList.remove('shake-highlight'), 800);
+            showMessage(SYSTEM_MESSAGES.DPDP_CONSENT_PROCEED, "warning");
             return;
         }
     }
@@ -2519,10 +2523,11 @@ window.googleSignIn = async function() {
             await handleGoogleLoginResult(result);
         }
     } catch (error) {
-        if (error.code === 'auth/popup-closed-by-user' || 
-            error.code === 'auth/cancelled-popup-request' || 
-            error.code === 'auth/popup-blocked') {
-            showMessage("Google Sign-in was cancelled or blocked by your browser. Please try again or use Email/Password.", "warning");
+        const isInApp = /Instagram|FBAN|FBAV|Twitter|Line|Snapchat/i.test(navigator.userAgent);
+        if (isInApp || error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request' || error.code === 'auth/operation-not-supported-in-this-environment') {
+            showMessage("Google Sign-In is blocked in in-app browsers! Tap ⋮ (top-right) → 'Open in Chrome/Safari', or use Email below.", "warning");
+        } else if (error.code === 'auth/popup-closed-by-user') {
+            console.log("User closed the Google popup");
         } else {
             handleGoogleError(error);
         }
@@ -4120,6 +4125,10 @@ function startTimers() {
 // LOGIN MODAL
 // ===============================
 function openLogin() {
+    const isInApp = /Instagram|FBAN|FBAV|Twitter|Line|Snapchat/i.test(navigator.userAgent);
+    if (isInApp) {
+        document.querySelectorAll('.in-app-browser-tip').forEach(el => el.style.display = 'block');
+    }
     document.getElementById("loginModal")?.classList.add("active");
 }
 
@@ -4152,7 +4161,9 @@ async function login() {
     const consent = document.getElementById("loginConsentCheckbox");
 
     if (consent && !consent.checked) {
-        showMessage(SYSTEM_MESSAGES.DPDP_CONSENT_LOGIN);
+        consent.closest('.auth-consent-box')?.classList.add('shake-highlight');
+        setTimeout(() => consent.closest('.auth-consent-box')?.classList.remove('shake-highlight'), 800);
+        showMessage(SYSTEM_MESSAGES.DPDP_CONSENT_LOGIN, "warning");
         return;
     }
 
@@ -4741,6 +4752,10 @@ function showMessage(msg, type = "info") {
 
     toast.style.borderColor = borderColor;
     toast.style.boxShadow = `0 14px 40px rgba(0,0,0,0.85), 0 0 24px ${glowColor}`;
+    toast.style.bottom = "auto";
+    toast.style.height = "auto";
+    toast.style.maxHeight = "fit-content";
+    toast.style.top = "24px";
 
     const cleanMsg = typeof window.escHtml === 'function' 
         ? window.escHtml(str) 
@@ -7406,7 +7421,9 @@ let resendCooldown = 0;
 window.sendSignupOTP = async function() {
     const consent = document.getElementById("signupConsentCheckbox");
     if (consent && !consent.checked) {
-        showMessage(SYSTEM_MESSAGES.DPDP_CONSENT_SIGNUP);
+        consent.closest('.auth-consent-box')?.classList.add('shake-highlight');
+        setTimeout(() => consent.closest('.auth-consent-box')?.classList.remove('shake-highlight'), 800);
+        showMessage(SYSTEM_MESSAGES.DPDP_CONSENT_SIGNUP, "warning");
         return;
     }
 

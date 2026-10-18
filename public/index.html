@@ -7,10 +7,9 @@
   <meta name="theme-color" content="#0a0a0a">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon" type="image/png" href="logo.png">
   <title>NPC'S — Esports Tournaments</title>
-  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/style.css?v=1000018">
 
   <style>
     /* ══════════════════════════════════════════════════════
@@ -869,6 +868,10 @@
           <span>Sign in with Google</span>
         </button>
 
+        <div class="in-app-browser-tip" style="display:none;font-size:11.5px;color:#f59e0b;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:8px 10px;margin:8px 0 10px 0;text-align:center;line-height:1.4;">
+          💡 <strong>In Instagram?</strong> Tap <strong>⋮</strong> at top-right & select <em>"Open in external browser"</em> (Chrome/Safari), or use Email below.
+        </div>
+
         <div class="auth-divider">
           <hr>
           <span>OR CONTINUE WITH EMAIL</span>
@@ -882,7 +885,7 @@
 
         <div class="auth-consent-box">
           <label>
-            <input type="checkbox" id="loginConsentCheckbox">
+            <input type="checkbox" id="loginConsentCheckbox" checked>
             <span>I agree to my details being processed under the DPDP Act 2023. <a href="javascript:void(0)" onclick="openDpdpModal(true)">Full Privacy Terms</a></span>
           </label>
         </div>
@@ -911,6 +914,10 @@
             <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" style="width:18px;height:18px;" alt="Google">
             <span>Sign up with Google</span>
           </button>
+
+          <div class="in-app-browser-tip" style="display:none;font-size:11.5px;color:#f59e0b;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:8px 10px;margin:0 0 14px 0;text-align:center;line-height:1.4;">
+            💡 <strong>In Instagram?</strong> Tap <strong>⋮</strong> at top-right & select <em>"Open in external browser"</em> (Chrome/Safari), or use Email below.
+          </div>
 
           <div class="auth-divider">
             <hr>
@@ -942,7 +949,7 @@
           
           <div class="auth-consent-box">
             <label>
-              <input type="checkbox" id="signupConsentCheckbox">
+              <input type="checkbox" id="signupConsentCheckbox" checked>
               <span>I agree to my details being processed under the DPDP Act 2023. <a href="javascript:void(0)" onclick="openDpdpModal(true)">Full Privacy Terms</a></span>
             </label>
           </div>
@@ -1638,7 +1645,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <!-- Your App Scripts -->
-<script type="module" src="./js/main.js?v=1000017"></script>
+<script type="module" src="./js/main.js?v=1000018"></script>
 
 
 

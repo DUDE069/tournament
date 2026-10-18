@@ -692,48 +692,66 @@ section {
 
 /* ══════════════════════════════════════════════════════
    TOAST / FLOATING NOTIFICATION POPUP
-   Compact, sleek, centered notification pill
+   Compact, sleek notification pill centered at top of screen
 ══════════════════════════════════════════════════════ */
 #toast {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%) scale(0.92);
-    background: rgba(14, 14, 18, 0.96);
+    position: fixed !important;
+    top: 24px !important;
+    bottom: auto !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) translateY(-20px) scale(0.96) !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: fit-content !important;
+    width: auto !important;
+    max-width: min(90vw, 380px) !important;
+    background: rgba(18, 18, 24, 0.96) !important;
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    color: #ffffff;
+    color: #ffffff !important;
     border: 1px solid rgba(0, 255, 136, 0.45);
-    border-radius: 14px;
-    padding: 14px 22px;
-    font-size: 13.5px;
-    font-weight: 600;
-    line-height: 1.45;
-    text-align: center;
-    max-width: min(90vw, 360px);
-    width: max-content;
+    border-radius: 12px !important;
+    padding: 12px 20px !important;
+    font-size: 13.5px !important;
+    font-weight: 600 !important;
+    line-height: 1.4 !important;
+    text-align: center !important;
     box-shadow: 0 16px 40px rgba(0, 0, 0, 0.85), 0 0 24px rgba(0, 255, 136, 0.2);
-    z-index: 100000;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
+    z-index: 100000 !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
     transition: opacity 0.22s cubic-bezier(0.16, 1, 0.3, 1),
                 transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
-                visibility 0.22s;
+                visibility 0.22s !important;
     user-select: none;
     cursor: pointer;
+    box-sizing: border-box !important;
 }
 
 #toast.show {
-    opacity: 1;
-    visibility: visible;
-    transform: translate(-50%, -50%) scale(1);
-    pointer-events: auto;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: translateX(-50%) translateY(0) scale(1) !important;
+    pointer-events: auto !important;
 }
 
 #toast:hover {
-    transform: translate(-50%, -50%) scale(1.02);
+    transform: translateX(-50%) translateY(0) scale(1.02) !important;
 }
+
+@keyframes shakeHighlight {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-6px); }
+    40%, 80% { transform: translateX(6px); }
+}
+.shake-highlight {
+    animation: shakeHighlight 0.4s ease;
+    border-color: #ffaa00 !important;
+    background: rgba(255, 170, 0, 0.1) !important;
+}
+
 
 /* ── Signup step fade transition ── */
 .signup-step {
@@ -788,17 +806,7 @@ section {
     transition: 0s;
 }
 
-/* ── Toast slide from bottom ── */
-#toast {
-    animation: none;
-}
-#toast.show {
-    animation: toastSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-@keyframes toastSlideIn {
-    from { opacity: 0; transform: translateX(-50%) translateY(20px); }
-    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
+
 
 /* ── Dashboard tab fade ── */
 .popup-section {
@@ -935,26 +943,7 @@ section {
     color: white;
 }
 
-/* ============================= */
-/* TOAST NOTIFICATION */
-/* ============================= */
-#toast {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--npc-blue);
-    color: white;
-    padding: 10px 20px;
-    border-radius: 6px;
-    opacity: 0;
-    transition: 0.3s;
-    z-index: 9999;
-}
 
-#toast.show {
-    opacity: 1;
-}
 
 /* ============================= */
 /* NOTIFICATION BELL/PANEL */
@@ -1782,30 +1771,7 @@ button, .dash-card, .role-card {
   }
 }
 
-/* ========================================
-   IMPROVED TOAST
-   ======================================== */
-#toast {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%) translateY(100px);
-  background: linear-gradient(135deg, var(--npc-glow), #1a9c4a);
-  color: #000;
-  padding: 14px 28px;
-  border-radius: 10px;
-  opacity: 0;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  z-index: 99999;
-  font-weight: 600;
-  box-shadow: 0 10px 30px rgba(0, 255, 136, 0.3);
-  white-space: nowrap;
-}
 
-#toast.show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
 
 /* ==========================================================================
    MOBILE RESPONSIVENESS PATCHES (Append to style.css)
@@ -2357,36 +2323,7 @@ footer { scroll-margin-top: 120px; }
 
 @media (max-width: 600px) { .leaderboard-table th, .leaderboard-table td { padding: 8px 4px; font-size: 11px; } .leaderboard-table tr:nth-child(1) td:first-child { font-size: 13px; } .leaderboard-table tr:nth-child(2) td:first-child { font-size: 12px; } .leaderboard-table tr:nth-child(3) td:first-child { font-size: 12px; } }
 
-/* ============================= */
-/* GLOBAL TOAST NOTIFICATION */
-/* ============================= */
-#toast {
-    position: fixed;
-    top: 24px;
-    left: 50%;
-    transform: translateX(-50%) translateY(-100px);
-    background: #111827;
-    color: #fff;
-    border: 1px solid #00ff88;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.8), 0 0 15px rgba(0, 255, 136, 0.25);
-    padding: 14px 24px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-weight: 600;
-    z-index: 100000;
-    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
-    opacity: 0;
-    pointer-events: none;
-    max-width: 90vw;
-    text-align: center;
-    line-height: 1.4;
-}
 
-#toast.show {
-    transform: translateX(-50%) translateY(0);
-    opacity: 1;
-    pointer-events: auto;
-}
 
 /* ================================================== */
 /* PROFESSIONAL AUTH MODAL & FORM ENHANCEMENTS        */
