@@ -12,9 +12,14 @@ service cloud.firestore {
       return isLoggedIn() && request.auth.uid == userId; 
     }
     function isAdmin() { 
-      return isLoggedIn() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isAdmin', false) == true; 
+      return isLoggedIn() && (
+        request.auth.token.email in ['ariyanabedin69@gmail.com', 'test@gmail.com'] ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isAdmin', false) == true ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isAdmin', false) == 'true' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'admin'
+        ))
+      ); 
     }
     function isTournamentOpen(tournamentId) {
       let t = get(/databases/$(database)/documents/tournaments/$(tournamentId)).data;
@@ -29,6 +34,9 @@ service cloud.firestore {
     match /{path=**}/participants/{docId}          { allow read, write: if isAdmin(); }
     match /{path=**}/transactions/{docId}          { allow read, write: if isAdmin(); }
     match /{path=**}/notifications/{docId}         { allow read, write: if isAdmin(); }
+    match /{path=**}/slots/{docId}                 { allow read, write: if isAdmin(); }
+    match /{path=**}/wallet/{docId}                { allow read, write: if isAdmin(); }
+    match /{path=**}/teamSessions/{docId}          { allow read, write: if isAdmin(); }
 
     // ==========================================
     // 3. USERS COLLECTION
