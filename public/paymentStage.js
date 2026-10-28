@@ -95,10 +95,47 @@ async function submitUtrVerification(tournamentId, entryFee) {
        teamId = _currentUserId;
     }
 
+    payLog("[PAYMENT] Checking UTR uniqueness directly in Firestore...");
+    const timestamp = serverTimestamp();
+
+    // 0. Anti-Duplicate UTR Protection in Firestore:
+    // If this UTR was already submitted by ANY user, Firestore rule blocks creation!
+    try {
+      await setDoc(doc(db, 'submitted_utrs', utrInput), {
+        claimedBy: _currentUserId,
+        tournamentId: tournamentId,
+        teamId: teamId || _currentUserId,
+        createdAt: timestamp
+      });
+    } catch (utrErr) {
+      payError("[PAYMENT] UTR already submitted or duplicate detected:", utrErr);
+      showToast("❌ Duplicate UTR detected! This transaction has already been used.", "error");
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Submit UTR";
+      }
+      return;
+    }
+
+    // Direct write to verifications collection for Admin panel review:
+    try {
+      await setDoc(doc(db, 'tournaments', tournamentId, 'verifications', _currentUserId), {
+        userId: _currentUserId,
+        teamId: teamId || _currentUserId,
+        tournamentId: tournamentId,
+        expectedAmount: entryFee || 0,
+        utr: utrInput,
+        paymentStatus: 'pending_verification',
+        status: 'pending',
+        submittedAt: timestamp
+      }, { merge: true });
+    } catch(e) {
+      payError("[PAYMENT] Verifications doc set failed:", e);
+    }
+
     payLog("[PAYMENT] Updating local Firestore pending status for instant UI updates...");
     
     const paymentStatus = "pending_verification";
-    const timestamp = serverTimestamp();
 
     const updatePayload = {
       paymentStatus: paymentStatus,

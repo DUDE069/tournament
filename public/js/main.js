@@ -6194,16 +6194,36 @@ if (submitBtn) {
                         laterBtn.textContent = "Processing...";
                         laterBtn.disabled = true;
                         try {
-                            const res = await fetch('https://npc-secure-backend.onrender.com/pay-later', {
+                            // 1. Direct Firestore implementation (works seamlessly without Render backend)
+                            const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+                            const tData = tSnap.exists() ? tSnap.data() : {};
+                            let expiresAt = tData.eventDate ? new Date(tData.eventDate).toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+                            const updates = {
+                                paymentChoice: 'pay_later',
+                                expiresAt: expiresAt,
+                                warningSent: false,
+                                updatedAt: serverTimestamp()
+                            };
+
+                            // Update upcomingRegistrations & slots directly
+                            await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", currentUser.uid), updates).catch(() => {});
+                            const effectiveTeamId = userProfile?.teamId || regData?.teamId;
+                            if (effectiveTeamId) {
+                                await updateDoc(doc(db, "tournaments", tournamentId, "slots", effectiveTeamId), updates).catch(() => {});
+                            }
+
+                            // Optional non-blocking ping to backend if it ever wakes up
+                            fetch('https://npc-secure-backend.onrender.com/pay-later', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ tournamentId, userId: currentUser.uid, teamId: userProfile?.teamId || regData.teamId || "" })
-                            });
-                            const data = await res.json();
-                            document.getElementById('customPopup').remove();
+                                body: JSON.stringify({ tournamentId, userId: currentUser.uid, teamId: effectiveTeamId || "" })
+                            }).catch(() => {});
+
+                            document.getElementById('customPopup')?.remove();
                             
                             // Send in-app notification
-                            await addDoc(collection(db, "users", userId, "notifications"), {
+                            await addDoc(collection(db, "users", currentUser.uid, "notifications"), {
                                 type: "pay_later_reminder",
                                 title: "💳 Pay Later Activated",
                                 message: `Your provisional slot is secured! You must pay before the deadline or your slot will be revoked.`,
@@ -6211,9 +6231,9 @@ if (submitBtn) {
                                 read: false,
                                 createdAt: serverTimestamp()
                             });
-                            showMessage("Pay Later activated! Remember to pay before the deadline.");
+                            showMessage("Pay Later activated! Remember to pay before the deadline.", "success");
                         } catch (e) {
-                            console.error(e);
+                            console.error("Pay later error:", e);
                             showMessage("Error activating pay later");
                             laterBtn.textContent = "⏰ Pay Later — Remind Me";
                             laterBtn.disabled = false;

@@ -58,10 +58,10 @@ import { db, auth } from "./firebase.js";
 window.ENABLE_CONSOLE_LOGS = true;
 
 const originalConsole = {
-    log:   console.log.bind(console),
+    log: console.log.bind(console),
     error: console.error.bind(console),
-    warn:  console.warn.bind(console),
-    info:  console.info.bind(console)
+    warn: console.warn.bind(console),
+    info: console.info.bind(console)
 };
 
 // ── Build the Admin Console Panel (DOM) ──────────────────────────────────────
@@ -121,7 +121,7 @@ const originalConsole = {
     window._adminConsoleLogCount = 0;
 })();
 
-window.toggleAdminConsole = function() {
+window.toggleAdminConsole = function () {
     const body = document.getElementById('admin-console-body');
     const icon = document.getElementById('admin-console-toggle-icon');
     if (!body) return;
@@ -130,7 +130,7 @@ window.toggleAdminConsole = function() {
     if (icon) icon.textContent = window._adminConsoleCollapsed ? '▲' : '▼';
 };
 
-window.clearAdminConsole = function() {
+window.clearAdminConsole = function () {
     const body = document.getElementById('admin-console-body');
     if (body) {
         body.innerHTML = '<div style="color:#333;text-align:center;padding:20px 0;font-size:11px;">Cleared</div>';
@@ -140,7 +140,7 @@ window.clearAdminConsole = function() {
     }
 };
 
-window._adminLog = function(level, args) {
+window._adminLog = function (level, args) {
     const body = document.getElementById('admin-console-body');
     if (!body) return;
 
@@ -149,24 +149,24 @@ window._adminLog = function(level, args) {
     if (countEl) countEl.textContent = window._adminConsoleLogCount + ' log' + (window._adminConsoleLogCount !== 1 ? 's' : '');
 
     const colors = {
-        log:   { badge: '#333', text: '#00ff88', label: 'LOG' },
-        info:  { badge: '#1a3a5c', text: '#3b82f6', label: 'INF' },
-        warn:  { badge: '#3a2a00', text: '#ffd700', label: 'WRN' },
+        log: { badge: '#333', text: '#00ff88', label: 'LOG' },
+        info: { badge: '#1a3a5c', text: '#3b82f6', label: 'INF' },
+        warn: { badge: '#3a2a00', text: '#ffd700', label: 'WRN' },
         error: { badge: '#3a0000', text: '#ff4444', label: 'ERR' }
     };
     const c = colors[level] || colors.log;
 
     const now = new Date();
-    const ts = now.getHours().toString().padStart(2,'0') + ':' +
-               now.getMinutes().toString().padStart(2,'0') + ':' +
-               now.getSeconds().toString().padStart(2,'0');
+    const ts = now.getHours().toString().padStart(2, '0') + ':' +
+        now.getMinutes().toString().padStart(2, '0') + ':' +
+        now.getSeconds().toString().padStart(2, '0');
 
     const msg = args.map(a => {
         if (a === null) return 'null';
         if (a === undefined) return 'undefined';
         if (typeof a === 'object') {
             try { return JSON.stringify(a, null, 0).substring(0, 300); }
-            catch(e) { return String(a); }
+            catch (e) { return String(a); }
         }
         return String(a);
     }).join(' ');
@@ -183,7 +183,7 @@ window._adminLog = function(level, args) {
     row.innerHTML = `
         <span style="color:#444;flex-shrink:0;padding-top:1px;">${ts}</span>
         <span style="background:${c.badge};color:${c.text};padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;flex-shrink:0;letter-spacing:1px;">${c.label}</span>
-        <span style="color:${c.text};word-break:break-all;line-height:1.5;opacity:0.9;">${msg.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>
+        <span style="color:${c.text};word-break:break-all;line-height:1.5;opacity:0.9;">${msg.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
     `;
 
     // Remove "ready" placeholder on first log
@@ -196,19 +196,19 @@ window._adminLog = function(level, args) {
 };
 
 // ── Intercept all console methods ────────────────────────────────────────────
-console.log = function(...args) {
+console.log = function (...args) {
     if (window.ENABLE_CONSOLE_LOGS) originalConsole.log(...args);
     window._adminLog('log', args);
 };
-console.error = function(...args) {
+console.error = function (...args) {
     if (window.ENABLE_CONSOLE_LOGS) originalConsole.error(...args);
     window._adminLog('error', args);
 };
-console.warn = function(...args) {
+console.warn = function (...args) {
     if (window.ENABLE_CONSOLE_LOGS) originalConsole.warn(...args);
     window._adminLog('warn', args);
 };
-console.info = function(...args) {
+console.info = function (...args) {
     if (window.ENABLE_CONSOLE_LOGS) originalConsole.info(...args);
     window._adminLog('info', args);
 };
@@ -228,30 +228,30 @@ import {
     query, where, orderBy, onSnapshot, writeBatch, serverTimestamp, addDoc, limit, collectionGroup, increment
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 import {
-  signInWithEmailAndPassword, onAuthStateChanged, signOut,
+    signInWithEmailAndPassword, onAuthStateChanged, signOut,
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 // ---------------------------------------------------------------------------
 //  Listener teardown map
 // ---------------------------------------------------------------------------
 const _listeners = {
-  badge:         null,
-  verifications: null,
-  registrations: null,
-  tournaments:   null,
-  calendar:      null,
+    badge: null,
+    verifications: null,
+    registrations: null,
+    tournaments: null,
+    calendar: null,
 };
 
 function teardownAllListeners() {
-  Object.values(_listeners).forEach(u => { if (u) u(); });
-  Object.keys(_listeners).forEach(k => _listeners[k] = null);
+    Object.values(_listeners).forEach(u => { if (u) u(); });
+    Object.keys(_listeners).forEach(k => _listeners[k] = null);
 }
 
 // ---------------------------------------------------------------------------
 //  Shared Firestore refs
 // ---------------------------------------------------------------------------
 const tournamentsRef = collection(db, "tournaments");
-const calendarRef    = collection(db, "calendarEvents");
+const calendarRef = collection(db, "calendarEvents");
 
 let currentFieldStatuses = {};
 
@@ -261,106 +261,106 @@ let currentFieldStatuses = {};
 window.isAdminSession = false;
 
 onAuthStateChanged(auth, async (user) => {
-  if (!user) { 
-    console.log('[AUTH] No user session — redirecting to home');
-    window.location.replace("/"); 
-    return; 
-  }
+    if (!user) {
+        console.log('[AUTH] No user session — redirecting to home');
+        window.location.replace("/");
+        return;
+    }
 
-  console.info('[AUTH] User session detected:', user.email);
-  const userSnap = await getDoc(doc(db, "users", user.uid));
-  if (!userSnap.exists() || userSnap.data().isAdmin !== true) {
-    console.warn('[AUTH] Access denied — not an admin account:', user.email);
-    window.location.replace("/");
-    return;
-  }
+    console.info('[AUTH] User session detected:', user.email);
+    const userSnap = await getDoc(doc(db, "users", user.uid));
+    if (!userSnap.exists() || userSnap.data().isAdmin !== true) {
+        console.warn('[AUTH] Access denied — not an admin account:', user.email);
+        window.location.replace("/");
+        return;
+    }
 
-  window.isAdminSession = true;
-  console.info('[AUTH] ✅ Admin verified:', user.email, '— Loading admin panel...');
-  showAdminUI();
-  initAdminListeners();
+    window.isAdminSession = true;
+    console.info('[AUTH] ✅ Admin verified:', user.email, '— Loading admin panel...');
+    showAdminUI();
+    initAdminListeners();
 });
 
 function showLoginUI() {
-  teardownAllListeners();
-  document.getElementById("loginSection").style.display = "block";
-  document.getElementById("adminPanel").style.display   = "none";
-  console.log('[UI] Login screen shown');
+    teardownAllListeners();
+    document.getElementById("loginSection").style.display = "block";
+    document.getElementById("adminPanel").style.display = "none";
+    console.log('[UI] Login screen shown');
 }
 function showAdminUI() {
-  if (!window.isAdminSession) return;
-  document.getElementById("loginSection").style.display = "none";
-  document.getElementById("adminPanel").style.display   = "block";
-  console.info('[UI] ✅ Admin panel shown');
+    if (!window.isAdminSession) return;
+    document.getElementById("loginSection").style.display = "none";
+    document.getElementById("adminPanel").style.display = "block";
+    console.info('[UI] ✅ Admin panel shown');
 }
 function initAdminListeners() {
-  console.log('[INIT] Starting badge listener, tournament loader, and calendar loader...');
-  startBadgeListener();
-  loadTournaments();
-  loadCalendarEvents();
-  console.log('[INIT] All admin listeners initialized');
+    console.log('[INIT] Starting badge listener, tournament loader, and calendar loader...');
+    startBadgeListener();
+    loadTournaments();
+    loadCalendarEvents();
+    console.log('[INIT] All admin listeners initialized');
 }
 
 // ============================================================================
 //  2. BADGE LISTENERS
 // ============================================================================
 function startBadgeListener() {
-  if (_listeners.badge) return;
+    if (_listeners.badge) return;
 
-  // BUG FIX: filter out archived docs in badge count
-  const vQuery = query(
-    collectionGroup(db, "verifications"),
-    where("status",   "==", "pending"),
-    where("archived", "==", false)
-  );
-  _listeners.badge = onSnapshot(vQuery, (snap) => {
-    // Pass docId to debounce — same new verification doc won't double-beep
-    snap.docChanges().forEach(c => { if (c.type === "added") playAdminAlert(c.doc.id); });
-    updateTabBadge("verificationBadge", snap.size);
-  }, err => {
-    // Fallback if composite index not yet created — query without archived filter
-    console.warn("Badge listener (archived filter) failed, falling back:", "Permission Denied or Invalid Data");
-    const fallback = query(
-      collectionGroup(db, "verifications"),
-      where("status", "==", "pending")
+    // BUG FIX: filter out archived docs in badge count
+    const vQuery = query(
+        collectionGroup(db, "verifications"),
+        where("status", "==", "pending"),
+        where("archived", "==", false)
     );
-    _listeners.badge = onSnapshot(fallback, (snap) => {
-      updateTabBadge("verificationBadge", snap.size);
+    _listeners.badge = onSnapshot(vQuery, (snap) => {
+        // Pass docId to debounce — same new verification doc won't double-beep
+        snap.docChanges().forEach(c => { if (c.type === "added") playAdminAlert(c.doc.id); });
+        updateTabBadge("verificationBadge", snap.size);
+    }, err => {
+        // Fallback if composite index not yet created — query without archived filter
+        console.warn("Badge listener (archived filter) failed, falling back:", "Permission Denied or Invalid Data");
+        const fallback = query(
+            collectionGroup(db, "verifications"),
+            where("status", "==", "pending")
+        );
+        _listeners.badge = onSnapshot(fallback, (snap) => {
+            updateTabBadge("verificationBadge", snap.size);
+        });
     });
-  });
 
-  const rQuery = query(
-    collectionGroup(db, "upcomingRegistrations"),
-    where("status",   "==", "pending"),
-    where("archived", "==", false)
-  );
-  onSnapshot(rQuery, (snap) => {
-    // ✅ FIX: Sound alert for new upcoming registrations (badge listener)
-    // Pass docId to debounce — prevents double-beep if registrations tab is also open
-    snap.docChanges().forEach(c => {
-      const grandparentColId = c.doc.ref.parent.parent?.parent?.id;
-      if (c.type === "added" && grandparentColId === "tournaments") playAdminAlert(c.doc.id);
-    });
-    // ✅ FIX: Only count tournament-side docs (not user mirror docs)
-    const tournamentSideCount = snap.docs.filter(d => d.ref.parent.parent?.parent?.id === "tournaments").length;
-    updateTabBadge("registrationBadge", tournamentSideCount);
-  }, () => {
-    // Fallback
-    onSnapshot(
-      query(collectionGroup(db, "upcomingRegistrations"), where("status", "==", "pending")),
-      (snap) => {
+    const rQuery = query(
+        collectionGroup(db, "upcomingRegistrations"),
+        where("status", "==", "pending"),
+        where("archived", "==", false)
+    );
+    onSnapshot(rQuery, (snap) => {
+        // ✅ FIX: Sound alert for new upcoming registrations (badge listener)
+        // Pass docId to debounce — prevents double-beep if registrations tab is also open
+        snap.docChanges().forEach(c => {
+            const grandparentColId = c.doc.ref.parent.parent?.parent?.id;
+            if (c.type === "added" && grandparentColId === "tournaments") playAdminAlert(c.doc.id);
+        });
+        // ✅ FIX: Only count tournament-side docs (not user mirror docs)
         const tournamentSideCount = snap.docs.filter(d => d.ref.parent.parent?.parent?.id === "tournaments").length;
         updateTabBadge("registrationBadge", tournamentSideCount);
-      }
-    );
-  });
+    }, () => {
+        // Fallback
+        onSnapshot(
+            query(collectionGroup(db, "upcomingRegistrations"), where("status", "==", "pending")),
+            (snap) => {
+                const tournamentSideCount = snap.docs.filter(d => d.ref.parent.parent?.parent?.id === "tournaments").length;
+                updateTabBadge("registrationBadge", tournamentSideCount);
+            }
+        );
+    });
 }
 
 function updateTabBadge(badgeId, count) {
-  const badge = document.getElementById(badgeId);
-  if (!badge) return;
-  badge.textContent   = count;
-  badge.style.display = count > 0 ? "inline-block" : "none";
+    const badge = document.getElementById(badgeId);
+    if (!badge) return;
+    badge.textContent = count;
+    badge.style.display = count > 0 ? "inline-block" : "none";
 }
 
 // ============================================================================
@@ -368,67 +368,67 @@ function updateTabBadge(badgeId, count) {
 // ============================================================================
 window.currentTab = "tournaments";
 
-window.showTab = function(tabName) {
-  window.currentTab = tabName;
-  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
-  document.querySelector(`[onclick="showTab('${tabName}')"]`)?.classList.add("active");
-  document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
-  const sectionMap = {
-    tournaments:   "tournamentsSection",
-    calendar:      "calendarSection",
-    verifications: "verificationsSection",
-    transactions:  "transactionsSection",
-    withdrawals:   "withdrawalsSection",
-    registrations: "registrationsSection",
-    qr:            "qrSection",
-  };
-  document.getElementById(sectionMap[tabName])?.classList.add("active");
+window.showTab = function (tabName) {
+    window.currentTab = tabName;
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    document.querySelector(`[onclick="showTab('${tabName}')"]`)?.classList.add("active");
+    document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+    const sectionMap = {
+        tournaments: "tournamentsSection",
+        calendar: "calendarSection",
+        verifications: "verificationsSection",
+        transactions: "transactionsSection",
+        withdrawals: "withdrawalsSection",
+        registrations: "registrationsSection",
+        qr: "qrSection",
+    };
+    document.getElementById(sectionMap[tabName])?.classList.add("active");
 
-  if (tabName === "verifications") {
-    loadVerifications();
-  } else {
-    if (_listeners.verifications) { _listeners.verifications(); _listeners.verifications = null; }
-  }
+    if (tabName === "verifications") {
+        loadVerifications();
+    } else {
+        if (_listeners.verifications) { _listeners.verifications(); _listeners.verifications = null; }
+    }
 
-  if (tabName === "transactions") {
-    loadTransactions();
-  } else {
-    if (_listeners.transactions) { _listeners.transactions(); _listeners.transactions = null; }
-  }
+    if (tabName === "transactions") {
+        loadTransactions();
+    } else {
+        if (_listeners.transactions) { _listeners.transactions(); _listeners.transactions = null; }
+    }
 
-  if (tabName === "withdrawals") {
-    loadWithdrawals();
-  } else {
-    if (_listeners.withdrawals) { _listeners.withdrawals(); _listeners.withdrawals = null; }
-  }
+    if (tabName === "withdrawals") {
+        loadWithdrawals();
+    } else {
+        if (_listeners.withdrawals) { _listeners.withdrawals(); _listeners.withdrawals = null; }
+    }
 
-  if (tabName === "registrations") {
-    loadUpcomingRegistrations();
-  } else {
-    if (_listeners.registrations) { _listeners.registrations(); _listeners.registrations = null; }
-  }
+    if (tabName === "registrations") {
+        loadUpcomingRegistrations();
+    } else {
+        if (_listeners.registrations) { _listeners.registrations(); _listeners.registrations = null; }
+    }
 };
 
-window.generateCustomQR = function() {
+window.generateCustomQR = function () {
     const url = document.getElementById("qrUrl").value.trim();
     if (!url || url === "https://") {
         alert("Please enter a valid URL.");
         return;
     }
-    
+
     const darkColor = document.getElementById("qrDarkColor").value;
     let lightColor = document.getElementById("qrLightColor").value;
     const isTransparent = document.getElementById("qrTransparentBg").checked;
-    
+
     if (isTransparent) {
         lightColor = "#00000000"; // Transparent hex
     }
-    
+
     if (typeof QRCode === "undefined") {
         alert("QR Code library is still loading. Please try again in a second.");
         return;
     }
-    
+
     QRCode.toDataURL(url, {
         width: 1024,
         margin: 1,
@@ -451,121 +451,121 @@ window.generateCustomQR = function() {
 let _allTransactions = [];
 
 function loadTransactions() {
-  if (_listeners.transactions) { _listeners.transactions(); _listeners.transactions = null; }
+    if (_listeners.transactions) { _listeners.transactions(); _listeners.transactions = null; }
 
-  const container = document.getElementById("transactionList");
-  if (!container) return;
-  container.innerHTML = '<p class="loading-text">Loading transactions...</p>';
+    const container = document.getElementById("transactionList");
+    if (!container) return;
+    container.innerHTML = '<p class="loading-text">Loading transactions...</p>';
 
-  // Query both verifications (Ongoing) and upcomingRegistrations (Upcoming)
-  const qVerif = query(collectionGroup(db, "verifications"), orderBy("submittedAt", "desc"));
-  const qUpcoming = query(collectionGroup(db, "upcomingRegistrations"), orderBy("submittedAt", "desc"));
-  
-  window._transactionsData = { verif: [], upcoming: [] };
-  
-  const updateAllTransactions = () => {
-    _allTransactions = [...window._transactionsData.verif, ...window._transactionsData.upcoming]
-        .sort((a, b) => (b.submittedAt?.toMillis?.() || 0) - (a.submittedAt?.toMillis?.() || 0));
-    filterTransactions();
-  };
+    // Query both verifications (Ongoing) and upcomingRegistrations (Upcoming)
+    const qVerif = query(collectionGroup(db, "verifications"), orderBy("submittedAt", "desc"));
+    const qUpcoming = query(collectionGroup(db, "upcomingRegistrations"), orderBy("submittedAt", "desc"));
 
-  _listeners.transactionsVerif = onSnapshot(qVerif, (snap) => {
-    window._transactionsData.verif = snap.docs
-        .map(doc => ({ id: doc.id, ...doc.data(), tournamentId: doc.ref.parent.parent.id, _collection: "verifications" }))
-        .filter(t => t.utr || t.paymentUtr)
-        .filter(t => t.paymentStatus === "submitted" || t.status === "pending");
-    updateAllTransactions();
-  }, (err) => console.error("Verifications load error:", err));
+    window._transactionsData = { verif: [], upcoming: [] };
 
-  _listeners.transactionsUpcoming = onSnapshot(qUpcoming, (snap) => {
-    window._transactionsData.upcoming = snap.docs
-        .map(doc => ({ id: doc.id, ...doc.data(), tournamentId: doc.ref.parent.parent.id, _collection: "upcomingRegistrations" }))
-        .filter(t => t.utr || t.paymentUtr)
-        .filter(t => t.paymentStatus === "submitted");
-    updateAllTransactions();
-  }, (err) => console.error("Upcoming load error:", err));
-  
-  _listeners.transactions = () => {
-    if (_listeners.transactionsVerif) _listeners.transactionsVerif();
-    if (_listeners.transactionsUpcoming) _listeners.transactionsUpcoming();
-  };
+    const updateAllTransactions = () => {
+        _allTransactions = [...window._transactionsData.verif, ...window._transactionsData.upcoming]
+            .sort((a, b) => (b.submittedAt?.toMillis?.() || 0) - (a.submittedAt?.toMillis?.() || 0));
+        filterTransactions();
+    };
+
+    _listeners.transactionsVerif = onSnapshot(qVerif, (snap) => {
+        window._transactionsData.verif = snap.docs
+            .map(doc => ({ id: doc.id, ...doc.data(), tournamentId: doc.ref.parent.parent.id, _collection: "verifications" }))
+            .filter(t => t.utr || t.paymentUtr)
+            .filter(t => t.paymentStatus === "submitted" || t.status === "pending");
+        updateAllTransactions();
+    }, (err) => console.error("Verifications load error:", err));
+
+    _listeners.transactionsUpcoming = onSnapshot(qUpcoming, (snap) => {
+        window._transactionsData.upcoming = snap.docs
+            .map(doc => ({ id: doc.id, ...doc.data(), tournamentId: doc.ref.parent.parent.id, _collection: "upcomingRegistrations" }))
+            .filter(t => t.utr || t.paymentUtr)
+            .filter(t => t.paymentStatus === "submitted");
+        updateAllTransactions();
+    }, (err) => console.error("Upcoming load error:", err));
+
+    _listeners.transactions = () => {
+        if (_listeners.transactionsVerif) _listeners.transactionsVerif();
+        if (_listeners.transactionsUpcoming) _listeners.transactionsUpcoming();
+    };
 }
 
-window.filterTransactions = function() {
-  const container = document.getElementById("transactionList");
-  const searchVal = (document.getElementById("transactionSearch")?.value || "").toLowerCase();
-  
-  const filtered = _allTransactions.filter(t => {
-    const transactionUtr = t.utr || t.paymentUtr;
-    // Only show ones with UTR
-    if (!transactionUtr) return false;
-    
-    if (!searchVal) return true;
-    return (t.teamId && t.teamId.toLowerCase().includes(searchVal)) || 
-           (transactionUtr && transactionUtr.toLowerCase().includes(searchVal));
-  });
+window.filterTransactions = function () {
+    const container = document.getElementById("transactionList");
+    const searchVal = (document.getElementById("transactionSearch")?.value || "").toLowerCase();
 
-  if (filtered.length === 0) {
-    container.innerHTML = '<p style="color:#888;">No pending transactions found.</p>';
-    document.getElementById("transactionBadge").style.display = "none";
-    return;
-  }
+    const filtered = _allTransactions.filter(t => {
+        const transactionUtr = t.utr || t.paymentUtr;
+        // Only show ones with UTR
+        if (!transactionUtr) return false;
 
-  document.getElementById("transactionBadge").textContent = filtered.length;
-  document.getElementById("transactionBadge").style.display = "inline-block";
-
-  // Build Tabs
-  const tourneyIds = new Set(_allTransactions.map(t => t.tournamentId));
-  const tabsContainer = document.getElementById("ongoingTourneyTabs");
-  
-  if (window._currentTransactionFilter === undefined) {
-      window._currentTransactionFilter = 'all';
-  }
-
-  if (tabsContainer) {
-    let tabsHtml = `<button onclick="window._currentTransactionFilter='all'; filterTransactions()" style="padding:6px 12px; background:${window._currentTransactionFilter==='all' ? '#00ff88' : '#333'}; color:${window._currentTransactionFilter==='all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
-    
-    tourneyIds.forEach(tId => {
-      let tName = tId;
-      if (window._adminActiveTournaments) {
-          const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
-          if (tDoc) tName = tDoc.data().title || tId;
-      }
-      tabsHtml += `<button onclick="window._currentTransactionFilter='${tId}'; filterTransactions()" style="padding:6px 12px; background:${window._currentTransactionFilter===tId ? '#00ff88' : '#333'}; color:${window._currentTransactionFilter===tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
+        if (!searchVal) return true;
+        return (t.teamId && t.teamId.toLowerCase().includes(searchVal)) ||
+            (transactionUtr && transactionUtr.toLowerCase().includes(searchVal));
     });
-    tabsContainer.innerHTML = tabsHtml;
-  }
 
-  // Filter by selected tab
-  const tabFiltered = window._currentTransactionFilter === 'all' 
-      ? filtered 
-      : filtered.filter(t => t.tournamentId === window._currentTransactionFilter);
+    if (filtered.length === 0) {
+        container.innerHTML = '<p style="color:#888;">No pending transactions found.</p>';
+        document.getElementById("transactionBadge").style.display = "none";
+        return;
+    }
 
-  if (tabFiltered.length === 0) {
-    container.innerHTML = '<p style="color:#888;">No pending transactions found for this tournament.</p>';
-    return;
-  }
+    document.getElementById("transactionBadge").textContent = filtered.length;
+    document.getElementById("transactionBadge").style.display = "inline-block";
 
-  // Group by tournamentId (for display purposes, even if filtered to 1)
-  const grouped = {};
-  tabFiltered.forEach(t => {
-    if (!grouped[t.tournamentId]) grouped[t.tournamentId] = [];
-    grouped[t.tournamentId].push(t);
-  });
+    // Build Tabs
+    const tourneyIds = new Set(_allTransactions.map(t => t.tournamentId));
+    const tabsContainer = document.getElementById("ongoingTourneyTabs");
 
-  let html = '';
-  for (const [tId, txs] of Object.entries(grouped)) {
-    html += `<div style="margin-bottom: 24px; padding: 16px; background: var(--bg2); border: 1px solid #333; border-radius: 8px;">`;
-    html += `<h3 style="color: var(--blue); margin-top: 0; margin-bottom: 12px; font-size: 16px; border-bottom: 1px solid #333; padding-bottom: 8px;">🏆 Tournament: ${tId}</h3>`;
-    
-    html += txs.map(t => {
-      // Extra info from the new backend merge
-      const leaderName = t.teamName ? `${t.teamName} (Leader: ${t.nickPlayer1 || 'Unknown'})` : 'Unknown';
-      const phone = t.phone ? `Phone: ${t.phone}` : '';
-      const backupEmail = t.backupEmail ? `Backup Email: ${t.backupEmail}` : '';
-      const transactionUtr = t.utr || t.paymentUtr;
-      
-      return `
+    if (window._currentTransactionFilter === undefined) {
+        window._currentTransactionFilter = 'all';
+    }
+
+    if (tabsContainer) {
+        let tabsHtml = `<button onclick="window._currentTransactionFilter='all'; filterTransactions()" style="padding:6px 12px; background:${window._currentTransactionFilter === 'all' ? '#00ff88' : '#333'}; color:${window._currentTransactionFilter === 'all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
+
+        tourneyIds.forEach(tId => {
+            let tName = tId;
+            if (window._adminActiveTournaments) {
+                const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
+                if (tDoc) tName = tDoc.data().title || tId;
+            }
+            tabsHtml += `<button onclick="window._currentTransactionFilter='${tId}'; filterTransactions()" style="padding:6px 12px; background:${window._currentTransactionFilter === tId ? '#00ff88' : '#333'}; color:${window._currentTransactionFilter === tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
+        });
+        tabsContainer.innerHTML = tabsHtml;
+    }
+
+    // Filter by selected tab
+    const tabFiltered = window._currentTransactionFilter === 'all'
+        ? filtered
+        : filtered.filter(t => t.tournamentId === window._currentTransactionFilter);
+
+    if (tabFiltered.length === 0) {
+        container.innerHTML = '<p style="color:#888;">No pending transactions found for this tournament.</p>';
+        return;
+    }
+
+    // Group by tournamentId (for display purposes, even if filtered to 1)
+    const grouped = {};
+    tabFiltered.forEach(t => {
+        if (!grouped[t.tournamentId]) grouped[t.tournamentId] = [];
+        grouped[t.tournamentId].push(t);
+    });
+
+    let html = '';
+    for (const [tId, txs] of Object.entries(grouped)) {
+        html += `<div style="margin-bottom: 24px; padding: 16px; background: var(--bg2); border: 1px solid #333; border-radius: 8px;">`;
+        html += `<h3 style="color: var(--blue); margin-top: 0; margin-bottom: 12px; font-size: 16px; border-bottom: 1px solid #333; padding-bottom: 8px;">🏆 Tournament: ${tId}</h3>`;
+
+        html += txs.map(t => {
+            // Extra info from the new backend merge
+            const leaderName = t.teamName ? `${t.teamName} (Leader: ${t.nickPlayer1 || 'Unknown'})` : 'Unknown';
+            const phone = t.phone ? `Phone: ${t.phone}` : '';
+            const backupEmail = t.backupEmail ? `Backup Email: ${t.backupEmail}` : '';
+            const transactionUtr = t.utr || t.paymentUtr;
+
+            return `
         <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #444; margin-bottom:10px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap: wrap; gap: 10px;">
             <div style="flex: 1; min-width: 250px;">
@@ -585,199 +585,199 @@ window.filterTransactions = function() {
           </div>
         </div>
       `;
-    }).join("");
-    html += `</div>`;
-  }
-  
-  container.innerHTML = html;
+        }).join("");
+        html += `</div>`;
+    }
+
+    container.innerHTML = html;
 };
 
-window.approveTransaction = async function(tournamentId, docId, teamId, userId, utr, amount, collectionName = "verifications") {
-  if (!confirm("Are you sure you want to approve this transaction? This will confirm their slot.")) return;
-  console.info(`[ACTION] Triggered 'Approve Payment' for ${teamId}`);
-  try {
-    console.info(`[DATA OUT] Submitting update to ${collectionName} and slots...`);
-    const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
-    
-    // 1. Mark verification as approved
-    await updateDoc(docRef, { status: "approved", approvedAt: serverTimestamp() });
-    
-    // 2. Mark slot as verified (prevent cron from deleting it)
-    await setDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
-      paymentStatus: "verified",
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-
-    // 3. Mark team history as verified so they get trust score
-    await setDoc(doc(db, "team_verification_history", teamId), {
-      isVerified: true,
-      lastVerifiedAt: serverTimestamp()
-    }, { merge: true });
-    
-    // 4. Update the actual participant record
-    await setDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
-      paymentStatus: 'verified',
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    
-    // 5. Update user's personal pendingPayment record
-    await setDoc(doc(db, "users", userId, "pendingPayment", tournamentId), {
-      paymentStatus: 'verified',
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-
-    // 6. Fix for Upcoming Tournaments: Ensure their dashboard is fully updated
+window.approveTransaction = async function (tournamentId, docId, teamId, userId, utr, amount, collectionName = "verifications") {
+    if (!confirm("Are you sure you want to approve this transaction? This will confirm their slot.")) return;
+    console.info(`[ACTION] Triggered 'Approve Payment' for ${teamId}`);
     try {
-        await setDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
-            paymentStatus: 'verified',
-            status: 'approved',
-            updatedAt: serverTimestamp()
-        }, { merge: true });
-        
-        await setDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId), {
-            paymentStatus: 'verified',
-            status: 'accepted',
-            updatedAt: serverTimestamp()
-        }, { merge: true });
-        
-        await setDoc(doc(db, "tournaments", tournamentId, "teamSessions", teamId), {
-            paymentStatus: 'verified',
-            updatedAt: serverTimestamp()
-        }, { merge: true });
-    } catch(e) {}
+        console.info(`[DATA OUT] Submitting update to ${collectionName} and slots...`);
+        const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
 
-    // 7. Send Notification to User
+        // 1. Mark verification as approved
+        await updateDoc(docRef, { status: "approved", approvedAt: serverTimestamp() });
+
+        // 2. Mark slot as verified (prevent cron from deleting it)
+        await setDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
+            paymentStatus: "verified",
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 3. Mark team history as verified so they get trust score
+        await setDoc(doc(db, "team_verification_history", teamId), {
+            isVerified: true,
+            lastVerifiedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 4. Update the actual participant record
+        await setDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+            paymentStatus: 'verified',
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 5. Update user's personal pendingPayment record
+        await setDoc(doc(db, "users", userId, "pendingPayment", tournamentId), {
+            paymentStatus: 'verified',
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 6. Fix for Upcoming Tournaments: Ensure their dashboard is fully updated
+        try {
+            await setDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
+                paymentStatus: 'verified',
+                status: 'approved',
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            await setDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId), {
+                paymentStatus: 'verified',
+                status: 'accepted',
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            await setDoc(doc(db, "tournaments", tournamentId, "teamSessions", teamId), {
+                paymentStatus: 'verified',
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        } catch (e) { }
+
+        // 7. Send Notification to User
+        try {
+            await sendDualNotification(userId, {
+                type: "success",
+                title: "💳 Payment Verified!",
+                message: `Your payment of ₹${amount} for tournament ${tournamentId} has been successfully verified. Your slot is now confirmed!`,
+                extra: { tournamentId, utr },
+                actionLink: `tournament=${tournamentId}`,
+            });
+        } catch (e) {
+            console.warn("Could not send notification:", e);
+        }
+
+        showToast("Transaction approved successfully!");
+        console.info(`[DATA OUT] Transaction completed successfully.`);
+    } catch (e) {
+        console.error(`[ERROR] Failed to execute approveTransaction: ${e.message}`);
+        console.error("Error approving transaction:", e);
+        alert("Error: " + e.message);
+    }
+};
+
+window.rejectPaymentTransaction = async function (tournamentId, docId, teamId, userId, collectionName = "verifications") {
+    if (!confirm("Are you sure you want to REJECT this payment? The user will be notified to enter the correct UTR.")) return;
+    console.info(`[ACTION] Triggered 'Reject Payment' for ${teamId}`);
     try {
+        console.info(`[DATA OUT] Submitting update to ${collectionName} and slots...`);
+        const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
+
+        // 1. Mark verification as rejected
+        await updateDoc(docRef, { status: "payment_rejected", rejectedAt: serverTimestamp(), paymentStatus: "payment_rejected" });
+
+        // 2. Mark slot as rejected
+        await setDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
+            paymentStatus: "Payment Rejected",
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 3. Update the actual participant record
+        await setDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+            paymentStatus: 'payment_rejected',
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 4. Update user's personal pendingPayment record
+        await setDoc(doc(db, "users", userId, "pendingPayment", tournamentId), {
+            paymentStatus: 'payment_rejected',
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 5. Send Notification
         await sendDualNotification(userId, {
-            type:       "success",
-            title:      "💳 Payment Verified!",
-            message:    `Your payment of ₹${amount} for tournament ${tournamentId} has been successfully verified. Your slot is now confirmed!`,
-            extra:      { tournamentId, utr },
+            type: "payment_rejected",
+            title: "❌ Payment Verification Failed",
+            message: "We could not verify your payment UTR. Please click here to enter the correct UTR or pay again.",
+            extra: { tournamentId },
             actionLink: `tournament=${tournamentId}`,
         });
+
+        showToast("Payment rejected and user notified.", "warning");
+        console.info(`[DATA OUT] Transaction completed successfully.`);
     } catch (e) {
-        console.warn("Could not send notification:", e);
+        console.error(`[ERROR] Failed to execute rejectPaymentTransaction: ${e.message}`);
+        console.error("Error rejecting transaction:", e);
+        alert("Error: " + e.message);
     }
-
-    showToast("Transaction approved successfully!");
-    console.info(`[DATA OUT] Transaction completed successfully.`);
-  } catch (e) {
-    console.error(`[ERROR] Failed to execute approveTransaction: ${e.message}`);
-    console.error("Error approving transaction:", e);
-    alert("Error: " + e.message);
-  }
 };
 
-window.rejectPaymentTransaction = async function(tournamentId, docId, teamId, userId, collectionName = "verifications") {
-  if (!confirm("Are you sure you want to REJECT this payment? The user will be notified to enter the correct UTR.")) return;
-  console.info(`[ACTION] Triggered 'Reject Payment' for ${teamId}`);
-  try {
-    console.info(`[DATA OUT] Submitting update to ${collectionName} and slots...`);
-    const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
-    
-    // 1. Mark verification as rejected
-    await updateDoc(docRef, { status: "payment_rejected", rejectedAt: serverTimestamp(), paymentStatus: "payment_rejected" });
-    
-    // 2. Mark slot as rejected
-    await setDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
-      paymentStatus: "Payment Rejected",
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    
-    // 3. Update the actual participant record
-    await setDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
-      paymentStatus: 'payment_rejected',
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-    
-    // 4. Update user's personal pendingPayment record
-    await setDoc(doc(db, "users", userId, "pendingPayment", tournamentId), {
-      paymentStatus: 'payment_rejected',
-      updatedAt: serverTimestamp()
-    }, { merge: true });
+window.walletRefundTransaction = async function (tournamentId, docId, teamId, userId, amount, collectionName = "verifications") {
+    if (!confirm(`Are you sure you want to refund ₹${amount} to their wallet and move them to waitlist?`)) return;
+    try {
+        const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
 
-    // 5. Send Notification
-    await sendDualNotification(userId, {
-        type:       "payment_rejected",
-        title:      "❌ Payment Verification Failed",
-        message:    "We could not verify your payment UTR. Please click here to enter the correct UTR or pay again.",
-        extra:      { tournamentId },
-        actionLink: `tournament=${tournamentId}`,
-    });
+        // 1. Mark verification as waitlisted
+        await updateDoc(docRef, { status: "waitlisted", waitlistedAt: serverTimestamp() });
 
-    showToast("Payment rejected and user notified.", "warning");
-    console.info(`[DATA OUT] Transaction completed successfully.`);
-  } catch (e) {
-    console.error(`[ERROR] Failed to execute rejectPaymentTransaction: ${e.message}`);
-    console.error("Error rejecting transaction:", e);
-    alert("Error: " + e.message);
-  }
-};
+        // 2. Mark slot as waitlisted (this moves them to the waitlist queue in slot management)
+        await setDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
+            teamId: teamId,
+            paymentStatus: "Waitlist",
+            updatedAt: serverTimestamp()
+        }, { merge: true });
 
-window.walletRefundTransaction = async function(tournamentId, docId, teamId, userId, amount, collectionName = "verifications") {
-  if (!confirm(`Are you sure you want to refund ₹${amount} to their wallet and move them to waitlist?`)) return;
-  try {
-    const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
-    
-    // 1. Mark verification as waitlisted
-    await updateDoc(docRef, { status: "waitlisted", waitlistedAt: serverTimestamp() });
-    
-    // 2. Mark slot as waitlisted (this moves them to the waitlist queue in slot management)
-    await setDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
-      teamId: teamId,
-      paymentStatus: "Waitlist",
-      updatedAt: serverTimestamp()
-    }, { merge: true });
+        // 3. Refund to Wallet
+        const walletRef = doc(db, "users", userId, "wallet", "main");
+        const walletSnap = await getDoc(walletRef);
+        let currentBalance = 0;
+        if (walletSnap.exists()) {
+            currentBalance = walletSnap.data().balance || 0;
+        }
+        await setDoc(walletRef, {
+            balance: currentBalance + Number(amount),
+            updatedAt: serverTimestamp()
+        }, { merge: true });
 
-    // 3. Refund to Wallet
-    const walletRef = doc(db, "users", userId, "wallet", "main");
-    const walletSnap = await getDoc(walletRef);
-    let currentBalance = 0;
-    if (walletSnap.exists()) {
-      currentBalance = walletSnap.data().balance || 0;
+        // 4. Add Transaction History
+        await addDoc(collection(db, "users", userId, "transactions"), {
+            amount: Number(amount),
+            type: "refund",
+            description: `Refund for Tournament Waitlist (${tournamentId})`,
+            timestamp: serverTimestamp()
+        });
+
+        showToast("Refunded to Wallet and Waitlisted!");
+    } catch (e) {
+        console.error("Error refunding to wallet:", e);
+        alert("Error: " + e.message);
     }
-    await setDoc(walletRef, {
-      balance: currentBalance + Number(amount),
-      updatedAt: serverTimestamp()
-    }, { merge: true });
-
-    // 4. Add Transaction History
-    await addDoc(collection(db, "users", userId, "transactions"), {
-      amount: Number(amount),
-      type: "refund",
-      description: `Refund for Tournament Waitlist (${tournamentId})`,
-      timestamp: serverTimestamp()
-    });
-
-    showToast("Refunded to Wallet and Waitlisted!");
-  } catch (e) {
-    console.error("Error refunding to wallet:", e);
-    alert("Error: " + e.message);
-  }
 };
 
 function loadWithdrawals() {
-  if (_listeners.withdrawals) { _listeners.withdrawals(); _listeners.withdrawals = null; }
+    if (_listeners.withdrawals) { _listeners.withdrawals(); _listeners.withdrawals = null; }
 
-  const container = document.getElementById("withdrawalList");
-  if (!container) return;
-  container.innerHTML = '<p class="loading-text">Loading withdrawals...</p>';
+    const container = document.getElementById("withdrawalList");
+    if (!container) return;
+    container.innerHTML = '<p class="loading-text">Loading withdrawals...</p>';
 
-  const q = query(collection(db, "withdrawal_requests"), where("status", "==", "pending"), orderBy("requestedAt", "asc"));
-  
-  _listeners.withdrawals = onSnapshot(q, (snap) => {
-    if (snap.empty) {
-      container.innerHTML = '<p style="color:#888;">No pending withdrawals.</p>';
-      document.getElementById("withdrawalBadge").style.display = "none";
-      return;
-    }
+    const q = query(collection(db, "withdrawal_requests"), where("status", "==", "pending"), orderBy("requestedAt", "asc"));
 
-    document.getElementById("withdrawalBadge").textContent = snap.size;
-    document.getElementById("withdrawalBadge").style.display = "inline-block";
+    _listeners.withdrawals = onSnapshot(q, (snap) => {
+        if (snap.empty) {
+            container.innerHTML = '<p style="color:#888;">No pending withdrawals.</p>';
+            document.getElementById("withdrawalBadge").style.display = "none";
+            return;
+        }
 
-    container.innerHTML = snap.docs.map(doc => {
-      const w = doc.data();
-      return `
+        document.getElementById("withdrawalBadge").textContent = snap.size;
+        document.getElementById("withdrawalBadge").style.display = "inline-block";
+
+        container.innerHTML = snap.docs.map(doc => {
+            const w = doc.data();
+            return `
         <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #3b82f6; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
           <div>
             <p style="margin:0 0 5px; color:#fff;"><strong>User ID:</strong> ${w.userId}</p>
@@ -789,53 +789,53 @@ function loadWithdrawals() {
           </div>
         </div>
       `;
-    }).join("");
-  });
+        }).join("");
+    });
 }
 
-window.resolveWithdrawal = async function(docId, userId, amount) {
-  if (!confirm(`Did you successfully send ₹${amount} via UPI? This will deduct the funds from the user's wallet.`)) return;
-  try {
-    const { runTransaction } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
-    
-    await runTransaction(db, async (transaction) => {
-        const walletRef = doc(db, "users", userId, "wallet", "main");
-        const requestRef = doc(db, "withdrawal_requests", docId);
-        
-        const walletDoc = await transaction.get(walletRef);
-        if (!walletDoc.exists()) throw new Error("Wallet not found!");
-        
-        const currentBal = walletDoc.data().balance || 0;
-        if (currentBal < amount) throw new Error("User no longer has sufficient balance! Reject this request.");
-        
-        // Deduct balance
-        transaction.update(walletRef, {
-            balance: currentBal - amount,
-            updatedAt: serverTimestamp()
+window.resolveWithdrawal = async function (docId, userId, amount) {
+    if (!confirm(`Did you successfully send ₹${amount} via UPI? This will deduct the funds from the user's wallet.`)) return;
+    try {
+        const { runTransaction } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
+
+        await runTransaction(db, async (transaction) => {
+            const walletRef = doc(db, "users", userId, "wallet", "main");
+            const requestRef = doc(db, "withdrawal_requests", docId);
+
+            const walletDoc = await transaction.get(walletRef);
+            if (!walletDoc.exists()) throw new Error("Wallet not found!");
+
+            const currentBal = walletDoc.data().balance || 0;
+            if (currentBal < amount) throw new Error("User no longer has sufficient balance! Reject this request.");
+
+            // Deduct balance
+            transaction.update(walletRef, {
+                balance: currentBal - amount,
+                updatedAt: serverTimestamp()
+            });
+
+            // Log the transaction for the user
+            const txRef = doc(collection(db, "users", userId, "transactions"));
+            transaction.set(txRef, {
+                type: 'debit',
+                amount: amount,
+                description: `Withdrawal to UPI`,
+                status: 'completed',
+                createdAt: serverTimestamp()
+            });
+
+            // Mark request complete
+            transaction.update(requestRef, {
+                status: "completed",
+                completedAt: serverTimestamp()
+            });
         });
-        
-        // Log the transaction for the user
-        const txRef = doc(collection(db, "users", userId, "transactions"));
-        transaction.set(txRef, {
-            type: 'debit',
-            amount: amount,
-            description: `Withdrawal to UPI`,
-            status: 'completed',
-            createdAt: serverTimestamp()
-        });
-        
-        // Mark request complete
-        transaction.update(requestRef, {
-            status: "completed",
-            completedAt: serverTimestamp()
-        });
-    });
-    
-    showToast("Withdrawal completed and funds deducted!");
-  } catch (e) {
-    console.error("Error resolving withdrawal:", e);
-    alert("Error: " + e.message);
-  }
+
+        showToast("Withdrawal completed and funds deducted!");
+    } catch (e) {
+        console.error("Error resolving withdrawal:", e);
+        alert("Error: " + e.message);
+    }
 };
 
 
@@ -844,97 +844,97 @@ window.resolveWithdrawal = async function(docId, userId, amount) {
 //  BUG FIX: query now excludes archived:true documents
 // ============================================================================
 function loadVerifications() {
-  if (_listeners.verifications) { _listeners.verifications(); _listeners.verifications = null; }
+    if (_listeners.verifications) { _listeners.verifications(); _listeners.verifications = null; }
 
-  const container = document.getElementById("verificationList");
-  if (!container) return;
-  container.innerHTML = '<p class="loading-text">Loading applications…</p>';
+    const container = document.getElementById("verificationList");
+    if (!container) return;
+    container.innerHTML = '<p class="loading-text">Loading applications…</p>';
 
-  // Query all statuses but EXCLUDE archived docs
-  // NOTE: This requires a Firestore composite index on (submittedAt DESC) with
-  // a collection group query.  If "archived" filter causes index errors, the
-  // catch below falls back to client-side filtering.
-  const q = query(
-    collectionGroup(db, "verifications"),
-    orderBy("submittedAt", "desc")
-  );
+    // Query all statuses but EXCLUDE archived docs
+    // NOTE: This requires a Firestore composite index on (submittedAt DESC) with
+    // a collection group query.  If "archived" filter causes index errors, the
+    // catch below falls back to client-side filtering.
+    const q = query(
+        collectionGroup(db, "verifications"),
+        orderBy("submittedAt", "desc")
+    );
 
-  _listeners.verifications = onSnapshot(q, (snapshot) => {
-    snapshot.docChanges().forEach(c => {
-      if (c.type === "added" && c.doc.data().status === "pending") playAdminAlert(c.doc.id);
+    _listeners.verifications = onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach(c => {
+            if (c.type === "added" && c.doc.data().status === "pending") playAdminAlert(c.doc.id);
+        });
+        window._lastVerificationsSnapshot = snapshot;
+        window.renderVerificationList(snapshot);
+    }, err => {
+        container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: Permission Denied or Invalid Data</p>`;
     });
-    window._lastVerificationsSnapshot = snapshot;
-    window.renderVerificationList(snapshot);
-  }, err => {
-    container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: Permission Denied or Invalid Data</p>`;
-  });
 }
 
-window.renderVerificationList = function(snapshot) {
-  const container = document.getElementById("verificationList");
-  if (!container) return;
+window.renderVerificationList = function (snapshot) {
+    const container = document.getElementById("verificationList");
+    if (!container) return;
 
-  const pending  = [];
-  const accepted = [];
-  const rejected = [];
-  const tourneyIds = new Set();
-  
-  if (window._currentVerificationFilter === undefined) {
-      window._currentVerificationFilter = 'all';
-  }
+    const pending = [];
+    const accepted = [];
+    const rejected = [];
+    const tourneyIds = new Set();
 
-  snapshot.forEach(vDoc => {
-    const d = { id: vDoc.id, tournamentId: vDoc.ref.parent.parent.id, ...vDoc.data() };
-    if (d.archived === true) return; // CLIENT-SIDE: skip archived docs
-    
-    tourneyIds.add(d.tournamentId);
-    
-    if (window._currentVerificationFilter !== 'all' && d.tournamentId !== window._currentVerificationFilter) return;
-    
-    const isPaymentSubmitted = (d.paymentStatus === "submitted" && !!d.utr);
-    
-    if (d.status === "rejected") {
-      rejected.push(d);
-    } else if (d.status === "approved" || isPaymentSubmitted) {
-      accepted.push(d);
-    } else if (d.status === "pending") {
-      pending.push(d);
+    if (window._currentVerificationFilter === undefined) {
+        window._currentVerificationFilter = 'all';
     }
-  });
-  
-  const tabsContainer = document.getElementById("ongoingApplicationsTourneyTabs");
-  if (tabsContainer) {
-    let tabsHtml = `<button onclick="window._currentVerificationFilter='all'; window.renderVerificationList(window._lastVerificationsSnapshot)" style="padding:6px 12px; background:${window._currentVerificationFilter==='all' ? '#00ff88' : '#333'}; color:${window._currentVerificationFilter==='all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
-    
-    tourneyIds.forEach(tId => {
-      let tName = tId;
-      if (window._adminActiveTournaments) {
-          const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
-          if (tDoc) tName = tDoc.data().title || tId;
-      }
-      tabsHtml += `<button onclick="window._currentVerificationFilter='${tId}'; window.renderVerificationList(window._lastVerificationsSnapshot)" style="padding:6px 12px; background:${window._currentVerificationFilter===tId ? '#00ff88' : '#333'}; color:${window._currentVerificationFilter===tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
+
+    snapshot.forEach(vDoc => {
+        const d = { id: vDoc.id, tournamentId: vDoc.ref.parent.parent.id, ...vDoc.data() };
+        if (d.archived === true) return; // CLIENT-SIDE: skip archived docs
+
+        tourneyIds.add(d.tournamentId);
+
+        if (window._currentVerificationFilter !== 'all' && d.tournamentId !== window._currentVerificationFilter) return;
+
+        const isPaymentSubmitted = (d.paymentStatus === "submitted" && !!d.utr);
+
+        if (d.status === "rejected") {
+            rejected.push(d);
+        } else if (d.status === "approved" || isPaymentSubmitted) {
+            accepted.push(d);
+        } else if (d.status === "pending") {
+            pending.push(d);
+        }
     });
-    tabsContainer.innerHTML = tabsHtml;
-  }
 
-  if (!pending.length && !accepted.length && !rejected.length) {
-    container.innerHTML = `<div class="empty-state"><span class="emoji">✅</span>No applications yet.</div>`;
-    return;
-  }
+    const tabsContainer = document.getElementById("ongoingApplicationsTourneyTabs");
+    if (tabsContainer) {
+        let tabsHtml = `<button onclick="window._currentVerificationFilter='all'; window.renderVerificationList(window._lastVerificationsSnapshot)" style="padding:6px 12px; background:${window._currentVerificationFilter === 'all' ? '#00ff88' : '#333'}; color:${window._currentVerificationFilter === 'all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
 
-  let html = "";
-  html += partition("new",      `🆕 New Applications (${pending.length})`);
-  html += pending.length  ? pending.map(d  => applicationCard(d, "new")).join("")      : noItems();
-  html += partition("accepted", `✅ Accepted (${accepted.length})`);
-  html += accepted.length ? accepted.map(d => applicationCard(d, "accepted")).join("") : noItems();
-  html += partition("rejected", `❌ Rejected (${rejected.length})`);
-  html += rejected.length ? rejected.map(d => applicationCard(d, "rejected")).join("") : noItems();
+        tourneyIds.forEach(tId => {
+            let tName = tId;
+            if (window._adminActiveTournaments) {
+                const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
+                if (tDoc) tName = tDoc.data().title || tId;
+            }
+            tabsHtml += `<button onclick="window._currentVerificationFilter='${tId}'; window.renderVerificationList(window._lastVerificationsSnapshot)" style="padding:6px 12px; background:${window._currentVerificationFilter === tId ? '#00ff88' : '#333'}; color:${window._currentVerificationFilter === tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
+        });
+        tabsContainer.innerHTML = tabsHtml;
+    }
 
-  container.innerHTML = html;
+    if (!pending.length && !accepted.length && !rejected.length) {
+        container.innerHTML = `<div class="empty-state"><span class="emoji">✅</span>No applications yet.</div>`;
+        return;
+    }
+
+    let html = "";
+    html += partition("new", `🆕 New Applications (${pending.length})`);
+    html += pending.length ? pending.map(d => applicationCard(d, "new")).join("") : noItems();
+    html += partition("accepted", `✅ Accepted (${accepted.length})`);
+    html += accepted.length ? accepted.map(d => applicationCard(d, "accepted")).join("") : noItems();
+    html += partition("rejected", `❌ Rejected (${rejected.length})`);
+    html += rejected.length ? rejected.map(d => applicationCard(d, "rejected")).join("") : noItems();
+
+    container.innerHTML = html;
 }
 
 function partition(type, label) {
-  return `
+    return `
     <div class="partition">
       <span class="partition-label ${type}">${label}</span>
       <div class="partition-line"></div>
@@ -942,40 +942,40 @@ function partition(type, label) {
 }
 
 function noItems() {
-  return `<div style="color:var(--muted);font-size:13px;padding:8px 0 16px;">— None —</div>`;
+    return `<div style="color:var(--muted);font-size:13px;padding:8px 0 16px;">— None —</div>`;
 }
 
 
 
 function applicationCard(d, type) {
-  const pillClass = type === "new" ? "pill-new" : type === "accepted" ? "pill-accepted" : "pill-rejected";
-  const pillLabel = type === "new" ? "PENDING"  : type === "accepted" ? "APPROVED"     : "REJECTED";
+    const pillClass = type === "new" ? "pill-new" : type === "accepted" ? "pill-accepted" : "pill-rejected";
+    const pillLabel = type === "new" ? "PENDING" : type === "accepted" ? "APPROVED" : "REJECTED";
 
-  // ✅ FIX: Detect if it is a resubmission by checking for leftover rejection notes
-  const isResubmitted = type === "new" && (d.rejectionNote || d.rejectionReason);
-  
-  const badgeHtml = isResubmitted
-    ? `<span style="background:var(--orange, #ff9800); color:#000; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">⚠️ Resubmitted</span>`
-    : (type === "new" ? `<span style="background:var(--blue, #4a90e2); color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">🆕 New</span>` : "");
+    // ✅ FIX: Detect if it is a resubmission by checking for leftover rejection notes
+    const isResubmitted = type === "new" && (d.rejectionNote || d.rejectionReason);
 
-  let actions = "";
-  if (type === "new") {
-    
-    const appData = {
-      teamName: d.teamName || "—",
-      leaderEmail: d.leaderEmail || "—",
-      phone: d.phone || "—",
-      backupEmail: d.backupEmail || "—",   // ✅ FIX: Include backup Gmail
-      payoutUpiId: d.payoutUpiId || d.upiId || "—",
-      uids: d.uids || [],
-      playersData: d.playersData || d.uids?.map((uid, i) => ({
-        uid: uid,
-        type: d[`typePlayer${i+1}`] || "friend", // Captures NPC User status
-        nickname: d[`nickPlayer${i+1}`] || d[`player${i+1}Nickname`] || ""
-      })) || []
-    };
-    
-    actions = `
+    const badgeHtml = isResubmitted
+        ? `<span style="background:var(--orange, #ff9800); color:#000; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">⚠️ Resubmitted</span>`
+        : (type === "new" ? `<span style="background:var(--blue, #4a90e2); color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">🆕 New</span>` : "");
+
+    let actions = "";
+    if (type === "new") {
+
+        const appData = {
+            teamName: d.teamName || "—",
+            leaderEmail: d.leaderEmail || "—",
+            phone: d.phone || "—",
+            backupEmail: d.backupEmail || "—",   // ✅ FIX: Include backup Gmail
+            payoutUpiId: d.payoutUpiId || d.upiId || "—",
+            uids: d.uids || [],
+            playersData: d.playersData || d.uids?.map((uid, i) => ({
+                uid: uid,
+                type: d[`typePlayer${i + 1}`] || "friend", // Captures NPC User status
+                nickname: d[`nickPlayer${i + 1}`] || d[`player${i + 1}Nickname`] || ""
+            })) || []
+        };
+
+        actions = `
       <div style="display:flex; flex-direction:column; gap:8px; width:100%; margin-top:10px;">
         <button class="btn-view" style="width:100%; padding:10px; font-size:14px; box-sizing:border-box;" 
           onclick="openAdminReviewModal('${d.tournamentId}', '${d.id}', '${encodeURIComponent(JSON.stringify(appData))}', 'ongoing')">
@@ -983,17 +983,17 @@ function applicationCard(d, type) {
         </button>
       </div>
     `;
-  } else if (type === "accepted") {
-    actions = `
+    } else if (type === "accepted") {
+        actions = `
       <button class="btn-status" onclick="viewStatusModal('${d.tournamentId}','${d.id}')">📊 Status</button>
       <button class="btn-remove" data-tid="${d.tournamentId}" data-uid="${d.id}" onclick="removeApplication('${d.tournamentId}','${d.id}')">Remove</button>`;
-  } else {
-    actions = `
+    } else {
+        actions = `
       <button class="btn-view"   onclick="viewRejectedDetails('${d.tournamentId}','${d.id}')">Review</button>
       <button class="btn-remove" data-tid="${d.tournamentId}" data-uid="${d.id}" onclick="removeApplication('${d.tournamentId}','${d.id}')">Remove</button>`;
-  }
+    }
 
-  return `
+    return `
     <div class="app-card ${type}" id="appcard-${d.id}" style="${isResubmitted ? 'border-left: 4px solid #ff9800;' : ''}">
       <div class="app-card-info">
         <div style="font-size:11px; color:var(--muted); margin-bottom:4px; font-family:monospace; text-transform:uppercase; letter-spacing:1px;">
@@ -1014,46 +1014,46 @@ function applicationCard(d, type) {
 //  5. REMOVE APPLICATION (Ongoing tab)
 //  Notifies team BEFORE archiving so they know what happened
 // ============================================================================
-window.removeApplication = async function(tournamentId, userId) {
-  if (!confirm("Remove this application from the list? The team will be notified.")) return;
-  try {
-    // Fetch team name and tournament name before archiving so we can notify properly
-    let teamName = "Your team";
-    let tournamentName = tournamentId;
-    let memberIds = [userId];
+window.removeApplication = async function (tournamentId, userId) {
+    if (!confirm("Remove this application from the list? The team will be notified.")) return;
     try {
-      const vSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
-      if (vSnap.exists()) teamName = vSnap.data().teamName || teamName;
-      const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
-      if (tSnap.exists()) tournamentName = tSnap.data().title || tournamentName;
-      const uSnap = await getDoc(doc(db, "users", userId));
-      if (uSnap.exists() && uSnap.data().teamId) {
-        const tmSnap = await getDoc(doc(db, "teams", uSnap.data().teamId));
-        if (tmSnap.exists()) memberIds = [...new Set([...(tmSnap.data().members || []), userId])];
-      }
-    } catch (_) {}
+        // Fetch team name and tournament name before archiving so we can notify properly
+        let teamName = "Your team";
+        let tournamentName = tournamentId;
+        let memberIds = [userId];
+        try {
+            const vSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
+            if (vSnap.exists()) teamName = vSnap.data().teamName || teamName;
+            const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+            if (tSnap.exists()) tournamentName = tSnap.data().title || tournamentName;
+            const uSnap = await getDoc(doc(db, "users", userId));
+            if (uSnap.exists() && uSnap.data().teamId) {
+                const tmSnap = await getDoc(doc(db, "teams", uSnap.data().teamId));
+                if (tmSnap.exists()) memberIds = [...new Set([...(tmSnap.data().members || []), userId])];
+            }
+        } catch (_) { }
 
-    await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
-      archived:   true,
-      archivedAt: serverTimestamp(),
-    });
+        await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
+            archived: true,
+            archivedAt: serverTimestamp(),
+        });
 
-    // Notify every team member
-    await Promise.all(memberIds.map(mid => sendDualNotification(mid, {
-      type:       "application_removed",
-      title:      "⚠️ Application Removed",
-      message:    `Your application for "${tournamentName}" was removed from the Verification stage. If this was a mistake, tap to re-submit.`,
-      extra:      { tournamentId, tournamentName, stage: "ongoing", teamName },
-      actionLink: `resubmit=ongoing&tournament=${tournamentId}`,
-      silent:     true
-    })));
+        // Notify every team member
+        await Promise.all(memberIds.map(mid => sendDualNotification(mid, {
+            type: "application_removed",
+            title: "⚠️ Application Removed",
+            message: `Your application for "${tournamentName}" was removed from the Verification stage. If this was a mistake, tap to re-submit.`,
+            extra: { tournamentId, tournamentName, stage: "ongoing", teamName },
+            actionLink: `resubmit=ongoing&tournament=${tournamentId}`,
+            silent: true
+        })));
 
-    // Immediate UI removal — don’t wait for snapshot
-    document.getElementById(`appcard-${userId}`)?.remove();
-    showToast("Application removed & team notified.", "success");
-  } catch (e) {
-    showToast("Error removing: Permission Denied.", "error");
-  }
+        // Immediate UI removal — don’t wait for snapshot
+        document.getElementById(`appcard-${userId}`)?.remove();
+        showToast("Application removed & team notified.", "success");
+    } catch (e) {
+        showToast("Error removing: Permission Denied.", "error");
+    }
 };
 
 
@@ -1062,91 +1062,91 @@ window.removeApplication = async function(tournamentId, userId) {
 //  UPGRADE: replaced Payment Status row with 5-stage progress tracker
 //  ADDED: "Notify This Team" button + Room ID & Password management
 // ============================================================================
-window.viewStatusModal = async function(tournamentId, userId) {
-  if (!window.isAdminSession) return;
-  // Store the listener so we can stop it when modal closes
-  if (window._statusModalListener) {
-    window._statusModalListener(); // Cleanup any existing listener
-  }
-
-  try {
-    const [vSnap, pSnap, uSnap] = await Promise.all([
-      getDoc(doc(db, "tournaments", tournamentId, "verifications", userId)),
-      getDoc(doc(db, "tournaments", tournamentId, "participants", userId)),
-      getDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId))
-    ]);
-
-    const v = vSnap.exists() ? vSnap.data() : {};
-    const p = pSnap.exists() ? pSnap.data() : {};
-    const u = uSnap.exists() ? uSnap.data() : {};
-    
-    const collectionName = uSnap.exists() ? "upcomingRegistrations" : "verifications";
-    v._collection = collectionName;
-    u._collection = collectionName;
-    
-    // Fallback to fetch team session to get true live payment status if others lag
-    let sessionData = {};
-    const teamId = v.teamId || p.teamId || u.teamId;
-    if (teamId) {
-        try {
-            const sSnap = await getDoc(doc(db, "tournaments", tournamentId, "teamSessions", teamId));
-            if (sSnap.exists()) sessionData = sSnap.data();
-        } catch(e) {}
+window.viewStatusModal = async function (tournamentId, userId) {
+    if (!window.isAdminSession) return;
+    // Store the listener so we can stop it when modal closes
+    if (window._statusModalListener) {
+        window._statusModalListener(); // Cleanup any existing listener
     }
 
-    const processedAt = v.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? (u.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? "—");
+    try {
+        const [vSnap, pSnap, uSnap] = await Promise.all([
+            getDoc(doc(db, "tournaments", tournamentId, "verifications", userId)),
+            getDoc(doc(db, "tournaments", tournamentId, "participants", userId)),
+            getDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId))
+        ]);
 
-    // Remove any existing modal
-    document.getElementById("statusModalOverlay")?.remove();
+        const v = vSnap.exists() ? vSnap.data() : {};
+        const p = pSnap.exists() ? pSnap.data() : {};
+        const u = uSnap.exists() ? uSnap.data() : {};
 
-    // Create modal (without innerHTML update function yet)
-    const overlay = document.createElement("div");
-    overlay.id = "statusModalOverlay";
-    overlay.className = "status-modal-overlay";
+        const collectionName = uSnap.exists() ? "upcomingRegistrations" : "verifications";
+        v._collection = collectionName;
+        u._collection = collectionName;
 
-    // Create content container that we'll update
-    const contentDiv = document.createElement("div");
-    contentDiv.className = "status-modal";
-    contentDiv.style.cssText = "max-width:520px;width:100%;";
-
-    overlay.appendChild(contentDiv);
-    document.body.appendChild(overlay);
-
-    // Close on backdrop click
-    overlay.addEventListener("click", e => {
-      if (e.target === overlay) {
-        if (window._statusModalListener) {
-          window._statusModalListener();
-          window._statusModalListener = null;
+        // Fallback to fetch team session to get true live payment status if others lag
+        let sessionData = {};
+        const teamId = v.teamId || p.teamId || u.teamId;
+        if (teamId) {
+            try {
+                const sSnap = await getDoc(doc(db, "tournaments", tournamentId, "teamSessions", teamId));
+                if (sSnap.exists()) sessionData = sSnap.data();
+            } catch (e) { }
         }
-        overlay.remove();
-      }
-    });
 
-    // Function to render/update the modal content
-    function renderStatusContent(updatedP, updatedV, updatedU, updatedS) {
-      const pData = { ...updatedV, ...updatedU, ...updatedP, ...updatedS };
-      const currentPaymentStatus = pData.paymentStatus || "";
-      
-      // Stage calculations from live data
-      const stage3 = ["submitted","paid","verified","pending_verification"].includes(currentPaymentStatus);
-      const stage4 = (currentPaymentStatus === "verified" || currentPaymentStatus === "paid" || currentPaymentStatus === "Payment Verified");
-      const stage5 = pData.confirmationReceived === true;
+        const processedAt = v.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? (u.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? "—");
 
-      // Team code from either the verification doc or participant doc
-      const teamCode = pData.teamCode || "N/A";
-      const theUtr = pData.paymentUtr || pData.utr || "";
-      
-      
-      
-      
-      
-      
-      
-      
-      
+        // Remove any existing modal
+        document.getElementById("statusModalOverlay")?.remove();
 
-      contentDiv.innerHTML = `
+        // Create modal (without innerHTML update function yet)
+        const overlay = document.createElement("div");
+        overlay.id = "statusModalOverlay";
+        overlay.className = "status-modal-overlay";
+
+        // Create content container that we'll update
+        const contentDiv = document.createElement("div");
+        contentDiv.className = "status-modal";
+        contentDiv.style.cssText = "max-width:520px;width:100%;";
+
+        overlay.appendChild(contentDiv);
+        document.body.appendChild(overlay);
+
+        // Close on backdrop click
+        overlay.addEventListener("click", e => {
+            if (e.target === overlay) {
+                if (window._statusModalListener) {
+                    window._statusModalListener();
+                    window._statusModalListener = null;
+                }
+                overlay.remove();
+            }
+        });
+
+        // Function to render/update the modal content
+        function renderStatusContent(updatedP, updatedV, updatedU, updatedS) {
+            const pData = { ...updatedV, ...updatedU, ...updatedP, ...updatedS };
+            const currentPaymentStatus = pData.paymentStatus || "";
+
+            // Stage calculations from live data
+            const stage3 = ["submitted", "paid", "verified", "pending_verification"].includes(currentPaymentStatus);
+            const stage4 = (currentPaymentStatus === "verified" || currentPaymentStatus === "paid" || currentPaymentStatus === "Payment Verified");
+            const stage5 = pData.confirmationReceived === true;
+
+            // Team code from either the verification doc or participant doc
+            const teamCode = pData.teamCode || "N/A";
+            const theUtr = pData.paymentUtr || pData.utr || "";
+
+
+
+
+
+
+
+
+
+
+            contentDiv.innerHTML = `
         <h3>📊 Team Status — ${escHtml(pData.teamName ?? "—")}</h3>
 
         <!-- ✅ TEAM UNIQUE CODE — Prominent, copyable -->
@@ -1183,20 +1183,20 @@ window.viewStatusModal = async function(tournamentId, userId) {
         <div style="margin:20px 0 6px;">
           <p style="color:var(--muted);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;">✅ Application Progress Checklist</p>
           ${progressTracker([
-            { label: "Application Submitted",        done: true },
-            { label: "Verification Approved by Admin", done: true },
-            { label: "Payment Receipt Submitted",     done: stage3 },
-            { label: "Payment Verified by Admin",     done: stage4 },
-            { label: "Confirmation Acknowledged",     done: stage5 },
-          ])}
+                { label: "Application Submitted", done: true },
+                { label: "Verification Approved by Admin", done: true },
+                { label: "Payment Receipt Submitted", done: stage3 },
+                { label: "Payment Verified by Admin", done: stage4 },
+                { label: "Confirmation Acknowledged", done: stage5 },
+            ])}
         </div>
 
         <!-- Live indicator -->
         <div id="confirmationLiveIndicator" style="text-align:center;margin:10px 0;">
-          ${stage5 
-            ? `<span style="background:var(--green);color:#000;padding:8px 16px;border-radius:20px;font-weight:bold;font-size:13px;">✅ Confirmation Received!</span>`
-            : `<span style="background:#333;color:#888;padding:8px 16px;border-radius:20px;font-size:13px;">⏳ Waiting for user confirmation...</span>`
-          }
+          ${stage5
+                    ? `<span style="background:var(--green);color:#000;padding:8px 16px;border-radius:20px;font-weight:bold;font-size:13px;">✅ Confirmation Received!</span>`
+                    : `<span style="background:#333;color:#888;padding:8px 16px;border-radius:20px;font-size:13px;">⏳ Waiting for user confirmation...</span>`
+                }
         </div>
 
         <!-- Room ID & Password -->
@@ -1222,37 +1222,37 @@ window.viewStatusModal = async function(tournamentId, userId) {
           <button onclick="if(confirm('🛠️ DEV OVERRIDE: Force approve payment regardless of current status?')){ window.approveTransaction('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}', '${userId}', '${escHtml(theUtr || "MANUAL_OVERRIDE")}', '${pData.entryFee || 0}', '${pData._collection || "verifications"}'); document.getElementById('statusModalOverlay').remove(); }" style="padding:8px;background:transparent;color:#ff4444;border:1px dashed #ff4444;border-radius:6px;cursor:pointer;font-family:inherit;font-size:11px;">🛠️ Force Override</button>
         </div>
       `;
+        }
+
+        // Initial render
+        renderStatusContent(p, v, u, sessionData);
+
+        // Real-time listener for live updates (try listening to session for payment status instead)
+        if (teamId) {
+            window._statusModalListener = onSnapshot(doc(db, "tournaments", tournamentId, "teamSessions", teamId), (snap) => {
+                if (!snap.exists()) return;
+                const updatedS = snap.data();
+                renderStatusContent(p, v, u, updatedS);
+            });
+        }
+
+    } catch (e) {
+        showToast("Error loading status: Permission Denied.", "error");
     }
-
-    // Initial render
-    renderStatusContent(p, v, u, sessionData);
-
-    // Real-time listener for live updates (try listening to session for payment status instead)
-    if (teamId) {
-        window._statusModalListener = onSnapshot(doc(db, "tournaments", tournamentId, "teamSessions", teamId), (snap) => {
-          if (!snap.exists()) return;
-          const updatedS = snap.data();
-          renderStatusContent(p, v, u, updatedS);
-        });
-    }
-
-  } catch (e) {
-    showToast("Error loading status: Permission Denied.", "error");
-  }
 };
 
 
 // ── Progress tracker HTML builder ─────────────────────────────────────────
 function progressTracker(stages) {
-  return `<div style="display:flex;flex-direction:column;gap:0;">` +
-    stages.map((s, i) => {
-      const isLast = i === stages.length - 1;
-      const dot = s.done
-        ? `<div style="width:24px;height:24px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;color:#000;font-size:13px;font-weight:700;flex-shrink:0;">✓</div>`
-        : `<div style="width:24px;height:24px;border-radius:50%;border:2px solid #333;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;flex-shrink:0;">○</div>`;
-      const connector = isLast ? "" : `<div style="width:2px;height:18px;background:${s.done ? "var(--green)" : "#333"};margin-left:11px;margin-top:2px;margin-bottom:2px;"></div>`;
-      const labelColor = s.done ? "#fff" : "var(--muted)";
-      return `
+    return `<div style="display:flex;flex-direction:column;gap:0;">` +
+        stages.map((s, i) => {
+            const isLast = i === stages.length - 1;
+            const dot = s.done
+                ? `<div style="width:24px;height:24px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;color:#000;font-size:13px;font-weight:700;flex-shrink:0;">✓</div>`
+                : `<div style="width:24px;height:24px;border-radius:50%;border:2px solid #333;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;flex-shrink:0;">○</div>`;
+            const connector = isLast ? "" : `<div style="width:2px;height:18px;background:${s.done ? "var(--green)" : "#333"};margin-left:11px;margin-top:2px;margin-bottom:2px;"></div>`;
+            const labelColor = s.done ? "#fff" : "var(--muted)";
+            return `
         <div style="display:flex;align-items:flex-start;gap:10px;">
           <div style="display:flex;flex-direction:column;align-items:center;">
             ${dot}
@@ -1260,77 +1260,77 @@ function progressTracker(stages) {
           </div>
           <span style="color:${labelColor};font-size:13px;padding-top:3px;">${s.label}</span>
         </div>`;
-    }).join("") + `</div>`;
+        }).join("") + `</div>`;
 }
 
 // ── Save Room ID & Password — notifies all members ─────────────────────────
-window.saveRoomDetails = async function(tournamentId, userId, teamId) {
-  const roomId   = document.getElementById("smRoomId")?.value.trim();
-  const roomPass = document.getElementById("smRoomPass")?.value.trim();
+window.saveRoomDetails = async function (tournamentId, userId, teamId) {
+    const roomId = document.getElementById("smRoomId")?.value.trim();
+    const roomPass = document.getElementById("smRoomPass")?.value.trim();
 
-  if (!roomId || !roomPass) {
-    showToast("Enter both Room ID and Password.", "warning");
-    return;
-  }
-
-  try {
-    // Save to participant doc if it exists
-    try {
-        await updateDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
-          roomId:           roomId,
-          roomPassword:     roomPass,
-          roomUpdatedAt:    serverTimestamp(),
-          roomUpdatedBy:    auth.currentUser?.email ?? "admin",
-        });
-    } catch (ignore) { /* Document might not exist yet, this is fine */ }
-
-    // Get tournament name
-    let tournamentName = tournamentId;
-    try {
-      const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
-      if (tSnap.exists()) tournamentName = tSnap.data().title ?? tournamentId;
-    } catch (_) {}
-
-    // Resolve true Firebase Auth members from teamId
-    let ids = [userId];
-    if (teamId) {
-      try {
-        const tSnap = await getDoc(doc(db, "teams", teamId));
-        if (tSnap.exists() && Array.isArray(tSnap.data().members)) {
-          ids = [...new Set([...tSnap.data().members, userId])];
-        }
-      } catch(e) {}
+    if (!roomId || !roomPass) {
+        showToast("Enter both Room ID and Password.", "warning");
+        return;
     }
 
-    // Notify all members (dual: in-app + push)
-    await Promise.all(ids.map(mid => sendDualNotification(mid, {
-      type:    "room_details",
-      title:   "🔑 Room Details Ready!",
-      message: `Room ID: ${roomId} | Password: ${roomPass}`,
-      extra:   { roomId, roomPassword: roomPass, tournamentId, tournamentName },
-      actionLink: `tournament=${tournamentId}`,
-    })));
+    try {
+        // Save to participant doc if it exists
+        try {
+            await updateDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+                roomId: roomId,
+                roomPassword: roomPass,
+                roomUpdatedAt: serverTimestamp(),
+                roomUpdatedBy: auth.currentUser?.email ?? "admin",
+            });
+        } catch (ignore) { /* Document might not exist yet, this is fine */ }
 
-    document.getElementById("statusModalOverlay")?.remove();
-    showToast(`✅ Room details saved & notified ${ids.length} member(s)!`, "success");
-    document.getElementById("statusModalOverlay")?.remove();
-  } catch (e) {
-    showToast("Action failed: Permission Denied.", "error");
-  }
+        // Get tournament name
+        let tournamentName = tournamentId;
+        try {
+            const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+            if (tSnap.exists()) tournamentName = tSnap.data().title ?? tournamentId;
+        } catch (_) { }
+
+        // Resolve true Firebase Auth members from teamId
+        let ids = [userId];
+        if (teamId) {
+            try {
+                const tSnap = await getDoc(doc(db, "teams", teamId));
+                if (tSnap.exists() && Array.isArray(tSnap.data().members)) {
+                    ids = [...new Set([...tSnap.data().members, userId])];
+                }
+            } catch (e) { }
+        }
+
+        // Notify all members (dual: in-app + push)
+        await Promise.all(ids.map(mid => sendDualNotification(mid, {
+            type: "room_details",
+            title: "🔑 Room Details Ready!",
+            message: `Room ID: ${roomId} | Password: ${roomPass}`,
+            extra: { roomId, roomPassword: roomPass, tournamentId, tournamentName },
+            actionLink: `tournament=${tournamentId}`,
+        })));
+
+        document.getElementById("statusModalOverlay")?.remove();
+        showToast(`✅ Room details saved & notified ${ids.length} member(s)!`, "success");
+        document.getElementById("statusModalOverlay")?.remove();
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
 };
 
 // ============================================================================
 //  7. NOTIFY THIS TEAM MODAL
 //  NEW: replaced Confirm Payment / Reject Payment buttons
 // ============================================================================
-window.openNotifyModal = function(tournamentId, userId, teamId, teamName) {
-  if (!window.isAdminSession) return;
-  document.getElementById("notifyModalOverlay")?.remove();
+window.openNotifyModal = function (tournamentId, userId, teamId, teamName) {
+    if (!window.isAdminSession) return;
+    document.getElementById("notifyModalOverlay")?.remove();
 
-  const overlay = document.createElement("div");
-  overlay.id = "notifyModalOverlay";
-  overlay.className = "status-modal-overlay";
-  overlay.innerHTML = `
+    const overlay = document.createElement("div");
+    overlay.id = "notifyModalOverlay";
+    overlay.className = "status-modal-overlay";
+    overlay.innerHTML = `
     <div class="status-modal" style="max-width:460px;width:100%;">
       <h3>🔔 Notify Team — ${escHtml(teamName)}</h3>
       <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">
@@ -1345,8 +1345,8 @@ window.openNotifyModal = function(tournamentId, userId, teamId, teamName) {
             "Payment received. Room details coming soon!",
             "Match starts in 30 minutes. Get ready!",
             "Check your room ID in the app.",
-          ].map(msg => `
-            <button onclick="document.getElementById('notifyMsgInput').value='${msg.replace(/'/g,"\\'")}'"
+        ].map(msg => `
+            <button onclick="document.getElementById('notifyMsgInput').value='${msg.replace(/'/g, "\\'")}'"
               style="background:#1a1a1a;border:1px solid #333;color:var(--muted);padding:5px 10px;border-radius:16px;cursor:pointer;font-size:12px;font-family:inherit;transition:all .15s;"
               onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green)'"
               onmouseout="this.style.borderColor='#333';this.style.color='var(--muted)'">
@@ -1369,50 +1369,50 @@ window.openNotifyModal = function(tournamentId, userId, teamId, teamName) {
       </button>
     </div>`;
 
-  document.body.appendChild(overlay);
-  overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
 };
 
 // WITH THIS
-window.sendTeamNotification = async function(tournamentId, userId, teamId, teamName) {
-  const message = document.getElementById("notifyMsgInput")?.value.trim();
-  if (!message) { showToast("Please enter a message.", "warning"); return; }
+window.sendTeamNotification = async function (tournamentId, userId, teamId, teamName) {
+    const message = document.getElementById("notifyMsgInput")?.value.trim();
+    if (!message) { showToast("Please enter a message.", "warning"); return; }
 
-  try {
-    // 1. Write directly to the live Participant doc so the frontend pops up immediately
     try {
-        await updateDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
-            statusMessage: message,
-            statusMessageShown: false,
-            statusMessageUpdatedAt: serverTimestamp()
-        });
-    } catch (ignore) { /* Document might not exist yet, this is fine */ }
+        // 1. Write directly to the live Participant doc so the frontend pops up immediately
+        try {
+            await updateDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+                statusMessage: message,
+                statusMessageShown: false,
+                statusMessageUpdatedAt: serverTimestamp()
+            });
+        } catch (ignore) { /* Document might not exist yet, this is fine */ }
 
-    // Resolve true Firebase Auth members from teamId
-    let ids = [userId];
-    if (teamId) {
-      try {
-        const tSnap = await getDoc(doc(db, "teams", teamId));
-        if (tSnap.exists() && Array.isArray(tSnap.data().members)) {
-          ids = [...new Set([...tSnap.data().members, userId])];
+        // Resolve true Firebase Auth members from teamId
+        let ids = [userId];
+        if (teamId) {
+            try {
+                const tSnap = await getDoc(doc(db, "teams", teamId));
+                if (tSnap.exists() && Array.isArray(tSnap.data().members)) {
+                    ids = [...new Set([...tSnap.data().members, userId])];
+                }
+            } catch (e) { }
         }
-      } catch(e) {}
+
+        // 2. Send dual notification so it lands perfectly in the Inbox!
+        await Promise.all(ids.map(mid => sendDualNotification(mid, {
+            type: "status_message", // FIXED: Matches frontend inbox icons/clicks
+            title: "💬 Message from Admin",
+            message,
+            extra: { tournamentId, teamName },
+            actionLink: `tournament=${tournamentId}`,
+        })));
+
+        document.getElementById("notifyModalOverlay")?.remove();
+        showToast(`Notification sent to ${ids.length} member(s)!`, "success");
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
     }
-
-    // 2. Send dual notification so it lands perfectly in the Inbox!
-    await Promise.all(ids.map(mid => sendDualNotification(mid, {
-      type:      "status_message", // FIXED: Matches frontend inbox icons/clicks
-      title:     "💬 Message from Admin",
-      message,
-      extra:     { tournamentId, teamName },
-      actionLink: `tournament=${tournamentId}`,
-    })));
-
-    document.getElementById("notifyModalOverlay")?.remove();
-    showToast(`Notification sent to ${ids.length} member(s)!`, "success");
-  } catch (e) {
-    showToast("Action failed: Permission Denied.", "error");
-  }
 };
 
 // ============================================================================
@@ -1426,75 +1426,75 @@ window.sendTeamNotification = async function(tournamentId, userId, teamId, teamN
 //             If no Cloud Function is set up yet, push is silently skipped.
 // ============================================================================
 async function sendDualNotification(userId, { type, title, message, extra = {}, actionLink = "", silent = false }) {
-  // A. In-app (MANDATORY — never skip)
-  try {
-      await addDoc(collection(db, "users", userId, "notifications"), {
-        type,
-        title,
-        message,
-        ...extra,
-        actionLink,
-        read:       false,
-        // If silent is true, we pretend the popup was already shown so the client UI skips the popup bubble,
-        // but since read is false, it still shows up in the notification inbox.
-        popupShown: silent ? true : false,
-        createdAt:  serverTimestamp(),
-      });
-  } catch (err) {
-      console.error("Failed to send in-app notification:", err);
-  }
-
-  // B. Push (optional — write to pushQueue; Cloud Function handles FCM)
-  // FIX: Skip push queue for obvious test accounts like "1111" to prevent database errors
-  if (!userId || userId.length < 10) {
-      return; 
-  }
-
-  // If the notification is explicitly marked silent, don't trigger a push notification either.
-  if (silent) {
-      return;
-  }
-
-  const ENABLE_PUSH_QUEUE = false; // Set to true when Firebase background workers are active
-
-  try {
-    if (ENABLE_PUSH_QUEUE) {
-        // 1. Write to legacy push queue for history
-        await addDoc(collection(db, "pushQueue", userId, "tasks"), {
-          type,
-          title,
-          message,
-          ...extra,
-          createdAt: serverTimestamp(),
-          sent:      true,
+    // A. In-app (MANDATORY — never skip)
+    try {
+        await addDoc(collection(db, "users", userId, "notifications"), {
+            type,
+            title,
+            message,
+            ...extra,
+            actionLink,
+            read: false,
+            // If silent is true, we pretend the popup was already shown so the client UI skips the popup bubble,
+            // but since read is false, it still shows up in the notification inbox.
+            popupShown: silent ? true : false,
+            createdAt: serverTimestamp(),
         });
+    } catch (err) {
+        console.error("Failed to send in-app notification:", err);
     }
 
-    // 2. Actually trigger the push via our active REST API (Cloud Functions aren't deployed)
-    fetch('https://npc-secure-backend.onrender.com/send-targeted', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            uids: [userId],
-            title: title,
-            body: message,
-            type: type,
-            extra: extra,
-            actionLink: actionLink
-        })
-    }).catch(err => console.debug("Silent failure hitting push API", err));
+    // B. Push (optional — write to pushQueue; Cloud Function handles FCM)
+    // FIX: Skip push queue for obvious test accounts like "1111" to prevent database errors
+    if (!userId || userId.length < 10) {
+        return;
+    }
 
-  } catch (err) {
-    // Push queue failure must NEVER break in-app notifications
-    // FIX: Changed from console.warn to console.debug so it doesn't clutter your console with yellow errors
-    console.debug(`[Push] Skipped queue for ${userId}. (Usually means test account or offline)`);
-  }
+    // If the notification is explicitly marked silent, don't trigger a push notification either.
+    if (silent) {
+        return;
+    }
+
+    const ENABLE_PUSH_QUEUE = false; // Set to true when Firebase background workers are active
+
+    try {
+        if (ENABLE_PUSH_QUEUE) {
+            // 1. Write to legacy push queue for history
+            await addDoc(collection(db, "pushQueue", userId, "tasks"), {
+                type,
+                title,
+                message,
+                ...extra,
+                createdAt: serverTimestamp(),
+                sent: true,
+            });
+        }
+
+        // 2. Actually trigger the push via our active REST API (Cloud Functions aren't deployed)
+        fetch('https://npc-secure-backend.onrender.com/send-targeted', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                uids: [userId],
+                title: title,
+                body: message,
+                type: type,
+                extra: extra,
+                actionLink: actionLink
+            })
+        }).catch(err => console.debug("Silent failure hitting push API", err));
+
+    } catch (err) {
+        // Push queue failure must NEVER break in-app notifications
+        // FIX: Changed from console.warn to console.debug so it doesn't clutter your console with yellow errors
+        console.debug(`[Push] Skipped queue for ${userId}. (Usually means test account or offline)`);
+    }
 }
 // ============================================================================
 //  9. VIEW & DECIDE MODAL  (approve / reject)
 // ============================================================================
 function fieldVerifyRow(label, value, fieldKey) {
-  return `
+    return `
     <div style="display:flex;justify-content:space-between;align-items:center;background:#0f0f0f;padding:10px 14px;border-radius:8px;">
       <span style="color:var(--muted);font-size:13px;">${label}:
         <b style="color:#fff;margin-left:6px;">${escHtml(value ?? "—")}</b>
@@ -1508,38 +1508,38 @@ function fieldVerifyRow(label, value, fieldKey) {
     </div>`;
 }
 
-window.toggleField = function(field, status) {
-  currentFieldStatuses[field] = status;
-  const ok  = document.getElementById(`btn-${field}-ok`);
-  const err = document.getElementById(`btn-${field}-err`);
-  if (ok)  { ok.style.background  = status === "ok"  ? "var(--green)" : "#333"; ok.style.color  = status === "ok"  ? "#000" : "var(--green)"; }
-  if (err) { err.style.background = status === "err" ? "var(--red)"   : "#333"; err.style.color = status === "err" ? "#fff" : "var(--red)"; }
+window.toggleField = function (field, status) {
+    currentFieldStatuses[field] = status;
+    const ok = document.getElementById(`btn-${field}-ok`);
+    const err = document.getElementById(`btn-${field}-err`);
+    if (ok) { ok.style.background = status === "ok" ? "var(--green)" : "#333"; ok.style.color = status === "ok" ? "#000" : "var(--green)"; }
+    if (err) { err.style.background = status === "err" ? "var(--red)" : "#333"; err.style.color = status === "err" ? "#fff" : "var(--red)"; }
 };
 
-window.viewApplicationDetails = async function(tournamentId, userId) {
-  try {
-    const docSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
-    if (!docSnap.exists()) { showToast("Application not found.", "error"); return; }
-
-    const v = docSnap.data();
-    document.getElementById("verifModal")?.remove();
-    currentFieldStatuses = {};
-
-    const uidsArray  = Array.isArray(v.uids) ? v.uids : (v.uids ? [v.uids] : []);
-    const uidRowsHtml = uidsArray.map((uid, i) =>
-      fieldVerifyRow(`Player ${i + 1} UID`, uid, `uid_${i}`)
-    ).join("") || `<div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;color:var(--muted);font-size:13px;">No UIDs submitted</div>`;
-
-    let entryFee = "—";
+window.viewApplicationDetails = async function (tournamentId, userId) {
     try {
-      const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
-      if (tSnap.exists()) entryFee = "₹" + (tSnap.data().entryFee ?? "—");
-    } catch (_) {}
+        const docSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
+        if (!docSnap.exists()) { showToast("Application not found.", "error"); return; }
 
-    const modal = document.createElement("div");
-    modal.id = "verifModal";
-    modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
-    modal.innerHTML = `
+        const v = docSnap.data();
+        document.getElementById("verifModal")?.remove();
+        currentFieldStatuses = {};
+
+        const uidsArray = Array.isArray(v.uids) ? v.uids : (v.uids ? [v.uids] : []);
+        const uidRowsHtml = uidsArray.map((uid, i) =>
+            fieldVerifyRow(`Player ${i + 1} UID`, uid, `uid_${i}`)
+        ).join("") || `<div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;color:var(--muted);font-size:13px;">No UIDs submitted</div>`;
+
+        let entryFee = "—";
+        try {
+            const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+            if (tSnap.exists()) entryFee = "₹" + (tSnap.data().entryFee ?? "—");
+        } catch (_) { }
+
+        const modal = document.createElement("div");
+        modal.id = "verifModal";
+        modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
+        modal.innerHTML = `
       <div style="background:var(--bg2);width:100%;max-width:580px;padding:28px;border-radius:14px;border:1px solid var(--border);max-height:92vh;overflow-y:auto;">
         <h2 style="color:var(--green);margin-bottom:6px;">Review Application</h2>
         <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">Team: <b style="color:#fff;">${escHtml(v.teamName ?? "—")}</b></p>
@@ -1602,95 +1602,95 @@ window.viewApplicationDetails = async function(tournamentId, userId) {
         </button>
       </div>`;
 
-    document.body.appendChild(modal);
-    modal.querySelector("#approveBtn").addEventListener("click", () => processDecision(tournamentId, userId, "approved"));
-    modal.querySelector("#rejectBtn").addEventListener("click",  () => processDecision(tournamentId, userId, "rejected"));
-  } catch (e) {
-    showToast("Action failed: Permission Denied.", "error");
-  }
+        document.body.appendChild(modal);
+        modal.querySelector("#approveBtn").addEventListener("click", () => processDecision(tournamentId, userId, "approved"));
+        modal.querySelector("#rejectBtn").addEventListener("click", () => processDecision(tournamentId, userId, "rejected"));
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
 };
 
 // ============================================================================
 //  10. PROCESS DECISION  (approve / reject + dual notify all teammates)
 // ============================================================================
 async function processDecision(tournamentId, userId, status) {
-  const reasonSelect = document.getElementById("reasonSelect").value;
-  const customNote   = document.getElementById("adminNote")?.value?.trim() ?? "";
-  const finalReason  = reasonSelect === "custom" ? customNote : reasonSelect;
+    const reasonSelect = document.getElementById("reasonSelect").value;
+    const customNote = document.getElementById("adminNote")?.value?.trim() ?? "";
+    const finalReason = reasonSelect === "custom" ? customNote : reasonSelect;
 
-  if (status === "rejected" && !finalReason) {
-    showToast("Please select or write a rejection reason.", "warning");
-    return;
-  }
-
-  try {
-    await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
-      status,
-      rejectionNote:  finalReason,
-      fieldStatus:    currentFieldStatuses,
-      processedAt:    serverTimestamp(),
-      processedBy:    auth.currentUser?.uid ?? "admin",
-    });
-
-    // Collect team member IDs
-    let allMemberIds = [userId];
-    try {
-      const applicantSnap = await getDoc(doc(db, "users", userId));
-      if (applicantSnap.exists()) {
-        const teamId = applicantSnap.data().teamId;
-        if (teamId) {
-          const teamSnap = await getDoc(doc(db, "teams", teamId));
-          if (teamSnap.exists()) {
-            const members = teamSnap.data().members ?? [];
-            allMemberIds = [...new Set([...members, userId])];
-          }
-        }
-      }
-    } catch (lookupErr) {
-      console.warn("Team lookup failed:", "Permission Denied or Invalid Data");
+    if (status === "rejected" && !finalReason) {
+        showToast("Please select or write a rejection reason.", "warning");
+        return;
     }
 
-    const msgApproved = "Your team has been verified! ✅ Proceed to the payment stage.";
-    const msgRejected = `Your application was rejected. Reason: ${finalReason}`;
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
+            status,
+            rejectionNote: finalReason,
+            fieldStatus: currentFieldStatuses,
+            processedAt: serverTimestamp(),
+            processedBy: auth.currentUser?.uid ?? "admin",
+        });
 
-    await Promise.all(
-      allMemberIds.map(mid => sendDualNotification(mid, {
-        type:      status === "approved" ? "approval" : "rejected",
-        title:     status === "approved" ? "Application Approved! ✅" : "Application Rejected ❌",
-        message:   status === "approved" ? msgApproved : msgRejected,
-        extra:     { tournamentId, rejectionNote: finalReason || "" },
-        actionLink: `tournament=${tournamentId}`,
-      }))
-    );
+        // Collect team member IDs
+        let allMemberIds = [userId];
+        try {
+            const applicantSnap = await getDoc(doc(db, "users", userId));
+            if (applicantSnap.exists()) {
+                const teamId = applicantSnap.data().teamId;
+                if (teamId) {
+                    const teamSnap = await getDoc(doc(db, "teams", teamId));
+                    if (teamSnap.exists()) {
+                        const members = teamSnap.data().members ?? [];
+                        allMemberIds = [...new Set([...members, userId])];
+                    }
+                }
+            }
+        } catch (lookupErr) {
+            console.warn("Team lookup failed:", "Permission Denied or Invalid Data");
+        }
 
-    document.getElementById("verifModal")?.remove();
-    showToast(
-      status === "approved"
-        ? `✅ Team approved! Notified ${allMemberIds.length} member(s).`
-        : `❌ Team rejected. Notified ${allMemberIds.length} member(s).`,
-      status === "approved" ? "success" : "error"
-    );
-  } catch (e) {
-    console.error("Decision Error:", e);
-    showToast("Action failed: Permission Denied.", "error");
-  }
+        const msgApproved = "Your team has been verified! ✅ Proceed to the payment stage.";
+        const msgRejected = `Your application was rejected. Reason: ${finalReason}`;
+
+        await Promise.all(
+            allMemberIds.map(mid => sendDualNotification(mid, {
+                type: status === "approved" ? "approval" : "rejected",
+                title: status === "approved" ? "Application Approved! ✅" : "Application Rejected ❌",
+                message: status === "approved" ? msgApproved : msgRejected,
+                extra: { tournamentId, rejectionNote: finalReason || "" },
+                actionLink: `tournament=${tournamentId}`,
+            }))
+        );
+
+        document.getElementById("verifModal")?.remove();
+        showToast(
+            status === "approved"
+                ? `✅ Team approved! Notified ${allMemberIds.length} member(s).`
+                : `❌ Team rejected. Notified ${allMemberIds.length} member(s).`,
+            status === "approved" ? "success" : "error"
+        );
+    } catch (e) {
+        console.error("Decision Error:", e);
+        showToast("Action failed: Permission Denied.", "error");
+    }
 }
 
 // ============================================================================
 //  11. REJECTED DETAILS (read-only)
 // ============================================================================
-window.viewRejectedDetails = async function(tournamentId, userId) {
-  try {
-    const docSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
-    if (!docSnap.exists()) { showToast("Application not found.", "error"); return; }
+window.viewRejectedDetails = async function (tournamentId, userId) {
+    try {
+        const docSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
+        if (!docSnap.exists()) { showToast("Application not found.", "error"); return; }
 
-    const v = docSnap.data();
-    document.getElementById("rejectedDetailModal")?.remove();
+        const v = docSnap.data();
+        document.getElementById("rejectedDetailModal")?.remove();
 
-    const modal = document.createElement("div");
-    modal.id = "rejectedDetailModal";
-    modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
-    modal.innerHTML = `
+        const modal = document.createElement("div");
+        modal.id = "rejectedDetailModal";
+        modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
+        modal.innerHTML = `
       <div style="background:var(--bg2);width:100%;max-width:520px;padding:28px;border-radius:14px;border:1px solid var(--red);max-height:90vh;overflow-y:auto;">
         <h2 style="color:var(--red);margin-bottom:6px;">❌ Rejected Application</h2>
         <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">Read-only view</p>
@@ -1718,10 +1718,10 @@ window.viewRejectedDetails = async function(tournamentId, userId) {
           Close
         </button>
       </div>`;
-    document.body.appendChild(modal);
-  } catch (e) {
-    showToast("Action failed: Permission Denied.", "error");
-  }
+        document.body.appendChild(modal);
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
 };
 
 // ============================================================================
@@ -1731,80 +1731,80 @@ window.viewRejectedDetails = async function(tournamentId, userId) {
 window._currentUpcomingFilter = 'all';
 
 function loadUpcomingRegistrations() {
-  if (_listeners.registrations) { _listeners.registrations(); _listeners.registrations = null; }
+    if (_listeners.registrations) { _listeners.registrations(); _listeners.registrations = null; }
 
-  const container = document.getElementById("upcomingRegistrationsList");
-  if (!container) return;
-  container.innerHTML = '<p class="loading-text">Loading...</p>';
+    const container = document.getElementById("upcomingRegistrationsList");
+    if (!container) return;
+    container.innerHTML = '<p class="loading-text">Loading...</p>';
 
-  const q = query(
-    collectionGroup(db, "upcomingRegistrations"),
-    orderBy("registeredAt", "desc")
-  );
+    const q = query(
+        collectionGroup(db, "upcomingRegistrations"),
+        orderBy("registeredAt", "desc")
+    );
 
-  _listeners.registrations = onSnapshot(q, (snapshot) => {
-    snapshot.docChanges().forEach(c => {
-      const grandparentColId = c.doc.ref.parent.parent?.parent?.id;
-      if (c.type === "added" && c.doc.data().status === "pending" && grandparentColId === "tournaments") {
-        playAdminAlert(c.doc.id);
-      }
+    _listeners.registrations = onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach(c => {
+            const grandparentColId = c.doc.ref.parent.parent?.parent?.id;
+            if (c.type === "added" && c.doc.data().status === "pending" && grandparentColId === "tournaments") {
+                playAdminAlert(c.doc.id);
+            }
+        });
+
+        window._lastUpcomingSnapshot = snapshot;
+        window.renderUpcomingList(snapshot);
+    }, err => {
+        container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: Permission Denied or Invalid Data</p>`;
     });
-
-    window._lastUpcomingSnapshot = snapshot;
-    window.renderUpcomingList(snapshot);
-  }, err => {
-    container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: Permission Denied or Invalid Data</p>`;
-  });
 }
 
-window.renderUpcomingList = function(snapshot) {
-  const container = document.getElementById("upcomingRegistrationsList");
-  if (!container) return;
+window.renderUpcomingList = function (snapshot) {
+    const container = document.getElementById("upcomingRegistrationsList");
+    if (!container) return;
 
-  const pending  = [];
-  const approved = [];
-  const rejected = [];
-  const tourneyIds = new Set();
+    const pending = [];
+    const approved = [];
+    const rejected = [];
+    const tourneyIds = new Set();
 
     snapshot.forEach(d => {
-      const grandparentColId = d.ref.parent.parent?.parent?.id;
-      if (grandparentColId !== "tournaments") return;
+        const grandparentColId = d.ref.parent.parent?.parent?.id;
+        if (grandparentColId !== "tournaments") return;
 
-      const data = { id: d.id, tournamentId: d.ref.parent.parent.id, ...d.data() };
-      if (data.archived === true) return; 
-      
-      tourneyIds.add(data.tournamentId);
+        const data = { id: d.id, tournamentId: d.ref.parent.parent.id, ...d.data() };
+        if (data.archived === true) return;
 
-      if (window._currentUpcomingFilter !== 'all' && data.tournamentId !== window._currentUpcomingFilter) return;
+        tourneyIds.add(data.tournamentId);
 
-      if      (data.status === "pending")  pending.push(data);
-      else if (data.status === "approved") approved.push(data);
-      else if (data.status === "rejected") rejected.push(data);
+        if (window._currentUpcomingFilter !== 'all' && data.tournamentId !== window._currentUpcomingFilter) return;
+
+        if (data.status === "pending") pending.push(data);
+        else if (data.status === "approved") approved.push(data);
+        else if (data.status === "rejected") rejected.push(data);
     });
 
     const tabsContainer = document.getElementById("upcomingTourneyTabs");
     if (tabsContainer) {
-      let tabsHtml = `<button onclick="window._currentUpcomingFilter='all'; window.renderUpcomingList(window._lastUpcomingSnapshot)" style="padding:6px 12px; background:${window._currentUpcomingFilter==='all' ? '#00ff88' : '#333'}; color:${window._currentUpcomingFilter==='all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
-      
-      tourneyIds.forEach(tId => {
-        let tName = tId;
-        if (window._adminActiveTournaments) {
-            const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
-            if (tDoc) tName = tDoc.data().title || tId;
-        }
-        tabsHtml += `<button onclick="window._currentUpcomingFilter='${tId}'; window.renderUpcomingList(window._lastUpcomingSnapshot)" style="padding:6px 12px; background:${window._currentUpcomingFilter===tId ? '#00ff88' : '#333'}; color:${window._currentUpcomingFilter===tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
-      });
-      tabsContainer.innerHTML = tabsHtml;
+        let tabsHtml = `<button onclick="window._currentUpcomingFilter='all'; window.renderUpcomingList(window._lastUpcomingSnapshot)" style="padding:6px 12px; background:${window._currentUpcomingFilter === 'all' ? '#00ff88' : '#333'}; color:${window._currentUpcomingFilter === 'all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
+
+        tourneyIds.forEach(tId => {
+            let tName = tId;
+            if (window._adminActiveTournaments) {
+                const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
+                if (tDoc) tName = tDoc.data().title || tId;
+            }
+            tabsHtml += `<button onclick="window._currentUpcomingFilter='${tId}'; window.renderUpcomingList(window._lastUpcomingSnapshot)" style="padding:6px 12px; background:${window._currentUpcomingFilter === tId ? '#00ff88' : '#333'}; color:${window._currentUpcomingFilter === tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
+        });
+        tabsContainer.innerHTML = tabsHtml;
     }
 
     if (!pending.length && !approved.length && !rejected.length) {
-      container.innerHTML = `<div class="empty-state"><span class="emoji">📋</span>No registrations found for this filter.</div>`;
-      return;
+        container.innerHTML = `<div class="empty-state"><span class="emoji">📋</span>No registrations found for this filter.</div>`;
+        return;
     }
 
     let html = "";
-    html += partition("new",      `🆕 New Registrations (${pending.length})`);
-    html += pending.length  ? pending.map(d  => upcomingCard(d, "new")).join("")      : noItems();
+    html += partition("new", `🆕 New Registrations (${pending.length})`);
+    html += pending.length ? pending.map(d => upcomingCard(d, "new")).join("") : noItems();
     html += partition("accepted", `✅ Approved (${approved.length})`);
     html += approved.length ? approved.map(d => upcomingCard(d, "accepted")).join("") : noItems();
     html += partition("rejected", `❌ Rejected (${rejected.length})`);
@@ -1814,38 +1814,38 @@ window.renderUpcomingList = function(snapshot) {
 }
 
 function upcomingCard(d, type) {
-  const pillClass = type === "new" ? "pill-new" : type === "accepted" ? "pill-accepted" : "pill-rejected";
-  const pillLabel = type === "new" ? "PENDING"  : type === "accepted" ? "APPROVED"     : "REJECTED";
-  const eventDate = d.eventDate
-    ? new Date(d.eventDate).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })
-    : "TBA";
+    const pillClass = type === "new" ? "pill-new" : type === "accepted" ? "pill-accepted" : "pill-rejected";
+    const pillLabel = type === "new" ? "PENDING" : type === "accepted" ? "APPROVED" : "REJECTED";
+    const eventDate = d.eventDate
+        ? new Date(d.eventDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+        : "TBA";
 
-  // ✅ FIX: Detect if it is a resubmission
-  const isResubmitted = type === "new" && (d.rejectionNote || d.rejectionReason);
-  
-  const badgeHtml = isResubmitted
-    ? `<span style="background:var(--orange, #ff9800); color:#000; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">⚠️ Resubmitted</span>`
-    : (type === "new" ? `<span style="background:var(--blue, #4a90e2); color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">🆕 New</span>` : "");
+    // ✅ FIX: Detect if it is a resubmission
+    const isResubmitted = type === "new" && (d.rejectionNote || d.rejectionReason);
+
+    const badgeHtml = isResubmitted
+        ? `<span style="background:var(--orange, #ff9800); color:#000; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">⚠️ Resubmitted</span>`
+        : (type === "new" ? `<span style="background:var(--blue, #4a90e2); color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">🆕 New</span>` : "");
 
 
-  let actions = "";
-  if (type === "new") {
-    
-    const appData = {
-      teamName: d.teamName || "—",
-      leaderEmail: d.leaderEmail || "—",
-      phone: d.phone || "—",
-      backupEmail: d.backupEmail || "—",   // ✅ FIX: Include backup Gmail
-      payoutUpiId: d.payoutUpiId || d.upiId || "—",
-      uids: d.uids || [],
-      playersData: d.playersData || d.uids?.map((uid, i) => ({
-        uid: uid,
-        type: d[`typePlayer${i+1}`] || "friend", // Captures NPC User status
-        nickname: d[`nickPlayer${i+1}`] || d[`player${i+1}Nickname`] || ""
-      })) || []
-    };
+    let actions = "";
+    if (type === "new") {
 
-    actions = `
+        const appData = {
+            teamName: d.teamName || "—",
+            leaderEmail: d.leaderEmail || "—",
+            phone: d.phone || "—",
+            backupEmail: d.backupEmail || "—",   // ✅ FIX: Include backup Gmail
+            payoutUpiId: d.payoutUpiId || d.upiId || "—",
+            uids: d.uids || [],
+            playersData: d.playersData || d.uids?.map((uid, i) => ({
+                uid: uid,
+                type: d[`typePlayer${i + 1}`] || "friend", // Captures NPC User status
+                nickname: d[`nickPlayer${i + 1}`] || d[`player${i + 1}Nickname`] || ""
+            })) || []
+        };
+
+        actions = `
       <div style="display:flex; flex-direction:column; gap:8px; width:100%; margin-top:10px;">
         <button class="btn-view" style="width:100%; padding:10px; font-size:14px; box-sizing:border-box;" 
           onclick="openAdminReviewModal('${d.tournamentId}', '${d.id}', '${encodeURIComponent(JSON.stringify(appData))}', 'upcoming')">
@@ -1853,17 +1853,17 @@ function upcomingCard(d, type) {
         </button>
       </div>
     `;
-  } else if (type === "accepted") {
-    // ✅ FIX 1: Added the Status button so you can track pre-payments!
-    actions = `
+    } else if (type === "accepted") {
+        // ✅ FIX 1: Added the Status button so you can track pre-payments!
+        actions = `
       <button class="btn-status" onclick="viewStatusModal('${d.tournamentId}','${d.id}')">📊 Status</button>
       <button class="btn-remove" onclick="removeUpcoming('${d.tournamentId}','${d.id}','${d.id}')" id="regcard-${d.id}">Remove</button>
     `;
-  } else {
-    actions = `<button class="btn-remove" onclick="removeUpcoming('${d.tournamentId}','${d.id}','${d.id}')" id="regcard-${d.id}">Remove</button>`;
-  }
+    } else {
+        actions = `<button class="btn-remove" onclick="removeUpcoming('${d.tournamentId}','${d.id}','${d.id}')" id="regcard-${d.id}">Remove</button>`;
+    }
 
-  return `
+    return `
     <div class="app-card ${type}" id="regcard-${d.id}" style="${isResubmitted ? 'border-left: 4px solid #ff9800;' : ''}">
       <div class="app-card-info">
         <div style="font-size:11px; color:var(--muted); margin-bottom:4px; font-family:monospace; text-transform:uppercase; letter-spacing:1px;">
@@ -1881,7 +1881,7 @@ function upcomingCard(d, type) {
     </div>`;
 }
 // WITH THIS
-window.approveUpcoming = async function(tournamentId, userId) {
+window.approveUpcoming = async function (tournamentId, userId) {
     try {
         // ✅ FIX: Fetch the actual registration document so we can copy the Player UIDs and Nicknames into the Slot
         const regRef = doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId);
@@ -1891,23 +1891,23 @@ window.approveUpcoming = async function(tournamentId, userId) {
         // ✅ FIX: Use writeBatch to update BOTH the tournament doc AND the user's personal log
         // This ensures the user's dashboard card changes from "pending" to "accepted" immediately.
         const batch = writeBatch(db);
-        
+
         // 1. Update the tournament's upcomingRegistrations sub-collection (admin view)
         batch.update(regRef, {
-            status:      "approved",
+            status: "approved",
             processedAt: serverTimestamp()
         });
-        
+
         // 2. ✅ FIX: Update the USER'S personal registration log (user view)
         //    This is the document their dashboard reads. Without this, user stays on "pending".
         const userRegRef = doc(db, "users", userId, "upcomingRegistrations", tournamentId);
         batch.set(userRegRef, {
-            status:        "accepted",
+            status: "accepted",
             paymentStatus: "pending",
-            processedAt:   serverTimestamp(),
-            tournamentId:  tournamentId
+            processedAt: serverTimestamp(),
+            tournamentId: tournamentId
         }, { merge: true }); // merge:true is safe — won't erase existing fields
-        
+
         await batch.commit();
 
         // 3. Resolve all team members to notify (fetch team members)
@@ -1921,8 +1921,8 @@ window.approveUpcoming = async function(tournamentId, userId) {
                     allMemberIds = [...new Set([...(tSnap.data().members ?? []), userId])];
                 }
             }
-        } catch (_) {}
-        
+        } catch (_) { }
+
         // 4. ✅ FIX: Also auto-create the slot entry so Slot Management table is never "undefined"
         try {
             const uSnap = await getDoc(doc(db, "users", userId));
@@ -1932,26 +1932,26 @@ window.approveUpcoming = async function(tournamentId, userId) {
                     const tSnap = await getDoc(doc(db, "teams", uData.teamId));
                     if (tSnap.exists()) {
                         const tData = tSnap.data();
-                       // WITH THIS
+                        // WITH THIS
                         // ✅ FIX: Deduplicate members before writing slot
                         const deduped = [...new Set([...(tData.members || []), userId])];
-                        
+
                         await setDoc(doc(db, "tournaments", tournamentId, "slots", uData.teamId), {
-                            teamId:        uData.teamId,
-                            teamName:      regData.teamName || uData.teamName  || tData.teamName  || "Unknown Team",
-                            teamCode:      regData.teamCode || uData.teamCode  || tData.code      || "N/A",
-                            members:       deduped,
-                            memberCount:   deduped.length,
-                            leaderId:      tData.leaderId  || userId,
-                            leaderEmail:   uData.email     || "",
+                            teamId: uData.teamId,
+                            teamName: regData.teamName || uData.teamName || tData.teamName || "Unknown Team",
+                            teamCode: regData.teamCode || uData.teamCode || tData.code || "N/A",
+                            members: deduped,
+                            memberCount: deduped.length,
+                            leaderId: tData.leaderId || userId,
+                            leaderEmail: uData.email || "",
                             paymentStatus: "Pending Payment", // ✅ Explicit string — never "undefined"
-                            playersData:   regData.playersData || null, // Copies actual In-game UIDs/Nicknames
-                            uids:          regData.uids || null,
-                            nickPlayer1:   regData.nickPlayer1 || regData.player1Nickname || null,
-                            nickPlayer2:   regData.nickPlayer2 || regData.player2Nickname || null,
-                            nickPlayer3:   regData.nickPlayer3 || regData.player3Nickname || null,
-                            nickPlayer4:   regData.nickPlayer4 || regData.player4Nickname || null,
-                            assignedAt:    serverTimestamp()
+                            playersData: regData.playersData || null, // Copies actual In-game UIDs/Nicknames
+                            uids: regData.uids || null,
+                            nickPlayer1: regData.nickPlayer1 || regData.player1Nickname || null,
+                            nickPlayer2: regData.nickPlayer2 || regData.player2Nickname || null,
+                            nickPlayer3: regData.nickPlayer3 || regData.player3Nickname || null,
+                            nickPlayer4: regData.nickPlayer4 || regData.player4Nickname || null,
+                            assignedAt: serverTimestamp()
                         }, { merge: true });
                     }
                 }
@@ -1963,28 +1963,28 @@ window.approveUpcoming = async function(tournamentId, userId) {
 
         // 5. Send dual notifications to all members
         await Promise.all(allMemberIds.map(mid => sendDualNotification(mid, {
-            type:       "upcoming_approved",
-            title:      "Registration Approved! 🎉",
-            message:    "Your upcoming tournament registration has been approved! Stay tuned for match details.",
-            extra:      { tournamentId },
+            type: "upcoming_approved",
+            title: "Registration Approved! 🎉",
+            message: "Your upcoming tournament registration has been approved! Stay tuned for match details.",
+            extra: { tournamentId },
             actionLink: `tournament=${tournamentId}`,
         })));
 
         showToast(`Registration approved! Notified ${allMemberIds.length} member(s).`, "success");
-        
+
     } catch (e) {
         showToast("Error approving: Permission Denied.", "error");
     }
 };
 
 // UPGRADE: custom modal instead of browser prompt()
-window.openRejectUpcomingModal = function(tournamentId, userId) {
-  document.getElementById("rejectUpcomingModal")?.remove();
+window.openRejectUpcomingModal = function (tournamentId, userId) {
+    document.getElementById("rejectUpcomingModal")?.remove();
 
-  const overlay = document.createElement("div");
-  overlay.id = "rejectUpcomingModal";
-  overlay.className = "status-modal-overlay";
-  overlay.innerHTML = `
+    const overlay = document.createElement("div");
+    overlay.id = "rejectUpcomingModal";
+    overlay.className = "status-modal-overlay";
+    overlay.innerHTML = `
     <div class="status-modal" style="max-width:420px;width:100%;">
       <h3 style="color:var(--red);">❌ Reject Registration</h3>
       <p style="color:var(--muted);font-size:13px;margin-bottom:14px;">Select or write a reason. The team will be notified.</p>
@@ -2009,89 +2009,89 @@ window.openRejectUpcomingModal = function(tournamentId, userId) {
         </button>
       </div>
     </div>`;
-  document.body.appendChild(overlay);
+    document.body.appendChild(overlay);
 };
 
-window.confirmRejectUpcoming = async function(tournamentId, userId) {
-  const select = document.getElementById("rejectUpcomingReason").value;
-  const custom = document.getElementById("rejectUpcomingNote").value.trim();
-  const reason = select === "custom" ? custom : select;
-  if (!reason) { showToast("Please select or enter a reason.", "warning"); return; }
+window.confirmRejectUpcoming = async function (tournamentId, userId) {
+    const select = document.getElementById("rejectUpcomingReason").value;
+    const custom = document.getElementById("rejectUpcomingNote").value.trim();
+    const reason = select === "custom" ? custom : select;
+    if (!reason) { showToast("Please select or enter a reason.", "warning"); return; }
 
-  try {
-    await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
-      status: "rejected", rejectionReason: reason, processedAt: serverTimestamp(),
-    });
-    await sendDualNotification(userId, {
-      type:      "rejected",
-      title:     "Registration Rejected",
-      message:   `Your registration was rejected. Reason: ${reason}`,
-      extra:     { tournamentId },
-      actionLink: `tournament=${tournamentId}`,
-    });
-    document.getElementById("rejectUpcomingModal")?.remove();
-    showToast("Registration rejected & team notified.", "error");
-  } catch (e) {
-    showToast("Action failed: Permission Denied.", "error");
-  }
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
+            status: "rejected", rejectionReason: reason, processedAt: serverTimestamp(),
+        });
+        await sendDualNotification(userId, {
+            type: "rejected",
+            title: "Registration Rejected",
+            message: `Your registration was rejected. Reason: ${reason}`,
+            extra: { tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        });
+        document.getElementById("rejectUpcomingModal")?.remove();
+        showToast("Registration rejected & team notified.", "error");
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
 };
 
 // BUG FIX: immediate DOM removal on removeUpcoming + team notification
-window.removeUpcoming = async function(tournamentId, userId, cardId) {
-  if (!confirm("Remove this registration? The team will be notified.")) return;
-  try {
-    // Gather info before archiving
-    let tournamentName = tournamentId;
-    let memberIds = [userId];
+window.removeUpcoming = async function (tournamentId, userId, cardId) {
+    if (!confirm("Remove this registration? The team will be notified.")) return;
     try {
-      const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
-      if (tSnap.exists()) tournamentName = tSnap.data().title || tournamentName;
-      const uSnap = await getDoc(doc(db, "users", userId));
-      if (uSnap.exists() && uSnap.data().teamId) {
-        const tmSnap = await getDoc(doc(db, "teams", uSnap.data().teamId));
-        if (tmSnap.exists()) memberIds = [...new Set([...(tmSnap.data().members || []), userId])];
-      }
-    } catch (_) {}
+        // Gather info before archiving
+        let tournamentName = tournamentId;
+        let memberIds = [userId];
+        try {
+            const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+            if (tSnap.exists()) tournamentName = tSnap.data().title || tournamentName;
+            const uSnap = await getDoc(doc(db, "users", userId));
+            if (uSnap.exists() && uSnap.data().teamId) {
+                const tmSnap = await getDoc(doc(db, "teams", uSnap.data().teamId));
+                if (tmSnap.exists()) memberIds = [...new Set([...(tmSnap.data().members || []), userId])];
+            }
+        } catch (_) { }
 
-    await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
-      archived: true, archivedAt: serverTimestamp(),
-    });
+        await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
+            archived: true, archivedAt: serverTimestamp(),
+        });
 
-    // Notify every team member
-    await Promise.all(memberIds.map(mid => sendDualNotification(mid, {
-      type:       "application_removed",
-      title:      "⚠️ Registration Removed",
-      message:    `Your registration for "${tournamentName}" was removed from the Registration stage. If this was a mistake, tap to re-submit.`,
-      extra:      { tournamentId, tournamentName, stage: "upcoming" },
-      actionLink: `resubmit=upcoming&tournament=${tournamentId}`,
-      silent:     true
-    })));
+        // Notify every team member
+        await Promise.all(memberIds.map(mid => sendDualNotification(mid, {
+            type: "application_removed",
+            title: "⚠️ Registration Removed",
+            message: `Your registration for "${tournamentName}" was removed from the Registration stage. If this was a mistake, tap to re-submit.`,
+            extra: { tournamentId, tournamentName, stage: "upcoming" },
+            actionLink: `resubmit=upcoming&tournament=${tournamentId}`,
+            silent: true
+        })));
 
-    document.getElementById(`regcard-${cardId}`)?.remove();
-    showToast("Removed & team notified.", "success");
-  } catch (e) {
-    showToast("Action failed: Permission Denied.", "error");
-  }
+        document.getElementById(`regcard-${cardId}`)?.remove();
+        showToast("Removed & team notified.", "success");
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
 };
 
 
 // ============================================================================
 //  13. AUTH ACTIONS
 // ============================================================================
-window.adminLogin = async function() {
-  const email = document.getElementById("adminEmail").value.trim();
-  const pass  = document.getElementById("adminPass").value;
-  if (!email || !pass) { showToast("Enter email and password.", "warning"); return; }
-  try {
-    await signInWithEmailAndPassword(auth, email, pass);
-  } catch (e) {
-    showToast("Login failed: Invalid credentials or Permission Denied.", "error");
-  }
+window.adminLogin = async function () {
+    const email = document.getElementById("adminEmail").value.trim();
+    const pass = document.getElementById("adminPass").value;
+    if (!email || !pass) { showToast("Enter email and password.", "warning"); return; }
+    try {
+        await signInWithEmailAndPassword(auth, email, pass);
+    } catch (e) {
+        showToast("Login failed: Invalid credentials or Permission Denied.", "error");
+    }
 };
 
-window.logout = async function() {
-  teardownAllListeners();
-  await signOut(auth);
+window.logout = async function () {
+    teardownAllListeners();
+    await signOut(auth);
 };
 
 // ============================================================================
@@ -2099,7 +2099,7 @@ window.logout = async function() {
 // ============================================================================
 let currentTournamentCategory = "ongoing";
 
-window.handleCategoryChange = function(selectElement) {
+window.handleCategoryChange = function (selectElement) {
     const category = selectElement.value;
     const sharedFields = document.getElementById('sharedFields');
     const upcomingFields = document.getElementById('upcomingFields');
@@ -2108,7 +2108,7 @@ window.handleCategoryChange = function(selectElement) {
     // Hide everything specific first
     if (upcomingFields) upcomingFields.style.display = 'none';
     if (limitedFields) limitedFields.style.display = 'none';
-    
+
     if (category === 'limited') {
         // HIDE standard stats (Fee, Duration, Prizes), SHOW custom paragraph
         if (sharedFields) sharedFields.style.display = 'none';
@@ -2124,21 +2124,21 @@ window.handleCategoryChange = function(selectElement) {
 };
 
 function updateCalendarNote() {
-  const feeInput = document.getElementById("upcomingFee");
-  const noteEl   = document.getElementById("calendarMarkNote");
-  if (!feeInput || !noteEl) return;
-  const fee = Number(feeInput.value);
-  noteEl.textContent = fee > 200
-    ? "⭐ Entry fee > ₹200 — will be marked as Special event on calendar."
-    : "📅 Will be marked as Upcoming event on calendar.";
+    const feeInput = document.getElementById("upcomingFee");
+    const noteEl = document.getElementById("calendarMarkNote");
+    if (!feeInput || !noteEl) return;
+    const fee = Number(feeInput.value);
+    noteEl.textContent = fee > 200
+        ? "⭐ Entry fee > ₹200 — will be marked as Special event on calendar."
+        : "📅 Will be marked as Upcoming event on calendar.";
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("upcomingFee")?.addEventListener("input", updateCalendarNote);
+    document.getElementById("upcomingFee")?.addEventListener("input", updateCalendarNote);
 });
 
 // ✅ Fix - use auth.currentUser instead, since the auth guard already verified admin
-window.addTournament = async function() {
+window.addTournament = async function () {
     if (!auth.currentUser) { showToast("Not allowed", "error"); return; }
 
     const title = document.getElementById("tournamentTitle")?.value.trim();
@@ -2168,7 +2168,7 @@ window.addTournament = async function() {
         if (category === 'limited') {
             const paragraph = document.getElementById("limitedInfoParagraph")?.value.trim();
             const eventDate = document.getElementById("limitedEventDate")?.value;
-            
+
             if (!paragraph || !eventDate) {
                 showToast("Date and Info Paragraph are required for Limited tournaments.", "error");
                 btn.textContent = originalText; btn.disabled = false; return;
@@ -2188,7 +2188,7 @@ window.addTournament = async function() {
                 createdAt: serverTimestamp()
             });
 
-        } 
+        }
         // ─── ONGOING & UPCOMING LOGIC ───
         else {
             tournamentData.entryFee = Number(document.getElementById("tournamentFee")?.value) || 0;
@@ -2229,15 +2229,15 @@ window.addTournament = async function() {
 
         // Save Tournament to Firestore
         const newRef = await addDoc(collection(db, "tournaments"), tournamentData);
-        console.info('[TOURNAMENT] ✅ Saved to Firestore. ID:', newRef.id, '| Data:', JSON.stringify(tournamentData).substring(0,200));
-        
+        console.info('[TOURNAMENT] ✅ Saved to Firestore. ID:', newRef.id, '| Data:', JSON.stringify(tournamentData).substring(0, 200));
+
         showToast(`${category.toUpperCase()} Tournament added successfully!`, "success");
-        
+
         // Reset Form Inputs
         document.getElementById("tournamentTitle").value = "";
         if (document.getElementById("limitedInfoParagraph")) document.getElementById("limitedInfoParagraph").value = "";
         if (document.getElementById("tournamentFee")) document.getElementById("tournamentFee").value = "";
-        
+
     } catch (err) {
         console.error("[TOURNAMENT] Add Tournament Error:", err.message, err);
         showToast("Error adding tournament", "error");
@@ -2246,72 +2246,72 @@ window.addTournament = async function() {
         btn.disabled = false;
     }
 };
-window.deleteTournament = async function(id) {
-  try {
-    const tSnap = await getDoc(doc(db, "tournaments", id));
-    const tData = tSnap.exists() ? tSnap.data() : {};
-    const now = new Date();
-    const actualEnd = tData.endTime ? new Date(tData.endTime) : (tData.eventDate ? (tData.eventTime ? new Date(`${tData.eventDate}T${tData.eventTime}`) : new Date(tData.eventDate)) : null);
-    const isTournamentOver = actualEnd && actualEnd <= now;
+window.deleteTournament = async function (id) {
+    try {
+        const tSnap = await getDoc(doc(db, "tournaments", id));
+        const tData = tSnap.exists() ? tSnap.data() : {};
+        const now = new Date();
+        const actualEnd = tData.endTime ? new Date(tData.endTime) : (tData.eventDate ? (tData.eventTime ? new Date(`${tData.eventDate}T${tData.eventTime}`) : new Date(tData.eventDate)) : null);
+        const isTournamentOver = actualEnd && actualEnd <= now;
 
-    if (!isTournamentOver && (tData.category === "ongoing" || tData.status === "live")) {
-      showToast("\u274c Cannot delete: This tournament is live/ongoing.", "error");
-      return;
+        if (!isTournamentOver && (tData.category === "ongoing" || tData.status === "live")) {
+            showToast("\u274c Cannot delete: This tournament is live/ongoing.", "error");
+            return;
+        }
+
+        if (!isTournamentOver) {
+            const regsSnap = await getDocs(collection(db, "tournaments", id, "upcomingRegistrations"));
+            const activeRegs = regsSnap.docs.filter(d => d.data().status === "pending" || d.data().status === "approved");
+            if (activeRegs.length > 0) {
+                showToast(`\u274c Cannot delete: ${activeRegs.length} team(s) have active registrations. Reject all first.`, "error");
+                return;
+            }
+            const partSnap = await getDocs(collection(db, "tournaments", id, "participants"));
+            if (!partSnap.empty) {
+                showToast(`\u274c Cannot delete: ${partSnap.size} team(s) are confirmed participants. This data cannot be lost.`, "error");
+                return;
+            }
+            // Check for pending verifications
+            const verifSnap = await getDocs(collection(db, "tournaments", id, "verifications"));
+            const pendingVerifs = verifSnap.docs.filter(d => d.data().status === 'pending');
+            if (pendingVerifs.length > 0) {
+                showToast(`\u274c Cannot delete: ${pendingVerifs.length} team(s) have pending payment verifications. Resolve them first.`, "error");
+                return;
+            }
+        }
+    } catch (checkErr) {
+        console.warn("[DELETE CHECK]", checkErr);
     }
 
-    if (!isTournamentOver) {
-      const regsSnap = await getDocs(collection(db, "tournaments", id, "upcomingRegistrations"));
-      const activeRegs = regsSnap.docs.filter(d => d.data().status === "pending" || d.data().status === "approved");
-      if (activeRegs.length > 0) {
-        showToast(`\u274c Cannot delete: ${activeRegs.length} team(s) have active registrations. Reject all first.`, "error");
-        return;
-      }
-      const partSnap = await getDocs(collection(db, "tournaments", id, "participants"));
-      if (!partSnap.empty) {
-        showToast(`\u274c Cannot delete: ${partSnap.size} team(s) are confirmed participants. This data cannot be lost.`, "error");
-        return;
-      }
-      // Check for pending verifications
-      const verifSnap = await getDocs(collection(db, "tournaments", id, "verifications"));
-      const pendingVerifs = verifSnap.docs.filter(d => d.data().status === 'pending');
-      if (pendingVerifs.length > 0) {
-        showToast(`\u274c Cannot delete: ${pendingVerifs.length} team(s) have pending payment verifications. Resolve them first.`, "error");
-        return;
-      }
+    if (!confirm("Delete this tournament? This action is permanent and cannot be undone.")) return;
+
+    try {
+        showToast("Deleting tournament and all related data...", "info");
+
+        // Cascade delete sub-collections first (Firestore does NOT auto-delete sub-collections)
+        const subCollections = ['upcomingRegistrations', 'verifications', 'slots', 'leaderboard', 'lockedRegistrations', 'teamSessions', 'limitedNotifyList'];
+        for (const colName of subCollections) {
+            try {
+                const snap = await getDocs(collection(db, "tournaments", id, colName));
+                const batchDel = writeBatch(db);
+                snap.docs.forEach(d => batchDel.delete(d.ref));
+                if (!snap.empty) await batchDel.commit();
+            } catch (e) {
+                console.warn(`[DELETE] Could not clean up ${colName}:`, e.message);
+            }
+        }
+
+        await deleteDoc(doc(db, "tournaments", id));
+        showToast("\u2705 Tournament and all related data deleted successfully.", "success");
+    } catch (e) {
+        console.error("[DELETE] Error:", e);
+        showToast("Error deleting tournament: " + e.message, "error");
     }
-  } catch (checkErr) {
-    console.warn("[DELETE CHECK]", checkErr);
-  }
-
-  if (!confirm("Delete this tournament? This action is permanent and cannot be undone.")) return;
-  
-  try {
-    showToast("Deleting tournament and all related data...", "info");
-
-    // Cascade delete sub-collections first (Firestore does NOT auto-delete sub-collections)
-    const subCollections = ['upcomingRegistrations', 'verifications', 'slots', 'leaderboard', 'lockedRegistrations', 'teamSessions', 'limitedNotifyList'];
-    for (const colName of subCollections) {
-      try {
-        const snap = await getDocs(collection(db, "tournaments", id, colName));
-        const batchDel = writeBatch(db);
-        snap.docs.forEach(d => batchDel.delete(d.ref));
-        if (!snap.empty) await batchDel.commit();
-      } catch (e) {
-        console.warn(`[DELETE] Could not clean up ${colName}:`, e.message);
-      }
-    }
-
-    await deleteDoc(doc(db, "tournaments", id));
-    showToast("\u2705 Tournament and all related data deleted successfully.", "success");
-  } catch (e) {
-    console.error("[DELETE] Error:", e);
-    showToast("Error deleting tournament: " + e.message, "error");
-  }
 };
 
 
 
-window.markTournamentCompleted = async function(tournamentId) {
+window.markTournamentCompleted = async function (tournamentId) {
     if (!confirm("Mark tournament as Completed? It will move to the Results tab.")) return;
     try {
         await updateDoc(doc(db, "tournaments", tournamentId), {
@@ -2327,98 +2327,98 @@ window.markTournamentCompleted = async function(tournamentId) {
 };
 
 function loadTournaments() {
-  if (_listeners.tournaments) return;
-  console.log('[TOURNAMENTS] Starting real-time tournament listener...');
-  const q = query(tournamentsRef, orderBy("createdAt", "desc"));
-  _listeners.tournaments = onSnapshot(q, (snapshot) => {
-    const box = document.getElementById("tournamentList");
-    if (!box) return;
-    box.innerHTML = "";
-    
-    console.log('[TOURNAMENTS] Snapshot received —', snapshot.size, 'tournaments loaded');
-    
-    // Store for periodic checks
-    window._adminActiveTournaments = snapshot.docs;
-    
-    // Run interval only once
-    if (!window._adminTimerInterval) {
-        window._adminTimerInterval = setInterval(() => {
-            if (window._adminActiveTournaments) {
-                window._adminActiveTournaments.forEach(d => {
-                    checkAdminAutoPromotion(d.id, d.data());
-                });
+    if (_listeners.tournaments) return;
+    console.log('[TOURNAMENTS] Starting real-time tournament listener...');
+    const q = query(tournamentsRef, orderBy("createdAt", "desc"));
+    _listeners.tournaments = onSnapshot(q, (snapshot) => {
+        const box = document.getElementById("tournamentList");
+        if (!box) return;
+        box.innerHTML = "";
+
+        console.log('[TOURNAMENTS] Snapshot received —', snapshot.size, 'tournaments loaded');
+
+        // Store for periodic checks
+        window._adminActiveTournaments = snapshot.docs;
+
+        // Run interval only once
+        if (!window._adminTimerInterval) {
+            window._adminTimerInterval = setInterval(() => {
+                if (window._adminActiveTournaments) {
+                    window._adminActiveTournaments.forEach(d => {
+                        checkAdminAutoPromotion(d.id, d.data());
+                    });
+                }
+            }, 30000); // Check every 30 seconds
+        }
+
+        snapshot.forEach(d => {
+            const t = d.data();
+
+            // ✅ Trigger immediately on load as well
+            checkAdminAutoPromotion(d.id, t);
+
+            const div = document.createElement("div");
+            div.className = "item-card";
+
+            const isActive = (t.category === "ongoing" || t.status === "live");
+            const actualEnd = t.endTime ? new Date(t.endTime) : (t.eventDate ? (t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}`) : new Date(t.eventDate)) : null);
+            const isTournamentOver = actualEnd && actualEnd <= new Date();
+
+            // Format specific timing and real-time registration status
+            let timingDisplay = '';
+            let regStatusBadge = '';
+            const nowMs = Date.now();
+            const actualEndMs = actualEnd ? actualEnd.getTime() : null;
+
+            if (actualEndMs) {
+                const endDateObj = new Date(actualEndMs);
+                const timeFormatted = endDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                const dateFormatted = endDateObj.toLocaleDateString([], { day: 'numeric', month: 'short' });
+                timingDisplay = ` · ⏰ <b>${dateFormatted}, ${timeFormatted}</b>`;
+
+                if (t.category === 'ongoing' || t.status === 'live') {
+                    if (actualEndMs > nowMs) {
+                        const minsLeft = Math.round((actualEndMs - nowMs) / 60000);
+                        const hrs = Math.floor(minsLeft / 60);
+                        const mins = minsLeft % 60;
+                        const leftStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                        regStatusBadge = ` <span style="background:#059669;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;">🟢 Reg Open (${leftStr} left)</span>`;
+                    } else {
+                        regStatusBadge = ` <span style="background:#dc2626;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;">⚠️ Reg Ended</span>`;
+                    }
+                }
+            } else if (t.eventDate) {
+                timingDisplay = ` · 📅 ${t.eventDate}${t.eventTime ? ` at ${t.eventTime}` : ''}`;
             }
-        }, 30000); // Check every 30 seconds
-    }
 
-    snapshot.forEach(d => {
-      const t   = d.data();
-      
-      // ✅ Trigger immediately on load as well
-      checkAdminAutoPromotion(d.id, t);
-      
-      const div = document.createElement("div");
-      div.className = "item-card";
+            const postponeBtn = isActive
+                ? `<button class="btn-status" onclick="window.openPostponeModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}', '${t.eventDate || ''}', '${t.transitionTime || ''}')" style="background:#f97316;color:#fff;border:none;">🗓️ Postpone</button>`
+                : '';
 
-      const isActive = (t.category === "ongoing" || t.status === "live");
-      const actualEnd = t.endTime ? new Date(t.endTime) : (t.eventDate ? (t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}`) : new Date(t.eventDate)) : null);
-      const isTournamentOver = actualEnd && actualEnd <= new Date();
+            const canEditTiming = t.status !== 'completed';
+            const editTimingBtn = canEditTiming
+                ? `<button class="btn-status" onclick="window.openEditTimingModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}')" style="background:#3b82f6;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;">✏️ Edit Time</button>`
+                : '';
 
-      // Format specific timing and real-time registration status
-      let timingDisplay = '';
-      let regStatusBadge = '';
-      const nowMs = Date.now();
-      const actualEndMs = actualEnd ? actualEnd.getTime() : null;
+            const editDetailsBtn = canEditTiming
+                ? `<button class="btn-status" onclick="window.openEditTournamentModal('${d.id}')" style="background:#ff6b35;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;font-weight:700;" title="Edit tournament name, entry fee, prizes, slot size, timing, and rules">✏️ Edit Details</button>`
+                : '';
 
-      if (actualEndMs) {
-          const endDateObj = new Date(actualEndMs);
-          const timeFormatted = endDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-          const dateFormatted = endDateObj.toLocaleDateString([], { day: 'numeric', month: 'short' });
-          timingDisplay = ` · ⏰ <b>${dateFormatted}, ${timeFormatted}</b>`;
-          
-          if (t.category === 'ongoing' || t.status === 'live') {
-              if (actualEndMs > nowMs) {
-                  const minsLeft = Math.round((actualEndMs - nowMs) / 60000);
-                  const hrs = Math.floor(minsLeft / 60);
-                  const mins = minsLeft % 60;
-                  const leftStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
-                  regStatusBadge = ` <span style="background:#059669;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;">🟢 Reg Open (${leftStr} left)</span>`;
-              } else {
-                  regStatusBadge = ` <span style="background:#dc2626;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;">⚠️ Reg Ended</span>`;
-              }
-          }
-      } else if (t.eventDate) {
-          timingDisplay = ` · 📅 ${t.eventDate}${t.eventTime ? ` at ${t.eventTime}` : ''}`;
-      }
+            const deleteBtn = (isActive && !isTournamentOver)
+                ? `<button class="btn-delete" disabled title="Cannot delete: tournament is active or ongoing" style="opacity:0.35;cursor:not-allowed;" onclick="event.preventDefault();">🔒 Delete</button>`
+                : `<button class="btn-delete" onclick="deleteTournament('${d.id}')">Delete</button>`;
 
-      const postponeBtn = isActive
-        ? `<button class="btn-status" onclick="window.openPostponeModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}', '${t.eventDate || ''}', '${t.transitionTime || ''}')" style="background:#f97316;color:#fff;border:none;">🗓️ Postpone</button>`
-        : '';
-        
-      const canEditTiming = t.status !== 'completed';
-      const editTimingBtn = canEditTiming
-        ? `<button class="btn-status" onclick="window.openEditTimingModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}')" style="background:#3b82f6;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;">✏️ Edit Time</button>`
-        : '';
+            const completeBtn = (t.status !== 'completed')
+                ? `<button class="btn-status" onclick="markTournamentCompleted('${d.id}')" style="background:#3b82f6;color:#fff;border:none;">🏆 Publish Results</button>`
+                : `<button class="btn-status" onclick="window.renderAdminLeaderboardGrid('${d.id}')" style="background:#00ff88;color:#000;border:none;">🏆 Edit Leaderboard</button>`;
 
-      const editDetailsBtn = canEditTiming
-        ? `<button class="btn-status" onclick="window.openEditTournamentModal('${d.id}')" style="background:#ff6b35;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;font-weight:700;" title="Edit tournament name, entry fee, prizes, slot size, timing, and rules">✏️ Edit Details</button>`
-        : '';
+            const p1Disp = `₹${t.prize?.first || 0}`;
+            const p2Disp = (t.prize?.second !== null && t.prize?.second !== undefined && Number(t.prize?.second) > 0) ? `₹${t.prize.second}` : 'None';
+            const p3Disp = (t.prize?.third !== null && t.prize?.third !== undefined && Number(t.prize?.third) > 0) ? `₹${t.prize.third}` : 'None';
+            const slotsDisp = t.totalSlots ? ` · 🎯 Slots: <b>${t.totalSlots}</b>` : '';
+            const prizesDisp = ` · 🏆 Prizes: ${p1Disp} / ${p2Disp} / ${p3Disp}`;
 
-      const deleteBtn = (isActive && !isTournamentOver)
-        ? `<button class="btn-delete" disabled title="Cannot delete: tournament is active or ongoing" style="opacity:0.35;cursor:not-allowed;" onclick="event.preventDefault();">🔒 Delete</button>`
-        : `<button class="btn-delete" onclick="deleteTournament('${d.id}')">Delete</button>`;
-
-      const completeBtn = (t.status !== 'completed')
-        ? `<button class="btn-status" onclick="markTournamentCompleted('${d.id}')" style="background:#3b82f6;color:#fff;border:none;">🏆 Publish Results</button>`
-        : `<button class="btn-status" onclick="window.renderAdminLeaderboardGrid('${d.id}')" style="background:#00ff88;color:#000;border:none;">🏆 Edit Leaderboard</button>`;
-
-      const p1Disp = `₹${t.prize?.first || 0}`;
-      const p2Disp = (t.prize?.second !== null && t.prize?.second !== undefined && Number(t.prize?.second) > 0) ? `₹${t.prize.second}` : 'None';
-      const p3Disp = (t.prize?.third !== null && t.prize?.third !== undefined && Number(t.prize?.third) > 0) ? `₹${t.prize.third}` : 'None';
-      const slotsDisp = t.totalSlots ? ` · 🎯 Slots: <b>${t.totalSlots}</b>` : '';
-      const prizesDisp = ` · 🏆 Prizes: ${p1Disp} / ${p2Disp} / ${p3Disp}`;
-
-      div.innerHTML = `
+            div.innerHTML = `
         <div>
           <strong>${escHtml(t.title)}</strong><br>
           <small style="color:var(--muted); font-size:11px;">UID: <span style="user-select:all; background:#222; padding:2px 4px; border-radius:3px; color:#aaa; font-family:monospace; cursor:copy;" onclick="navigator.clipboard.writeText('${d.id}'); showToast('UID copied!', 'success');">${d.id}</span></small><br>
@@ -2434,9 +2434,9 @@ function loadTournaments() {
           ${completeBtn}
           ${deleteBtn}
         </div>`;
-      box.appendChild(div);
+            box.appendChild(div);
+        });
     });
-  });
 }
 
 // ✅ NEW FEATURE: Admin Auto-Promotion & Notification Dispatcher
@@ -2498,7 +2498,7 @@ async function checkAdminAutoPromotion(tId, t) {
                 await updateDoc(doc(db, "tournaments", tId), {
                     adminPhase2Notified: true
                 });
-                
+
                 triggerAdminPhase2Alert(t.title, Math.round(timeDiffMinutes));
             } catch (err) {
                 console.warn("[AUTO-ADMIN] Phase 2 Alert error:", err);
@@ -2519,7 +2519,7 @@ function triggerAdminPhase1Alert(title) {
         <p style="margin-bottom:15px;font-size:14px;"><strong>${escHtml(title)}</strong> has moved to Ongoing! Verify pending payments immediately before the match starts.</p>
         <button style="width:100%;padding:10px;background:#fff;color:#c62828;border:none;border-radius:5px;font-weight:bold;cursor:pointer;" onclick="this.parentElement.remove();document.body.removeChild(document.body.lastChild);">Acknowledge</button>
     `;
-    
+
     if (!document.getElementById("flashAnim")) {
         const style = document.createElement("style");
         style.id = "flashAnim";
@@ -2527,7 +2527,7 @@ function triggerAdminPhase1Alert(title) {
         document.head.appendChild(style);
     }
     document.body.appendChild(popup);
-    try { new Audio('/alert.mp3').play(); } catch(e){}
+    try { new Audio('/alert.mp3').play(); } catch (e) { }
 }
 
 function triggerAdminPhase2Alert(title, minsRemaining) {
@@ -2540,101 +2540,101 @@ function triggerAdminPhase2Alert(title, minsRemaining) {
         <button style="padding:10px 20px;background:#ff9800;color:#000;border:none;border-radius:5px;font-weight:bold;cursor:pointer;font-size:16px;" onclick="this.parentElement.remove();">Got It</button>
     `;
     document.body.appendChild(popup);
-    try { new Audio('/alert.mp3').play(); } catch(e){}
+    try { new Audio('/alert.mp3').play(); } catch (e) { }
 }
 
 // ============================================================================
 //  15. CALENDAR
 // ============================================================================
-window.selectColor = function(type, element) {
-  document.querySelectorAll(".color-option").forEach(el => el.classList.remove("selected"));
-  element.classList.add("selected");
-  document.getElementById("eventType").value = type;
+window.selectColor = function (type, element) {
+    document.querySelectorAll(".color-option").forEach(el => el.classList.remove("selected"));
+    element.classList.add("selected");
+    document.getElementById("eventType").value = type;
 };
 
-window.addCalendarEvent = async function() {
-  const date  = document.getElementById("eventDate").value;
-  const title = document.getElementById("eventTitle").value.trim();
-  const type  = document.getElementById("eventType").value;
-  const prize = Number(document.getElementById("eventPrize").value) || 0;
-  const desc  = document.getElementById("eventDesc").value.trim() || title;
-  if (!date || !title) { showToast("Date and title are required.", "warning"); return; }
-  try {
-    const existing = await getDocs(query(calendarRef, where("date", "==", date)));
-    if (!existing.empty) {
-      await updateDoc(doc(db, "calendarEvents", existing.docs[0].id), {
-        title, type, prize, description: desc, updatedAt: serverTimestamp(),
-      });
-    } else {
-      await addDoc(calendarRef, { date, title, type, prize, description: desc, createdAt: serverTimestamp() });
+window.addCalendarEvent = async function () {
+    const date = document.getElementById("eventDate").value;
+    const title = document.getElementById("eventTitle").value.trim();
+    const type = document.getElementById("eventType").value;
+    const prize = Number(document.getElementById("eventPrize").value) || 0;
+    const desc = document.getElementById("eventDesc").value.trim() || title;
+    if (!date || !title) { showToast("Date and title are required.", "warning"); return; }
+    try {
+        const existing = await getDocs(query(calendarRef, where("date", "==", date)));
+        if (!existing.empty) {
+            await updateDoc(doc(db, "calendarEvents", existing.docs[0].id), {
+                title, type, prize, description: desc, updatedAt: serverTimestamp(),
+            });
+        } else {
+            await addDoc(calendarRef, { date, title, type, prize, description: desc, createdAt: serverTimestamp() });
+        }
+        ["eventDate", "eventTitle", "eventPrize", "eventDesc"].forEach(id => document.getElementById(id).value = "");
+        showToast("Calendar event saved!", "success");
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
     }
-    ["eventDate","eventTitle","eventPrize","eventDesc"].forEach(id => document.getElementById(id).value = "");
-    showToast("Calendar event saved!", "success");
-  } catch (e) {
-    showToast("Action failed: Permission Denied.", "error");
-  }
 };
 
-window.deleteCalendarEvent = async function(id) {
-  if (!confirm("Delete this calendar event?")) return;
-  try {
-    await deleteDoc(doc(db, "calendarEvents", id));
-    showToast("Event deleted.", "success");
-  } catch (e) {
-    showToast("Action failed: Permission Denied.", "error");
-  }
+window.deleteCalendarEvent = async function (id) {
+    if (!confirm("Delete this calendar event?")) return;
+    try {
+        await deleteDoc(doc(db, "calendarEvents", id));
+        showToast("Event deleted.", "success");
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
 };
 
-window.editCalendarEvent = async function(id) {
-  const snap = await getDoc(doc(db, "calendarEvents", id));
-  if (!snap.exists()) { showToast("Event not found.", "error"); return; }
-  const e = snap.data();
-  document.getElementById("eventDate").value  = e.date  ?? "";
-  document.getElementById("eventTitle").value = e.title ?? "";
-  document.getElementById("eventPrize").value = e.prize ?? "";
-  document.getElementById("eventDesc").value  = e.description ?? "";
-  const colorEl = document.querySelector(`[onclick="selectColor('${e.type ?? "upcoming"}',this)"]`);
-  if (colorEl) window.selectColor(e.type ?? "upcoming", colorEl);
-  const btn = document.querySelector(".calendar-form .btn-submit");
-  btn.textContent = "✓ Update Event";
-  btn.onclick = () => window.updateCalendarEvent(id);
-  document.querySelector(".calendar-form").scrollIntoView({ behavior: "smooth" });
-};
-
-window.updateCalendarEvent = async function(id) {
-  const date  = document.getElementById("eventDate").value;
-  const title = document.getElementById("eventTitle").value.trim();
-  const type  = document.getElementById("eventType").value;
-  const prize = Number(document.getElementById("eventPrize").value) || 0;
-  const desc  = document.getElementById("eventDesc").value.trim() || title;
-  if (!date || !title) { showToast("Date and title are required.", "warning"); return; }
-  try {
-    await updateDoc(doc(db, "calendarEvents", id), { date, title, type, prize, description: desc, updatedAt: serverTimestamp() });
-    ["eventDate","eventTitle","eventPrize","eventDesc"].forEach(id => document.getElementById(id).value = "");
+window.editCalendarEvent = async function (id) {
+    const snap = await getDoc(doc(db, "calendarEvents", id));
+    if (!snap.exists()) { showToast("Event not found.", "error"); return; }
+    const e = snap.data();
+    document.getElementById("eventDate").value = e.date ?? "";
+    document.getElementById("eventTitle").value = e.title ?? "";
+    document.getElementById("eventPrize").value = e.prize ?? "";
+    document.getElementById("eventDesc").value = e.description ?? "";
+    const colorEl = document.querySelector(`[onclick="selectColor('${e.type ?? "upcoming"}',this)"]`);
+    if (colorEl) window.selectColor(e.type ?? "upcoming", colorEl);
     const btn = document.querySelector(".calendar-form .btn-submit");
-    btn.textContent = "+ Add Calendar Event";
-    btn.onclick = window.addCalendarEvent;
-    showToast("Event updated!", "success");
-  } catch (e) {
-    showToast("Action failed: Permission Denied.", "error");
-  }
+    btn.textContent = "✓ Update Event";
+    btn.onclick = () => window.updateCalendarEvent(id);
+    document.querySelector(".calendar-form").scrollIntoView({ behavior: "smooth" });
+};
+
+window.updateCalendarEvent = async function (id) {
+    const date = document.getElementById("eventDate").value;
+    const title = document.getElementById("eventTitle").value.trim();
+    const type = document.getElementById("eventType").value;
+    const prize = Number(document.getElementById("eventPrize").value) || 0;
+    const desc = document.getElementById("eventDesc").value.trim() || title;
+    if (!date || !title) { showToast("Date and title are required.", "warning"); return; }
+    try {
+        await updateDoc(doc(db, "calendarEvents", id), { date, title, type, prize, description: desc, updatedAt: serverTimestamp() });
+        ["eventDate", "eventTitle", "eventPrize", "eventDesc"].forEach(id => document.getElementById(id).value = "");
+        const btn = document.querySelector(".calendar-form .btn-submit");
+        btn.textContent = "+ Add Calendar Event";
+        btn.onclick = window.addCalendarEvent;
+        showToast("Event updated!", "success");
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
 };
 
 function loadCalendarEvents() {
-  if (_listeners.calendar) return;
-  const COLORS = { upcoming:"#4a90e2", special:"#ffd700", completed:"#666", today:"#00ff88" };
-  const q = query(calendarRef, orderBy("date", "desc"));
-  _listeners.calendar = onSnapshot(q, (snapshot) => {
-    const box = document.getElementById("calendarEventsList");
-    if (!box) return;
-    box.innerHTML = "";
-    snapshot.forEach(d => {
-      const e = d.data();
-      const color = COLORS[e.type] ?? "#888";
-      const div = document.createElement("div");
-      div.className = "event-card";
-      div.style.borderLeftColor = color;
-      div.innerHTML = `
+    if (_listeners.calendar) return;
+    const COLORS = { upcoming: "#4a90e2", special: "#ffd700", completed: "#666", today: "#00ff88" };
+    const q = query(calendarRef, orderBy("date", "desc"));
+    _listeners.calendar = onSnapshot(q, (snapshot) => {
+        const box = document.getElementById("calendarEventsList");
+        if (!box) return;
+        box.innerHTML = "";
+        snapshot.forEach(d => {
+            const e = d.data();
+            const color = COLORS[e.type] ?? "#888";
+            const div = document.createElement("div");
+            div.className = "event-card";
+            div.style.borderLeftColor = color;
+            div.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:start;">
           <div>
             <strong style="color:${color};">${escHtml(e.date)}</strong><br>
@@ -2648,9 +2648,9 @@ function loadCalendarEvents() {
             <button onclick="deleteCalendarEvent('${d.id}')" style="background:var(--red);color:#fff;border:none;padding:5px 10px;cursor:pointer;border-radius:6px;font-size:12px;">×</button>
           </div>
         </div>`;
-      box.appendChild(div);
+            box.appendChild(div);
+        });
     });
-  });
 }
 
 // ============================================================================
@@ -2665,24 +2665,24 @@ let _adminSharedAudio = new Audio('/alert.mp3');
 _adminSharedAudio.volume = 0.8;
 
 function _unlockAdminAudio() {
-  if (_adminAudioUnlocked) return;
-  _adminAudioUnlocked = true;
-  
-  // Pre-unlock HTML5 Audio
-  _adminSharedAudio.play().then(() => {
-      _adminSharedAudio.pause();
-      _adminSharedAudio.currentTime = 0;
-  }).catch(() => {});
+    if (_adminAudioUnlocked) return;
+    _adminAudioUnlocked = true;
 
-  // Pre-unlock Web Audio API
-  try {
-    if (!_adminAudioContext) _adminAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-    if (_adminAudioContext.state === 'suspended') _adminAudioContext.resume().catch(() => {});
-  } catch(e) {}
-  
-  document.removeEventListener('click', _unlockAdminAudio);
-  document.removeEventListener('keydown', _unlockAdminAudio);
-  document.removeEventListener('touchstart', _unlockAdminAudio);
+    // Pre-unlock HTML5 Audio
+    _adminSharedAudio.play().then(() => {
+        _adminSharedAudio.pause();
+        _adminSharedAudio.currentTime = 0;
+    }).catch(() => { });
+
+    // Pre-unlock Web Audio API
+    try {
+        if (!_adminAudioContext) _adminAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (_adminAudioContext.state === 'suspended') _adminAudioContext.resume().catch(() => { });
+    } catch (e) { }
+
+    document.removeEventListener('click', _unlockAdminAudio);
+    document.removeEventListener('keydown', _unlockAdminAudio);
+    document.removeEventListener('touchstart', _unlockAdminAudio);
 }
 
 document.addEventListener('click', _unlockAdminAudio);
@@ -2690,48 +2690,48 @@ document.addEventListener('keydown', _unlockAdminAudio);
 document.addEventListener('touchstart', _unlockAdminAudio);
 
 function playAdminAlert(docId) {
-  // If a docId is given, only play once per unique doc per session
-  if (docId) {
-    if (_alertedDocIds.has(docId)) return;
-    _alertedDocIds.add(docId);
-  }
-  try {
-    // Try MP3 first
-    _adminSharedAudio.currentTime = 0;
-    _adminSharedAudio.play().catch(() => {
-      // Fallback to AudioContext beep if .mp3 is blocked
-      try {
-        if (!_adminAudioContext) _adminAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-        if (_adminAudioContext.state === 'suspended') _adminAudioContext.resume();
-        const osc  = _adminAudioContext.createOscillator();
-        const gain = _adminAudioContext.createGain();
-        osc.connect(gain);
-        gain.connect(_adminAudioContext.destination);
-        osc.frequency.setValueAtTime(1200, _adminAudioContext.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(600, _adminAudioContext.currentTime + 0.3);
-        gain.gain.setValueAtTime(0.5, _adminAudioContext.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, _adminAudioContext.currentTime + 0.5);
-        osc.start(_adminAudioContext.currentTime);
-        osc.stop(_adminAudioContext.currentTime + 0.5);
-      } catch (_) {}
-    });
-  } catch (_) {}
+    // If a docId is given, only play once per unique doc per session
+    if (docId) {
+        if (_alertedDocIds.has(docId)) return;
+        _alertedDocIds.add(docId);
+    }
+    try {
+        // Try MP3 first
+        _adminSharedAudio.currentTime = 0;
+        _adminSharedAudio.play().catch(() => {
+            // Fallback to AudioContext beep if .mp3 is blocked
+            try {
+                if (!_adminAudioContext) _adminAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (_adminAudioContext.state === 'suspended') _adminAudioContext.resume();
+                const osc = _adminAudioContext.createOscillator();
+                const gain = _adminAudioContext.createGain();
+                osc.connect(gain);
+                gain.connect(_adminAudioContext.destination);
+                osc.frequency.setValueAtTime(1200, _adminAudioContext.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(600, _adminAudioContext.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.5, _adminAudioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, _adminAudioContext.currentTime + 0.5);
+                osc.start(_adminAudioContext.currentTime);
+                osc.stop(_adminAudioContext.currentTime + 0.5);
+            } catch (_) { }
+        });
+    } catch (_) { }
 }
 
 // ============================================================================
 //  UTILITIES
 // ============================================================================
 function escHtml(str) {
-  return String(str)
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    return String(str)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function showToast(message, type = "success") {
-  const bg    = { success:"#2e7d32", error:"#c62828", warning:"#f57f17" }[type] ?? "#333";
-  const color = type === "warning" ? "#000" : "#fff";
-  const toast = document.createElement("div");
-  toast.style.cssText = `
+    const bg = { success: "#2e7d32", error: "#c62828", warning: "#f57f17" }[type] ?? "#333";
+    const color = type === "warning" ? "#000" : "#fff";
+    const toast = document.createElement("div");
+    toast.style.cssText = `
     position:fixed;bottom:24px;right:24px;
     background:${bg};color:${color};
     padding:12px 20px;border-radius:10px;
@@ -2739,17 +2739,17 @@ function showToast(message, type = "success") {
     animation:fadeInUp .2s ease;box-shadow:0 4px 12px rgba(0,0,0,.4);
     font-family:'Rajdhani',sans-serif;font-weight:600;
   `;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.remove(), 3500);
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3500);
 }
 // =============================================================================
 // UPGRADED GLOBAL SEARCH FUNCTION (Finds Team Codes, Tournaments, UIDs, & Nicknames)
 // =============================================================================
-window.executeGlobalSearch = async function() {
+window.executeGlobalSearch = async function () {
     const queryStr = document.getElementById("globalSearch").value.trim();
     if (!queryStr) return;
-    
+
     try {
         // 1. Try to search by Team Code (Checks global teams collection)
         const teamsQuery = query(collection(db, "teams"), where("code", "==", queryStr.toUpperCase()));
@@ -2758,13 +2758,13 @@ window.executeGlobalSearch = async function() {
             const teamDoc = teamSnap.docs[0];
             const t = teamDoc.data();
             alert(`👥 TEAM FOUND!\n\n` +
-                  `• Team Name: ${t.teamName || "—"}\n` +
-                  `• Team Code: ${t.code || "—"}\n` +
-                  `• Team ID: ${teamDoc.id}\n` +
-                  `• Leader Name: ${t.leaderName || "—"}\n` +
-                  `• Leader ID: ${t.leaderId || "—"}\n` +
-                  `• Roster Size: ${t.members?.length || 0} / ${t.maxMembers || 5}\n` +
-                  `• Member UIDs: ${t.members ? t.members.join(", ") : "None"}`);
+                `• Team Name: ${t.teamName || "—"}\n` +
+                `• Team Code: ${t.code || "—"}\n` +
+                `• Team ID: ${teamDoc.id}\n` +
+                `• Leader Name: ${t.leaderName || "—"}\n` +
+                `• Leader ID: ${t.leaderId || "—"}\n` +
+                `• Roster Size: ${t.members?.length || 0} / ${t.maxMembers || 5}\n` +
+                `• Member UIDs: ${t.members ? t.members.join(", ") : "None"}`);
             return;
         }
 
@@ -2772,7 +2772,7 @@ window.executeGlobalSearch = async function() {
         const tSnap = await getDoc(doc(db, "tournaments", queryStr));
         if (tSnap.exists()) {
             const t = tSnap.data();
-            
+
             // Fetch participant counts
             let upcomingCount = 0;
             let ongoingCount = 0;
@@ -2781,8 +2781,8 @@ window.executeGlobalSearch = async function() {
                 upcomingCount = upcomingSnap.size;
                 const ongoingSnap = await getDocs(collection(db, "tournaments", queryStr, "verifications"));
                 ongoingCount = ongoingSnap.size;
-            } catch(e) { console.warn("Could not fetch registration counts", e); }
-            
+            } catch (e) { console.warn("Could not fetch registration counts", e); }
+
             let createdDate = "Unknown";
             if (t.createdAt) {
                 const d = t.createdAt.toDate ? t.createdAt.toDate() : new Date(t.createdAt);
@@ -2795,15 +2795,15 @@ window.executeGlobalSearch = async function() {
             }
 
             alert(`🏆 TOURNAMENT FOUND!\n\n` +
-                  `• Tournament ID: ${tSnap.id}\n` +
-                  `• Title: ${t.title || "—"}\n` +
-                  `• Created On: ${createdDate}\n` +
-                  `• Registered Teams: ${upcomingCount + ongoingCount} (Upcoming: ${upcomingCount}, Verified: ${ongoingCount})\n` +
-                  `• Category: ${t.category || "—"}\n` +
-                  `• Mode: ${t.mode || "Solo"}\n` +
-                  `• Entry Fee: ₹${t.entryFee !== undefined ? t.entryFee : 0}\n` +
-                  `• Status: ${t.status || "open"}\n` +
-                  `• Event Details: ${t.eventDate || "No Date"} @ ${t.eventTime || "No Time"}`);
+                `• Tournament ID: ${tSnap.id}\n` +
+                `• Title: ${t.title || "—"}\n` +
+                `• Created On: ${createdDate}\n` +
+                `• Registered Teams: ${upcomingCount + ongoingCount} (Upcoming: ${upcomingCount}, Verified: ${ongoingCount})\n` +
+                `• Category: ${t.category || "—"}\n` +
+                `• Mode: ${t.mode || "Solo"}\n` +
+                `• Entry Fee: ₹${t.entryFee !== undefined ? t.entryFee : 0}\n` +
+                `• Status: ${t.status || "open"}\n` +
+                `• Event Details: ${t.eventDate || "No Date"} @ ${t.eventTime || "No Time"}`);
             return;
         }
 
@@ -2812,15 +2812,15 @@ window.executeGlobalSearch = async function() {
         if (uSnap.exists()) {
             const u = uSnap.data();
             alert(`👤 PLAYER FOUND BY UID!\n\n` +
-                  `• User UID: ${uSnap.id}\n` +
-                  `• In-Game Nickname: ${u.nickname || "Unnamed User"}\n` +
-                  `• Registered Email: ${u.email || "—"}\n` +
-                  `• System Role: ${u.role || "viewer"}\n` +
-                  `• Is Admin Account: ${u.isAdmin === true ? "YES 🛡️" : "No"}\n` +
-                  `• Assigned Team: ${u.teamName || "No Assigned Team (Solo)"}\n` +
-                  `• Assigned Team Code: ${u.teamCode || "N/A"}\n` +
-                  `• Assigned Team ID: ${u.teamId || "N/A"}\n` +
-                  `• Player Age: ${u.age || "—"}`);
+                `• User UID: ${uSnap.id}\n` +
+                `• In-Game Nickname: ${u.nickname || "Unnamed User"}\n` +
+                `• Registered Email: ${u.email || "—"}\n` +
+                `• System Role: ${u.role || "viewer"}\n` +
+                `• Is Admin Account: ${u.isAdmin === true ? "YES 🛡️" : "No"}\n` +
+                `• Assigned Team: ${u.teamName || "No Assigned Team (Solo)"}\n` +
+                `• Assigned Team Code: ${u.teamCode || "N/A"}\n` +
+                `• Assigned Team ID: ${u.teamId || "N/A"}\n` +
+                `• Player Age: ${u.age || "—"}`);
             return;
         }
 
@@ -2831,13 +2831,13 @@ window.executeGlobalSearch = async function() {
             const userDoc = nickSnap.docs[0];
             const u = userDoc.data();
             alert(`👤 PLAYER FOUND BY NICKNAME!\n\n` +
-                  `• User UID: ${userDoc.id}\n` +
-                  `• In-Game Nickname: ${u.nickname || "—"}\n` +
-                  `• Registered Email: ${u.email || "—"}\n` +
-                  `• System Role: ${u.role || "viewer"}\n` +
-                  `• Assigned Team: ${u.teamName || "No Assigned Team (Solo)"}\n` +
-                  `• Assigned Team Code: ${u.teamCode || "N/A"}\n` +
-                  `• Player Age: ${u.age || "—"}`);
+                `• User UID: ${userDoc.id}\n` +
+                `• In-Game Nickname: ${u.nickname || "—"}\n` +
+                `• Registered Email: ${u.email || "—"}\n` +
+                `• System Role: ${u.role || "viewer"}\n` +
+                `• Assigned Team: ${u.teamName || "No Assigned Team (Solo)"}\n` +
+                `• Assigned Team Code: ${u.teamCode || "N/A"}\n` +
+                `• Player Age: ${u.age || "—"}`);
             return;
         }
 
@@ -2851,7 +2851,7 @@ window.executeGlobalSearch = async function() {
 };
 
 // NEW FEATURE: Global Team Code Search
-window.searchTeamByCode = async function() {
+window.searchTeamByCode = async function () {
     const teamCodeInput = document.getElementById("globalTeamCodeSearchInput");
     const teamCode = teamCodeInput?.value.trim().toUpperCase();
 
@@ -2879,7 +2879,7 @@ window.searchTeamByCode = async function() {
 };
 
 // NEW FUNCTION: openTeamDetailsModal - Displays comprehensive team details
-window.openTeamDetailsModal = async function(teamId) {
+window.openTeamDetailsModal = async function (teamId) {
     document.getElementById("teamDetailsModalOverlay")?.remove();
 
     const overlay = document.createElement("div");
@@ -2954,13 +2954,13 @@ window.openTeamDetailsModal = async function(teamId) {
 // ==========================================
 // SLOT & WAITLIST MANAGEMENT
 // ==========================================
-window.manageTournamentSlots = async function(tournamentId) {
+window.manageTournamentSlots = async function (tournamentId) {
     console.info("[ACTION] Triggered 'Manage Tournament' button - Opening slots view...");
     document.getElementById("statusModalOverlay")?.remove();
     const overlay = document.createElement("div");
     overlay.id = "statusModalOverlay";
     overlay.className = "status-modal-overlay";
-    
+
     overlay.innerHTML = `
         <div class="status-modal" style="max-width:900px; width:100%;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
@@ -3029,16 +3029,16 @@ window.manageTournamentSlots = async function(tournamentId) {
             getDocs(collection(db, "tournaments", tournamentId, "leaderboard"))
         ]);
         console.info(`[DATA IN] Successfully loaded ${slotsSnap.size} slot items.`);
-        
+
         const lbData = {};
         leaderboardSnap.forEach(d => { lbData[d.id] = d.data(); });
 
         const tournament = tSnap.exists() ? tSnap.data() : {};
-        
+
         // Map manual inputs submitted via the joining / registration interface FIRST
         const registrationDataMap = new Map();
         const userToTeamMap = new Map();
-        
+
         const processReg = (d, source) => {
             const data = d.data();
             if (!data.teamId || data.status === "rejected") return;
@@ -3056,14 +3056,14 @@ window.manageTournamentSlots = async function(tournamentId) {
         for (const [tId, data] of registrationDataMap.entries()) {
             if (tId === data.teamId && !teamMap.has(tId)) {
                 let pStatus = data.status === "approved" ? "Pending Payment" : "Not Verified";
-                teamMap.set(tId, { 
-                    id: tId, 
-                    teamId: tId, 
+                teamMap.set(tId, {
+                    id: tId,
+                    teamId: tId,
                     userId: data.userId || null,
-                    _source: "registration", 
-                    ...data, 
+                    _source: "registration",
+                    ...data,
                     paymentStatus: pStatus,
-                    assignedAt: data.registeredAt || data.timestamp || 0 
+                    assignedAt: data.registeredAt || data.timestamp || 0
                 });
             }
         }
@@ -3098,11 +3098,11 @@ window.manageTournamentSlots = async function(tournamentId) {
         for (let i = 0; i < allTeams.length; i++) {
             let t = allTeams[i];
             const regData = registrationDataMap.get(t.teamId) || registrationDataMap.get(t.id);
-            
+
             if (regData) {
                 t.teamName = regData.teamName || t.teamName;
                 t.teamCode = regData.teamCode || t.teamCode;
-                
+
                 // Prioritize the manual array data if available from the form submission
                 if (regData.playersData && regData.playersData.length > 0) {
                     t.playersData = regData.playersData;
@@ -3120,7 +3120,7 @@ window.manageTournamentSlots = async function(tournamentId) {
                 const sourceUids = t.uids || [];
                 for (let pi = 0; pi < rowsPerTeam; pi++) {
                     if (sourceUids[pi]) {
-                        const nick = t[`nickPlayer${pi+1}`] || t[`player${pi+1}Nickname`] || "—";
+                        const nick = t[`nickPlayer${pi + 1}`] || t[`player${pi + 1}Nickname`] || "—";
                         t.playersData.push({ uid: sourceUids[pi], nickname: nick });
                     }
                 }
@@ -3131,7 +3131,7 @@ window.manageTournamentSlots = async function(tournamentId) {
                 try {
                     let teamIdToFetch = t.teamId;
                     if (!teamIdToFetch) {
-                        const userSnap = await getDoc(doc(db, "users", t.id)); 
+                        const userSnap = await getDoc(doc(db, "users", t.id));
                         if (userSnap.exists()) teamIdToFetch = userSnap.data().teamId;
                     }
                     if (teamIdToFetch) {
@@ -3140,7 +3140,7 @@ window.manageTournamentSlots = async function(tournamentId) {
                             const teamData = teamSnap.data();
                             t.teamName = (t.teamName && t.teamName !== "Unnamed Team" && t.teamName !== "Unknown Team") ? t.teamName : teamData.teamName;
                             t.teamCode = t.teamCode || teamData.code;
-                            
+
                             for (let memberUid of (teamData.members || [])) {
                                 const mSnap = await getDoc(doc(db, "users", memberUid));
                                 if (mSnap.exists()) {
@@ -3154,10 +3154,10 @@ window.manageTournamentSlots = async function(tournamentId) {
                             }
                         }
                     }
-                } catch(e) { console.warn("Tertiary backup sync failed for team:", t.id, e); }
+                } catch (e) { console.warn("Tertiary backup sync failed for team:", t.id, e); }
             }
         }
-        
+
         allTeams.sort((a, b) => {
             const tA = a.assignedAt || a.joinedAt || a.createdAt || 0;
             const tB = b.assignedAt || b.joinedAt || b.createdAt || 0;
@@ -3165,9 +3165,9 @@ window.manageTournamentSlots = async function(tournamentId) {
         });
 
         const totalSlots = tournament.totalSlots || 12;
-        const confirmed  = allTeams.filter(t => t.paymentStatus !== "Waitlist").slice(0, totalSlots);
+        const confirmed = allTeams.filter(t => t.paymentStatus !== "Waitlist").slice(0, totalSlots);
         const waitlisted = allTeams.filter(t => t.paymentStatus === "Waitlist" || allTeams.indexOf(t) >= totalSlots);
-        
+
         // ✅ X-AXIS SCROLL FIX: min-width 1200px to stop columns from crushing together
         let html = `
             <table class="admin-table" style="width:100%; min-width: 1200px; border-collapse:collapse; text-align:left; font-size:13px;">
@@ -3188,26 +3188,26 @@ window.manageTournamentSlots = async function(tournamentId) {
 
             for (let pi = 0; pi < rowsPerTeam; pi++) {
                 const isFirst = pi === 0;
-                const isLast  = pi === rowsPerTeam - 1;
-                
-                let uidStr  = "—";
+                const isLast = pi === rowsPerTeam - 1;
+
+                let uidStr = "—";
                 let nickStr = "—";
-                
+
                 if (team) {
                     if (Array.isArray(team.playersData) && team.playersData[pi]) {
-                        uidStr  = team.playersData[pi].uid      || "—";
+                        uidStr = team.playersData[pi].uid || "—";
                         nickStr = team.playersData[pi].nickname || "—";
                     } else if (Array.isArray(team.uids) && team.uids[pi]) {
-                        uidStr  = team.uids[pi];
-                        nickStr = team[`nickPlayer${pi+1}`] || team[`player${pi+1}Nickname`] || "—";
+                        uidStr = team.uids[pi];
+                        nickStr = team[`nickPlayer${pi + 1}`] || team[`player${pi + 1}Nickname`] || "—";
                     } else if (Array.isArray(team.members) && team.members[pi]) {
                         uidStr = team.members[pi];
                     }
                 }
-                
+
                 const rowBorder = isLast ? "border-bottom:2px solid #3b82f6;" : "border-bottom:1px solid #222;";
                 html += `<tr class="slot-row" style="${rowBorder}">`;
-                
+
                 if (isFirst) {
                     const teamDisplay = team
                         ? escHtml(team.teamName || team.name || "Unnamed Team")
@@ -3215,11 +3215,11 @@ window.manageTournamentSlots = async function(tournamentId) {
                     const codeDisplay = team && team.teamCode && team.teamCode !== "N/A"
                         ? `<span style="color:#555; font-size:10px;">(${escHtml(team.teamCode)})</span>`
                         : "";
-                    
+
                     const pStatus = team?.paymentStatus || "Empty";
-                    const pColor  = pStatus === "Paid" || pStatus === "verified" ? "#22c55e" : pStatus === "Pending Payment" ? "#fbbf24" : "#555";
+                    const pColor = pStatus === "Paid" || pStatus === "verified" ? "#22c55e" : pStatus === "Pending Payment" ? "#fbbf24" : "#555";
                     const pBg = pStatus === "Paid" || pStatus === "verified" ? "rgba(34,197,94,0.15)" : pStatus === "Pending Payment" ? "rgba(251,191,36,0.15)" : "transparent";
-                    
+
                     const isPaid = (team?.paymentStatus === 'Payment Verified' || team?.paymentStatus === 'verified' || team?.paymentStatus === 'Paid');
                     const actionBtns = team ? `
                         <div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:center;">
@@ -3236,25 +3236,25 @@ window.manageTournamentSlots = async function(tournamentId) {
                                 💸 Payout
                             </button>
                             ${isPaid
-                              ? `<span title="Payment verified — cannot delete" style="background:transparent;color:#555;border:1px solid #333;padding:4px 7px;border-radius:4px;font-size:10px;white-space:nowrap;cursor:not-allowed;opacity:0.5;">🔒 Delete</span>`
-                              : `<button onclick="deleteSlot('${tournamentId}','${team.id}','${team.userId || team.id}')"
+                            ? `<span title="Payment verified — cannot delete" style="background:transparent;color:#555;border:1px solid #333;padding:4px 7px;border-radius:4px;font-size:10px;white-space:nowrap;cursor:not-allowed;opacity:0.5;">🔒 Delete</span>`
+                            : `<button onclick="deleteSlot('${tournamentId}','${team.id}','${team.userId || team.id}')"
                                 style="background:transparent;color:#ef4444;border:1px solid #ef4444;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
                                 🗑 Delete
                               </button>`
-                            }
+                        }
                         </div>
                     ` : `<span style="color:#444; font-size:11px;">—</span>`;
 
-                    
+
                     html += `
                         <td rowspan="${rowsPerTeam}" style="border-right:1px solid #222; text-align:center; padding:8px; font-weight:bold; color:${team ? "#aaa" : "#333"};">#${slot}</td>
                         <td rowspan="${rowsPerTeam}" style="border-right:1px solid #222; padding:8px; font-weight:bold; color:${team ? "#fff" : "#333"};">
                             ${teamDisplay} ${codeDisplay}
                         </td>`;
-                    
+
                     html += `<td style="padding:8px; color:${team ? "#9ca3af" : "#444"};">${escHtml(uidStr)}</td>`;
                     html += `<td style="padding:8px; color:${team ? "#fff" : "#444"};">${escHtml(nickStr)}</td>`;
-                    
+
                     html += `
                         <td rowspan="${rowsPerTeam}" style="border-left:1px solid #222; text-align:center; padding:8px;">
                             <span style="background:${pBg}; color:${pColor}; padding:3px 8px; border-radius:12px; font-size:10px; font-weight:bold; display:inline-block;">
@@ -3268,7 +3268,7 @@ window.manageTournamentSlots = async function(tournamentId) {
                     html += `<td style="padding:8px; color:#9ca3af;">${escHtml(uidStr)}</td>`;
                     html += `<td style="padding:8px; color:#fff;">${escHtml(nickStr)}</td>`;
                 }
-                
+
                 html += `</tr>`;
             }
         }
@@ -3290,7 +3290,7 @@ window.manageTournamentSlots = async function(tournamentId) {
                 </thead>
                 <tbody>
         `;
-        
+
         let hasTeamsToRank = false;
         for (let slot = 1; slot <= totalSlots; slot++) {
             const team = confirmed[slot - 1] || null;
@@ -3299,7 +3299,7 @@ window.manageTournamentSlots = async function(tournamentId) {
                 const existingData = lbData[team.id] || {};
                 const currentRank = existingData.rank !== undefined ? existingData.rank : '';
                 const currentKills = existingData.totalKills !== undefined ? existingData.totalKills : '';
-                
+
                 ranksHtml += `
                     <tr style="border-bottom:1px solid #222;" data-team-id="${team.id}" class="rank-row">
                         <td style="padding:10px; color:#888;">#${slot}</td>
@@ -3317,11 +3317,11 @@ window.manageTournamentSlots = async function(tournamentId) {
                 `;
             }
         }
-        
+
         if (!hasTeamsToRank) {
             ranksHtml += `<tr><td colspan="4" style="text-align:center; padding:20px; color:#888;">No teams have confirmed slots yet.</td></tr>`;
         }
-        
+
         ranksHtml += `</tbody></table>`;
         document.getElementById("ranks-container").innerHTML = ranksHtml;
 
@@ -3371,7 +3371,7 @@ window.manageTournamentSlots = async function(tournamentId) {
 // ============================================================================
 //  GLOBAL MESSAGE BLAST — sends announcement to all confirmed + waitlist members
 // ============================================================================
-window.openGlobalMessageModal = async function(tournamentId) {
+window.openGlobalMessageModal = async function (tournamentId) {
     document.getElementById("globalMsgModal")?.remove();
     const overlay = document.createElement("div");
     overlay.id = "globalMsgModal";
@@ -3393,7 +3393,7 @@ window.openGlobalMessageModal = async function(tournamentId) {
     overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
 };
 
-window.sendGlobalTournamentMessage = async function(tournamentId) {
+window.sendGlobalTournamentMessage = async function (tournamentId) {
     const msg = document.getElementById("globalMsgText")?.value.trim();
     if (!msg) { showToast("Please type a message.", "warning"); return; }
     try {
@@ -3406,10 +3406,10 @@ window.sendGlobalTournamentMessage = async function(tournamentId) {
         });
         if (allIds.size === 0) { showToast("No members found in this tournament.", "warning"); return; }
         await Promise.all([...allIds].map(uid => sendDualNotification(uid, {
-            type:       "tournament_announcement",
-            title:      "📢 Tournament Announcement",
-            message:    msg,
-            extra:      { tournamentId },
+            type: "tournament_announcement",
+            title: "📢 Tournament Announcement",
+            message: msg,
+            extra: { tournamentId },
             actionLink: `tournament=${tournamentId}`,
         })));
         document.getElementById("globalMsgModal")?.remove();
@@ -3423,7 +3423,7 @@ window.sendGlobalTournamentMessage = async function(tournamentId) {
 //  GLOBAL ROOM ID & PASSWORD BLAST
 //  Sends to ALL members. Unpaid users see a blurred/locked version on their end.
 // ============================================================================
-window.openGlobalRoomBlast = async function(tournamentId) {
+window.openGlobalRoomBlast = async function (tournamentId) {
     document.getElementById("globalRoomModal")?.remove();
     const overlay = document.createElement("div");
     overlay.id = "globalRoomModal";
@@ -3456,8 +3456,8 @@ window.openGlobalRoomBlast = async function(tournamentId) {
     overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
 };
 
-window.sendGlobalRoomBlast = async function(tournamentId) {
-    const roomId   = document.getElementById("blastRoomId")?.value.trim();
+window.sendGlobalRoomBlast = async function (tournamentId) {
+    const roomId = document.getElementById("blastRoomId")?.value.trim();
     const roomPass = document.getElementById("blastRoomPass")?.value.trim();
     if (!roomId || !roomPass) { showToast("Enter both Room ID and Password.", "warning"); return; }
     try {
@@ -3468,10 +3468,10 @@ window.sendGlobalRoomBlast = async function(tournamentId) {
         });
         if (allIds.size === 0) { showToast("No members found.", "warning"); return; }
         await Promise.all([...allIds].map(uid => sendDualNotification(uid, {
-            type:       "room_blast",
-            title:      "🔑 Room Details Available!",
-            message:    "The Room ID and Password for your tournament have been shared. Tap to view.",
-            extra:      { roomId, roomPassword: roomPass, tournamentId },
+            type: "room_blast",
+            title: "🔑 Room Details Available!",
+            message: "The Room ID and Password for your tournament have been shared. Tap to view.",
+            extra: { roomId, roomPassword: roomPass, tournamentId },
             actionLink: `tournament=${tournamentId}`,
         })));
         document.getElementById("globalRoomModal")?.remove();
@@ -3484,7 +3484,7 @@ window.sendGlobalRoomBlast = async function(tournamentId) {
 // ============================================================================
 //  CHANGE REQUEST REVIEW (Admin sees user’s requested edits)
 // ============================================================================
-window.openChangeRequestReview = async function(tournamentId, userId, stage) {
+window.openChangeRequestReview = async function (tournamentId, userId, stage) {
     document.getElementById("changeReqModal")?.remove();
     try {
         const crSnap = await getDoc(doc(db, "tournaments", tournamentId, "changeRequests", userId));
@@ -3528,9 +3528,9 @@ window.openChangeRequestReview = async function(tournamentId, userId, stage) {
     }
 };
 
-window.allowChangeRequest = async function(tournamentId, userId, stage) {
+window.allowChangeRequest = async function (tournamentId, userId, stage) {
     try {
-        const crRef  = doc(db, "tournaments", tournamentId, "changeRequests", userId);
+        const crRef = doc(db, "tournaments", tournamentId, "changeRequests", userId);
         const crSnap = await getDoc(crRef);
         if (!crSnap.exists()) { showToast("Change request not found.", "error"); return; }
         const cr = crSnap.data();
@@ -3550,10 +3550,10 @@ window.allowChangeRequest = async function(tournamentId, userId, stage) {
 
         // Notify the user
         await sendDualNotification(userId, {
-            type:       "change_request_approved",
-            title:      "✅ Change Request Approved!",
-            message:    "Your requested changes have been applied. Please review your updated details and confirm they are correct.",
-            extra:      { tournamentId },
+            type: "change_request_approved",
+            title: "✅ Change Request Approved!",
+            message: "Your requested changes have been applied. Please review your updated details and confirm they are correct.",
+            extra: { tournamentId },
             actionLink: `tournament=${tournamentId}`,
         });
 
@@ -3564,21 +3564,21 @@ window.allowChangeRequest = async function(tournamentId, userId, stage) {
     }
 };
 
-window.rejectChangeRequest = async function(tournamentId, userId) {
+window.rejectChangeRequest = async function (tournamentId, userId) {
     const reason = prompt("Optional: Enter a reason for rejecting the change request:") || "";
     try {
         await updateDoc(doc(db, "tournaments", tournamentId, "changeRequests", userId), {
-            status:           "rejected",
-            rejectionReason:  reason,
-            processedAt:      serverTimestamp()
+            status: "rejected",
+            rejectionReason: reason,
+            processedAt: serverTimestamp()
         });
         await sendDualNotification(userId, {
-            type:       "change_request_rejected",
-            title:      "❌ Change Request Rejected",
-            message:    reason
+            type: "change_request_rejected",
+            title: "❌ Change Request Rejected",
+            message: reason
                 ? `Your change request was rejected. Reason: ${reason}. If you need to correct your details, you may re-register.`
                 : "Your change request was rejected by the admin. If you need to correct your details, you may re-register for this tournament.",
-            extra:      { tournamentId },
+            extra: { tournamentId },
             actionLink: `resubmit&tournament=${tournamentId}`,
         });
         document.getElementById("changeReqModal")?.remove();
@@ -3589,26 +3589,26 @@ window.rejectChangeRequest = async function(tournamentId, userId) {
 };
 
 
-window.kickTeamFromSlot = async function(tournamentId, teamId, userId) {
+window.kickTeamFromSlot = async function (tournamentId, teamId, userId) {
     if (!confirm("Kick this team? This will remove all their data and notify every team member.")) return;
     try {
         const uid = userId || teamId;
         // 1. Delete from all tournament subcollections
         await Promise.allSettled([
-            deleteDoc(doc(db, "tournaments", tournamentId, "slots",                  teamId)),
-            deleteDoc(doc(db, "tournaments", tournamentId, "participants",           uid)),
-            deleteDoc(doc(db, "tournaments", tournamentId, "verifications",          uid)),
-            deleteDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations",  uid)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "slots", teamId)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "participants", uid)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "verifications", uid)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", uid)),
         ]);
 
         // 2. Look up team members and notify ALL of them
         const notifyPayload = {
-            type:       "admin_notice",
-            title:      "❌ Removed from Tournament",
-            message:    "Your team has been removed from the tournament slot. Please contact admin for details.",
+            type: "admin_notice",
+            title: "❌ Removed from Tournament",
+            message: "Your team has been removed from the tournament slot. Please contact admin for details.",
             actionLink: `tournament=${tournamentId}`
         };
-        
+
         try {
             const teamSnap = await getDoc(doc(db, "teams", teamId));
             if (teamSnap.exists()) {
@@ -3621,7 +3621,7 @@ window.kickTeamFromSlot = async function(tournamentId, teamId, userId) {
         } catch (notifyErr) {
             // Notification failure should not block the kick
             console.warn("[KICK] Notification partial failure:", notifyErr);
-            await sendDualNotification(teamId, notifyPayload).catch(() => {});
+            await sendDualNotification(teamId, notifyPayload).catch(() => { });
         }
 
         showToast("Team kicked, all data removed & all members notified.", "success");
@@ -3633,7 +3633,7 @@ window.kickTeamFromSlot = async function(tournamentId, teamId, userId) {
 };
 
 
-window.promoteFromWaitlist = async function(tournamentId, teamId) {
+window.promoteFromWaitlist = async function (tournamentId, teamId) {
     const slotNumberStr = prompt("Enter the slot number (1-12) to assign this team:");
     if (!slotNumberStr) return;
 
@@ -3647,7 +3647,7 @@ window.promoteFromWaitlist = async function(tournamentId, teamId) {
 
     try {
         const slotRef = doc(db, "tournaments", tournamentId, "slots", teamId);
-        
+
         await updateDoc(slotRef, {
             paymentStatus: "Pending Payment",
             assignedSlot: slotNumber,
@@ -3655,9 +3655,9 @@ window.promoteFromWaitlist = async function(tournamentId, teamId) {
         });
 
         await sendDualNotification(teamId, {
-            type: "admin_notice", 
-            title: `🎉 Slot #${slotNumber} Opened!`, 
-            message: `Your team has been promoted from the waitlist to Slot #${slotNumber}. Please pay your entry fee now to secure your spot.,`, 
+            type: "admin_notice",
+            title: `🎉 Slot #${slotNumber} Opened!`,
+            message: `Your team has been promoted from the waitlist to Slot #${slotNumber}. Please pay your entry fee now to secure your spot.,`,
             actionLink: `tournament=${tournamentId}`
         });
 
@@ -3668,13 +3668,13 @@ window.promoteFromWaitlist = async function(tournamentId, teamId) {
     }
 };
 
-window.filterSlots = function() {
+window.filterSlots = function () {
     const input = document.getElementById('slotSearch').value.toLowerCase();
     const rows = document.querySelectorAll('.slot-row');
-    
+
     let currentBlockMatches = false;
     let blockRows = [];
-    
+
     rows.forEach(row => {
         if (row.querySelector('td[rowspan]')) {
             if (blockRows.length > 0) {
@@ -3699,7 +3699,7 @@ window.filterSlots = function() {
 // ULTIMATE REVIEW MODAL (Handles both Ongoing and Upcoming safely)
 // ============================================================================
 
-window.openAdminReviewModal = async function(tournamentId, userId, dataString, stage = 'ongoing') {
+window.openAdminReviewModal = async function (tournamentId, userId, dataString, stage = 'ongoing') {
     const app = JSON.parse(decodeURIComponent(dataString));
     console.error("🛑 APP DATA RECEIVED IN MODAL:", app);
     document.getElementById("reviewAppModal")?.remove();
@@ -3711,7 +3711,7 @@ window.openAdminReviewModal = async function(tournamentId, userId, dataString, s
         if (tSnap.exists()) {
             tournamentTitle = tSnap.data().title || tournamentId;
         }
-    } catch(e) { console.warn("Could not fetch tournament title"); }
+    } catch (e) { console.warn("Could not fetch tournament title"); }
 
     // ✅ FIX: Generate Player UIDs with NPC Verified Badges (Player 1 shows Leader + NPC/Friend)
     const playersHtml = app.playersData && app.playersData.length > 0 ? app.playersData.map((p, i) => {
@@ -3724,10 +3724,10 @@ window.openAdminReviewModal = async function(tournamentId, userId, dataString, s
         let typeBadge = (p.type === 'npc_verified' || p.type === 'NPC User' || p.type === 'npc')
             ? `<span style="background:var(--green);color:#000;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">NPC User</span>`
             : (p.type === 'leader' ? '' : `<span style="background:#444;color:#aaa;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;">Friend</span>`);
-            
+
         return `
             <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #222;padding-bottom:8px;">
-                <span style="color:#888;">Player ${i+1} ${leaderBadge}${typeBadge}</span>
+                <span style="color:#888;">Player ${i + 1} ${leaderBadge}${typeBadge}</span>
                 <span style="color:#fff;font-weight:bold;">${p.uid} <span style="color:var(--blue);font-weight:normal;font-size:12px;margin-left:6px;">${p.nickname}</span></span>
             </div>
         `;
@@ -3813,7 +3813,7 @@ window.openAdminReviewModal = async function(tournamentId, userId, dataString, s
 // ============================================================================
 // THE DECISION HANDLER (Fixes the "Not Defined" errors & verifies reasons)
 // ============================================================================
-window.handleReviewDecision = async function(tournamentId, userId, status, stage) {
+window.handleReviewDecision = async function (tournamentId, userId, status, stage) {
     // 1. Force the admin to select a reason if rejecting
     if (status === 'rejected') {
         const reason = document.getElementById("reasonSelect")?.value;
@@ -3832,14 +3832,14 @@ window.handleReviewDecision = async function(tournamentId, userId, status, stage
                 const select = document.getElementById("reasonSelect").value;
                 const custom = document.getElementById("adminNote")?.value.trim() ?? "";
                 const finalReason = select === "custom" ? custom : select;
-                
+
                 // Use imported updateDoc to mark rejected in Firestore
                 await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
-                    status: "rejected", 
-                    rejectionReason: finalReason, 
+                    status: "rejected",
+                    rejectionReason: finalReason,
                     processedAt: serverTimestamp(),
                 });
-                
+
                 // Send notification
                 await sendDualNotification(userId, {
                     type: "rejected",
@@ -3854,7 +3854,7 @@ window.handleReviewDecision = async function(tournamentId, userId, status, stage
             // Handle Ongoing Approvals/Rejections using your existing processDecision function
             await processDecision(tournamentId, userId, status);
         }
-        
+
         // Remove the modal upon success
         document.getElementById('reviewAppModal')?.remove();
 
@@ -3863,10 +3863,10 @@ window.handleReviewDecision = async function(tournamentId, userId, status, stage
     }
 };
 
-window.sendGlobalNotification = async function() {
+window.sendGlobalNotification = async function () {
     const title = document.getElementById("globalNotifTitle").value.trim();
     const msg = document.getElementById("globalNotifMsg").value.trim();
-    
+
     if (!title || !msg) { alert("Please enter a title and message."); return; }
     if (!confirm("Are you sure? This will send to EVERY registered user.")) return;
 
@@ -3902,44 +3902,44 @@ window.sendGlobalNotification = async function() {
 // APPEND TO BOTTOM of admin.js
 // =============================================================================
 
-window.moveToWaitlist = async function(tournamentId, teamId) {
+window.moveToWaitlist = async function (tournamentId, teamId) {
     if (!confirm("Move this team to the Waitlist? They will be notified.")) return;
     try {
         const slotRef = doc(db, "tournaments", tournamentId, "slots", teamId);
         await updateDoc(slotRef, { paymentStatus: "Waitlist", waitlistedAt: serverTimestamp() });
-        
+
         // Notify the team
         await sendDualNotification(teamId, {
-            type:       "admin_notice",
-            title:      "⏳ Moved to Waitlist",
-            message:    "Your slot has been moved to the waitlist. You will be notified if a slot opens up.",
+            type: "admin_notice",
+            title: "⏳ Moved to Waitlist",
+            message: "Your slot has been moved to the waitlist. You will be notified if a slot opens up.",
             actionLink: `tournament=${tournamentId}`
         });
-        
+
         showToast("Team moved to waitlist & notified.", "success");
         manageTournamentSlots(tournamentId); // Refresh
-        
+
     } catch (e) {
         showToast("Action failed: Permission Denied.", "error");
     }
 };
 
-window.deleteSlot = async function(tournamentId, teamId, userId) {
+window.deleteSlot = async function (tournamentId, teamId, userId) {
     if (!confirm("Permanently delete this slot entry? This cannot be undone.")) return;
     try {
         const uid = userId || teamId;
         // Try deleting from both /slots and /participants for backward compat
         const promises = [
-            deleteDoc(doc(db, "tournaments", tournamentId, "slots", teamId)).catch(() => {}),
-            deleteDoc(doc(db, "tournaments", tournamentId, "participants", uid)).catch(() => {}),
-            deleteDoc(doc(db, "tournaments", tournamentId, "verifications", uid)).catch(() => {}),
-            deleteDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", uid)).catch(() => {})
+            deleteDoc(doc(db, "tournaments", tournamentId, "slots", teamId)).catch(() => { }),
+            deleteDoc(doc(db, "tournaments", tournamentId, "participants", uid)).catch(() => { }),
+            deleteDoc(doc(db, "tournaments", tournamentId, "verifications", uid)).catch(() => { }),
+            deleteDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", uid)).catch(() => { })
         ];
         await Promise.all(promises);
-        
+
         showToast("Slot deleted.", "success");
         manageTournamentSlots(tournamentId); // Refresh
-        
+
     } catch (e) {
         showToast("Error deleting: Permission Denied.", "error");
     }
@@ -3949,10 +3949,10 @@ window.deleteSlot = async function(tournamentId, teamId, userId) {
 // PAYOUT MODAL
 // =============================================================================
 
-window.openPayoutModal = async function(tournamentId, teamId, userId) {
+window.openPayoutModal = async function (tournamentId, teamId, userId) {
     const uid = userId || teamId;
     document.getElementById("payoutModalOverlay")?.remove();
-    
+
     // Fetch data from verifications or participants
     let tData = null;
     try {
@@ -3962,8 +3962,8 @@ window.openPayoutModal = async function(tournamentId, teamId, userId) {
             snap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", uid));
             if (snap.exists()) tData = snap.data();
         }
-    } catch(e) { console.error(e); }
-    
+    } catch (e) { console.error(e); }
+
     tData = tData || {};
     const teamName = tData.teamName || "Unnamed Team";
     const phone = tData.phone || "—";
@@ -4027,7 +4027,7 @@ window.openPayoutModal = async function(tournamentId, teamId, userId) {
     document.body.appendChild(overlay);
 };
 
-window.processPayout = async function(tournamentId, uid, teamName) {
+window.processPayout = async function (tournamentId, uid, teamName) {
     const utr = document.getElementById("payoutUtrInput")?.value.trim();
     const type = document.getElementById("payoutTypeSelect")?.value || "refund";
 
@@ -4035,7 +4035,7 @@ window.processPayout = async function(tournamentId, uid, teamName) {
         showToast("Please enter the UTR / Transaction ID.", "warning");
         return;
     }
-    
+
     if (!confirm(`Are you sure you want to send this ${type} notification to ${teamName} with UTR: ${utr}?`)) return;
 
     try {
@@ -4052,12 +4052,12 @@ window.processPayout = async function(tournamentId, uid, teamName) {
             message = `Sorry for the inconvenience. We have refunded your entry fee to your registered UPI ID. Please check and verify. UTR: ${utr}`;
             finalStatus = "Refunded";
         }
-        
+
         // Notify the team
         await sendDualNotification(uid, {
-            type:       "admin_notice",
-            title:      title,
-            message:    message,
+            type: "admin_notice",
+            title: title,
+            message: message,
             actionLink: `tournament=${tournamentId}`
         });
 
@@ -4065,12 +4065,12 @@ window.processPayout = async function(tournamentId, uid, teamName) {
         try {
             const participantRef = doc(db, "tournaments", tournamentId, "participants", uid);
             await updateDoc(participantRef, { paymentStatus: finalStatus });
-        } catch(e) {} // Ignore if document doesn't exist
-        
+        } catch (e) { } // Ignore if document doesn't exist
+
         try {
             const slotRef = doc(db, "tournaments", tournamentId, "slots", uid);
             await updateDoc(slotRef, { paymentStatus: finalStatus });
-        } catch(e) {}
+        } catch (e) { }
 
         showToast("Notification sent successfully!", "success");
         document.getElementById("payoutModalOverlay")?.remove();
@@ -4088,9 +4088,9 @@ window.processPayout = async function(tournamentId, uid, teamName) {
 // Call: window.renderAdminLeaderboardGrid(tournamentId)
 // =============================================================================
 
-window.renderAdminLeaderboardGrid = async function(tournamentId) {
+window.renderAdminLeaderboardGrid = async function (tournamentId) {
     let container = document.getElementById("adminLeaderboardGrid");
-    
+
     // If container doesn't exist, create a modal overlay for it!
     if (!container) {
         let overlay = document.getElementById("leaderboardModalOverlay");
@@ -4125,9 +4125,9 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
             getDocs(collection(db, "tournaments", tournamentId, "verifications")),
             getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
         ]);
-        
-        const existing = {}; 
-        lbSnap.forEach(d => { 
+
+        const existing = {};
+        lbSnap.forEach(d => {
             const data = d.data();
             if (!existing[data.rank] || d.id.startsWith("rank_")) {
                 existing[data.rank] = data;
@@ -4149,9 +4149,9 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
         window.currentTeamPlayersMap = teamPlayersMap;
 
         const rankStyles = {
-            1: { color: "gold",    bg: "rgba(255,215,0,0.08)",   border: "gold" },
-            2: { color: "silver",  bg: "rgba(192,192,192,0.06)", border: "silver" },
-            3: { color: "#cd7f32", bg: "rgba(205,127,50,0.06)",  border: "#cd7f32" },
+            1: { color: "gold", bg: "rgba(255,215,0,0.08)", border: "gold" },
+            2: { color: "silver", bg: "rgba(192,192,192,0.06)", border: "silver" },
+            3: { color: "#cd7f32", bg: "rgba(205,127,50,0.06)", border: "#cd7f32" },
         };
 
         let gridHtml = `
@@ -4168,7 +4168,7 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
 
         // o. FIX: Force exactly 12 rows ?" even if database has 0 entries
         for (let rank = 1; rank <= 12; rank++) {
-            const data  = existing[rank] || {};
+            const data = existing[rank] || {};
             const style = rankStyles[rank] || { color: "#aaa", bg: "rgba(255,255,255,0.02)", border: "#2a2a2a" };
             const teamNameSafe = escHtml(data.teamName || "");
             const highestKillSafe = escHtml(data.highestKill || "");
@@ -4262,30 +4262,30 @@ window.renderAdminLeaderboardGrid = async function(tournamentId) {
     }
 };
 
-window.updateLeaderboardPlayerSelect = function(rank) {
+window.updateLeaderboardPlayerSelect = function (rank) {
     const teamNameInput = document.getElementById(`lb_name_${rank}`);
     const selectEl = document.getElementById(`lb_top_player_${rank}`);
     if (!teamNameInput || !selectEl || !window.currentTeamPlayersMap) return;
-    
+
     const teamName = teamNameInput.value.trim().toLowerCase();
     const players = window.currentTeamPlayersMap[teamName] || [];
-    
+
     const currentValue = selectEl.value;
     let optionsHtml = `<option value="">-- Select Player --</option>`;
     if (currentValue && !players.includes(currentValue)) {
-         optionsHtml += `<option value="${escHtml(currentValue)}" selected>${escHtml(currentValue)}</option>`;
+        optionsHtml += `<option value="${escHtml(currentValue)}" selected>${escHtml(currentValue)}</option>`;
     }
     players.forEach(p => {
         const sel = (p === currentValue) ? "selected" : "";
         optionsHtml += `<option value="${escHtml(p)}" ${sel}>${escHtml(p)}</option>`;
     });
-    
+
     selectEl.innerHTML = optionsHtml;
 };
 
-window.saveLeaderboardRow = async function(tournamentId, rank) {
-    const tName = (document.getElementById(`lb_name_${rank}`)?.value  || "").trim();
-    const tTopPlayer = (document.getElementById(`lb_top_player_${rank}`)?.value  || "").trim();
+window.saveLeaderboardRow = async function (tournamentId, rank) {
+    const tName = (document.getElementById(`lb_name_${rank}`)?.value || "").trim();
+    const tTopPlayer = (document.getElementById(`lb_top_player_${rank}`)?.value || "").trim();
     const tScore = parseInt(document.getElementById(`lb_score_${rank}`)?.value) || 0;
     const tKills = parseInt(document.getElementById(`lb_kills_${rank}`)?.value) || 0;
 
@@ -4298,11 +4298,11 @@ window.saveLeaderboardRow = async function(tournamentId, rank) {
         await setDoc(
             doc(db, "tournaments", tournamentId, "leaderboard", `rank_${rank}`),
             {
-                rank:      rank,
-                teamName:  tName,
+                rank: rank,
+                teamName: tName,
                 highestKill: tTopPlayer,
-                score:     tScore,
-                kills:     tKills,
+                score: tScore,
+                kills: tKills,
                 updatedAt: serverTimestamp()
             }
         );
@@ -4312,30 +4312,30 @@ window.saveLeaderboardRow = async function(tournamentId, rank) {
     }
 };
 
-window.saveAllLeaderboardRows = async function(tournamentId) {
+window.saveAllLeaderboardRows = async function (tournamentId) {
     const batch = writeBatch(db);
     let count = 0;
-    
+
     for (let rank = 1; rank <= 12; rank++) {
         const tName = (document.getElementById(`lb_name_${rank}`)?.value || "").trim();
         const tTopPlayer = (document.getElementById(`lb_top_player_${rank}`)?.value || "").trim();
         const tScore = parseInt(document.getElementById(`lb_score_${rank}`)?.value) || 0;
         const tKills = parseInt(document.getElementById(`lb_kills_${rank}`)?.value) || 0;
-        
+
         if (!tName) continue;
         count++;
-        
+
         batch.set(
             doc(db, "tournaments", tournamentId, "leaderboard", `rank_${rank}`),
             { rank, teamName: tName, highestKill: tTopPlayer, score: tScore, kills: tKills, updatedAt: serverTimestamp() }
         );
     }
-    
+
     if (count === 0) {
         showToast("No valid rows to save.", "warning");
         return;
     }
-    
+
     try {
         await batch.commit();
         showToast(`? ${count} leaderboard rows saved!`, "success");
@@ -4344,7 +4344,7 @@ window.saveAllLeaderboardRows = async function(tournamentId) {
     }
 };
 
-window.clearLeaderboard = async function(tournamentId) {
+window.clearLeaderboard = async function (tournamentId) {
     if (!confirm("Clear entire leaderboard? This cannot be undone.")) return;
     try {
         const snap = await getDocs(collection(db, "tournaments", tournamentId, "leaderboard"));
@@ -4363,13 +4363,13 @@ window.clearLeaderboard = async function(tournamentId) {
 //  NPC Esports — USER METRICS & ROSTER ANALYTICS DASHBOARD (NEW FEATURE)
 // =============================================================================
 
-window.showUserAnalyticsDashboard = async function() {
+window.showUserAnalyticsDashboard = async function () {
     // 1. Setup UI Modal Elements
     document.getElementById("analyticsModalOverlay")?.remove();
     const overlay = document.createElement("div");
     overlay.id = "analyticsModalOverlay";
     overlay.className = "status-modal-overlay";
-    
+
     overlay.innerHTML = `
         <div class="status-modal" style="max-width:1000px; width:100%; max-height:90vh; overflow-y:auto; padding:25px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:15px; flex-wrap:wrap; gap:10px;">
@@ -4446,7 +4446,7 @@ window.showUserAnalyticsDashboard = async function() {
     try {
         // 2. Fetch all user records from Firestore
         const usersSnap = await getDocs(collection(db, "users"));
-        
+
         let total = 0;
         let leaders = 0;
         let members = 0;
@@ -4454,7 +4454,7 @@ window.showUserAnalyticsDashboard = async function() {
         let admins = 0;
         let withTeam = 0;
         let noTeam = 0;
-        
+
         let tableRowsHtml = "";
 
         usersSnap.forEach(docSnap => {
@@ -4468,7 +4468,7 @@ window.showUserAnalyticsDashboard = async function() {
 
             // Increment specific categories
             if (isAdminUser) admins++;
-            
+
             if (userRole === "leader") leaders++;
             else if (userRole === "member" || userRole === "player") members++;
             else if (userRole === "viewer") viewers++;
@@ -4486,7 +4486,7 @@ window.showUserAnalyticsDashboard = async function() {
                 roleBadge = `<span style="background:rgba(59,130,246,0.15); color:#3b82f6; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold;">Member 🔑</span>`;
             }
 
-            const teamDisplay = hasTeam 
+            const teamDisplay = hasTeam
                 ? `<b style="color:#fff;">${escHtml(u.teamName)}</b> <span style="color:#555; font-size:11px;">(${escHtml(u.teamCode || "")})</span>`
                 : `<i style="color:#555;">No Assigned Team (Solo)</i>`;
 
@@ -4521,10 +4521,10 @@ window.showUserAnalyticsDashboard = async function() {
 };
 
 // 🔍 LIVE FILTER LOGIC FUNCTION
-window.filterAnalyticsUserTable = function() {
+window.filterAnalyticsUserTable = function () {
     const q = document.getElementById("analyticsUserSearch").value.toLowerCase().trim();
     const rows = document.querySelectorAll(".analytics-user-row");
-    
+
     rows.forEach(row => {
         const text = row.textContent.toLowerCase();
         if (text.includes(q)) {
@@ -4538,15 +4538,15 @@ window.filterAnalyticsUserTable = function() {
 // ==========================================
 // RANKING TEAMS SAVING LOGIC
 // ==========================================
-window.checkDuplicateRanks = function() {
+window.checkDuplicateRanks = function () {
     const inputs = document.querySelectorAll(".rank-input");
     const valMap = {};
-    
+
     // Reset borders
     inputs.forEach(input => {
         input.style.border = "1px solid #333";
         input.style.boxShadow = "none";
-        
+
         const val = input.value;
         if (val) {
             if (!valMap[val]) valMap[val] = [];
@@ -4565,7 +4565,7 @@ window.checkDuplicateRanks = function() {
     });
 };
 
-window.saveAllTeamRankings = async function(tournamentId) {
+window.saveAllTeamRankings = async function (tournamentId) {
     if (!confirm("Save these rankings? This will update the Leaderboard and Team History.")) return;
 
     try {
@@ -4618,10 +4618,10 @@ window.saveAllTeamRankings = async function(tournamentId) {
             if (rankInput && teamId) {
                 const rankNum = parseInt(rankInput) || 0;
                 const killsNum = parseInt(killsInput) || 0;
-                
+
                 // Fetch team name/details from the row (very basic)
                 const teamName = row.children[1].innerText;
-                
+
                 // 1. Write to Leaderboard
                 const lbRef = doc(db, "tournaments", tournamentId, "leaderboard", teamId);
                 batch.set(lbRef, {
@@ -4642,7 +4642,7 @@ window.saveAllTeamRankings = async function(tournamentId) {
                     isWin: rankNum === 1,
                     date: serverTimestamp()
                 }, { merge: true });
-                
+
                 // 3. Update overall team stats
                 // Need to do this properly with transactions or increment
                 // For safety in batch, we can use increment
@@ -4658,7 +4658,7 @@ window.saveAllTeamRankings = async function(tournamentId) {
                 // Clear existing rank if admin removes the value
                 const lbRef = doc(db, "tournaments", tournamentId, "leaderboard", teamId);
                 batch.delete(lbRef);
-                
+
                 // We could also delete tournamentHistory, but we'll leave it as a design choice.
                 // Just removing from leaderboard is what the user asked.
                 validUpdates++;
@@ -4683,19 +4683,19 @@ window.saveAllTeamRankings = async function(tournamentId) {
 //  18. FINANCIAL HUB PAYOUT SYSTEM
 // ============================================================================
 
-window.openRewardModal = async function(tournamentId, teamId, teamName) {
+window.openRewardModal = async function (tournamentId, teamId, teamName) {
     if (!teamId) {
         showToast("Error: Missing Team ID", "error");
         return;
     }
-    
+
     // Fetch Team Data to get UPI ID
     let upiId = "Not Set by User";
     try {
         // Query verifications to get the tournament-specific payout UPI ID
         const vQuery = query(collection(db, "tournaments", tournamentId, "verifications"), where("teamId", "==", teamId), limit(1));
         const vSnap = await getDocs(vQuery);
-        
+
         if (!vSnap.empty && vSnap.docs[0].data().payoutUpiId) {
             upiId = vSnap.docs[0].data().payoutUpiId;
         } else {
@@ -4719,7 +4719,7 @@ window.openRewardModal = async function(tournamentId, teamId, teamName) {
     const overlay = document.createElement("div");
     overlay.id = "rewardModalOverlay";
     overlay.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:99999;display:flex;align-items:center;justify-content:center;";
-    
+
     overlay.innerHTML = `
         <div style="background:#111; border:2px solid #00ff88; border-radius:12px; padding:25px; width:90%; max-width:400px; color:#fff; font-family:'Rajdhani', sans-serif;">
             <h2 style="margin-top:0; color:#00ff88;">💰 Reward Team</h2>
@@ -4746,14 +4746,14 @@ window.openRewardModal = async function(tournamentId, teamId, teamName) {
             </div>
         </div>
     `;
-    
+
     document.body.appendChild(overlay);
 };
 
-window.submitReward = async function(teamId, tournamentId) {
+window.submitReward = async function (teamId, tournamentId) {
     const amountVal = document.getElementById("rewardAmount").value;
     const refVal = document.getElementById("rewardRef").value.trim();
-    
+
     if (!amountVal || amountVal <= 0) {
         showToast("Enter a valid amount.", "error");
         return;
@@ -4762,27 +4762,27 @@ window.submitReward = async function(teamId, tournamentId) {
         showToast("Enter the transaction reference ID.", "error");
         return;
     }
-    
+
     const amount = Number(amountVal);
-    
+
     try {
         const btn = event.target;
         btn.textContent = "Processing...";
         btn.disabled = true;
-        
+
         await addDoc(collection(db, "teams", teamId, "transactions"), {
             type: 'credit',
             amount: amount,
             referenceId: refVal,
-            description: `Tournament Winnings (Ref: ${tournamentId.substring(0,6)})`,
+            description: `Tournament Winnings (Ref: ${tournamentId.substring(0, 6)})`,
             tournamentId: tournamentId,
             createdAt: serverTimestamp()
         });
-        
+
         await updateDoc(doc(db, "teams", teamId), {
             lifetimeEarnings: increment(amount)
         });
-        
+
         const teamSnap = await getDoc(doc(db, "teams", teamId));
         if (teamSnap.exists() && teamSnap.data().leaderUid) {
             await addDoc(collection(db, "users", teamSnap.data().leaderUid, "notifications"), {
@@ -4793,10 +4793,10 @@ window.submitReward = async function(teamId, tournamentId) {
                 createdAt: serverTimestamp()
             });
         }
-        
+
         showToast("Payout Logged Successfully!", "success");
         document.getElementById("rewardModalOverlay").remove();
-        
+
     } catch (e) {
         console.error("Error logging reward:", e);
         showToast("Failed to log payout. Permission denied?", "error");
@@ -4807,7 +4807,7 @@ window.submitReward = async function(teamId, tournamentId) {
 // ==========================================
 import { deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
-window.runV2DataMigration = async function() {
+window.runV2DataMigration = async function () {
     console.log("Starting Data Migration...");
     const usersSnap = await getDocs(collection(db, "users"));
     let migratedCount = 0;
@@ -4866,7 +4866,7 @@ window.runV2DataMigration = async function() {
 };
 
 
-window.deleteUserDoc = async function(uid) {
+window.deleteUserDoc = async function (uid) {
     if (!confirm("Are you sure you want to delete this Firestore document? This is usually for deleting Ghost accounts.")) return;
     try {
         await deleteDoc(doc(db, "users", uid));
@@ -4879,16 +4879,16 @@ window.deleteUserDoc = async function(uid) {
 };
 
 
-window.openPostponeModal = function(tournamentId, title, currentEventDate, currentTransitionTime) {
+window.openPostponeModal = function (tournamentId, title, currentEventDate, currentTransitionTime) {
     const overlay = document.createElement("div");
     overlay.id = "postponeModalOverlay";
     overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index:10000; padding:20px;";
-    
+
     const formatForInput = (isoStr) => {
         if (!isoStr) return "";
         const d = new Date(isoStr);
         if (isNaN(d)) return "";
-        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0,16);
+        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
     };
 
     overlay.innerHTML = `
@@ -4920,7 +4920,7 @@ window.openPostponeModal = function(tournamentId, title, currentEventDate, curre
     document.body.appendChild(overlay);
 };
 
-window.submitPostpone = async function(tournamentId) {
+window.submitPostpone = async function (tournamentId) {
     const eventDateInput = document.getElementById("postponeEventDate").value;
     const transitionTimeInput = document.getElementById("postponeTransitionTime").value;
 
@@ -4944,23 +4944,23 @@ window.submitPostpone = async function(tournamentId) {
             getDocs(collection(db, "tournaments", tournamentId, "verifications")),
             getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
         ]);
-        
-        const allIds = new Set();
-        verifSnap.forEach(d => { if(d.data().status !== "rejected") allIds.add(d.id); });
-        upcomSnap.forEach(d => { if(d.data().status !== "rejected") allIds.add(d.id); });
 
-        const formattedDate = new Date(eventDateInput).toLocaleString(undefined, { 
-            weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
+        const allIds = new Set();
+        verifSnap.forEach(d => { if (d.data().status !== "rejected") allIds.add(d.id); });
+        upcomSnap.forEach(d => { if (d.data().status !== "rejected") allIds.add(d.id); });
+
+        const formattedDate = new Date(eventDateInput).toLocaleString(undefined, {
+            weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
         });
 
         const notifPromises = [...allIds].map(uid => sendDualNotification(uid, {
-            type:       "tournament_announcement",
-            title:      "🗓️ Tournament Postponed",
-            message:    `The tournament has been postponed to ${formattedDate}. Your registration and verified slots are completely saved!`,
-            extra:      { tournamentId },
+            type: "tournament_announcement",
+            title: "🗓️ Tournament Postponed",
+            message: `The tournament has been postponed to ${formattedDate}. Your registration and verified slots are completely saved!`,
+            extra: { tournamentId },
             actionLink: `tournament=${tournamentId}`,
         }));
-        
+
         await Promise.all(notifPromises);
 
         document.getElementById('postponeModalOverlay').remove();
@@ -4971,7 +4971,7 @@ window.submitPostpone = async function(tournamentId) {
     }
 };
 
-window.openEditTimingModal = async function(tournamentId, optTitle, optEventDate, optTransitionTime) {
+window.openEditTimingModal = async function (tournamentId, optTitle, optEventDate, optTransitionTime) {
     document.getElementById('editTimingModalOverlay')?.remove();
 
     // Show initial loading modal while fetching latest doc
@@ -5067,7 +5067,7 @@ window.openEditTimingModal = async function(tournamentId, optTitle, optEventDate
     if (t.transitionTime) {
         const transDate = new Date(t.transitionTime);
         if (!isNaN(transDate.getTime())) {
-            transitionInputVal = `${transDate.getFullYear()}-${pad(transDate.getMonth()+1)}-${pad(transDate.getDate())}T${pad(transDate.getHours())}:${pad(transDate.getMinutes())}`;
+            transitionInputVal = `${transDate.getFullYear()}-${pad(transDate.getMonth() + 1)}-${pad(transDate.getDate())}T${pad(transDate.getHours())}:${pad(transDate.getMinutes())}`;
         }
     }
 
@@ -5180,7 +5180,7 @@ window.openEditTimingModal = async function(tournamentId, optTitle, optEventDate
     `;
 
     // Attach listeners and preset handlers
-    window.applyTimingPreset = function(preset) {
+    window.applyTimingPreset = function (preset) {
         const now = new Date();
         const pad = n => String(n).padStart(2, '0');
         let target = new Date(now.getTime());
@@ -5200,13 +5200,13 @@ window.openEditTimingModal = async function(tournamentId, optTitle, optEventDate
         const dateInput = document.getElementById("editTourneyDate");
         const timeInput = document.getElementById("editTourneyTime");
         if (dateInput && timeInput) {
-            dateInput.value = `${target.getFullYear()}-${pad(target.getMonth()+1)}-${pad(target.getDate())}`;
+            dateInput.value = `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`;
             timeInput.value = `${pad(target.getHours())}:${pad(target.getMinutes())}`;
             window.updateTimingPreview();
         }
     };
 
-    window.updateTimingPreview = function() {
+    window.updateTimingPreview = function () {
         const dateInput = document.getElementById("editTourneyDate");
         const timeInput = document.getElementById("editTourneyTime");
         const previewEl = document.getElementById("editTimingLivePreview");
@@ -5287,7 +5287,7 @@ window.openEditTimingModal = async function(tournamentId, optTitle, optEventDate
     window.updateTimingPreview();
 };
 
-window.submitEditTiming = async function(tournamentId) {
+window.submitEditTiming = async function (tournamentId) {
     const dateInput = document.getElementById("editTourneyDate");
     const timeInput = document.getElementById("editTourneyTime");
     const notifyInput = document.getElementById("editTourneyNotify");
@@ -5419,7 +5419,7 @@ window.submitEditTiming = async function(tournamentId) {
 // Prize Pool (1st, 2nd, 3rd with Null/None options for half lobbies), Timing, and Details
 // ==========================================
 
-window.openEditTournamentModal = async function(tournamentId) {
+window.openEditTournamentModal = async function (tournamentId) {
     document.getElementById('editTournamentModalOverlay')?.remove();
 
     // Loading overlay
@@ -5502,7 +5502,7 @@ window.openEditTournamentModal = async function(tournamentId) {
     if (t.transitionTime) {
         const transDate = new Date(t.transitionTime);
         if (!isNaN(transDate.getTime())) {
-            transitionVal = `${transDate.getFullYear()}-${pad(transDate.getMonth()+1)}-${pad(transDate.getDate())}T${pad(transDate.getHours())}:${pad(transDate.getMinutes())}`;
+            transitionVal = `${transDate.getFullYear()}-${pad(transDate.getMonth() + 1)}-${pad(transDate.getDate())}T${pad(transDate.getHours())}:${pad(transDate.getMinutes())}`;
         }
     }
 
@@ -5677,7 +5677,7 @@ window.openEditTournamentModal = async function(tournamentId) {
     `;
 
     // Dynamic Prize Handlers
-    window.updateEditTourneyPrizeSummary = function() {
+    window.updateEditTourneyPrizeSummary = function () {
         const p1El = document.getElementById("editTourneyP1");
         const p2El = document.getElementById("editTourneyP2");
         const p3El = document.getElementById("editTourneyP3");
@@ -5706,7 +5706,7 @@ window.openEditTournamentModal = async function(tournamentId) {
         }
     };
 
-    window.applyEditTourneyTimingPreset = function(preset) {
+    window.applyEditTourneyTimingPreset = function (preset) {
         const now = new Date();
         const pad = n => String(n).padStart(2, '0');
         let target = new Date(now.getTime());
@@ -5726,13 +5726,13 @@ window.openEditTournamentModal = async function(tournamentId) {
         const dateInput = document.getElementById("editTourneyDate");
         const timeInput = document.getElementById("editTourneyTime");
         if (dateInput && timeInput) {
-            dateInput.value = `${target.getFullYear()}-${pad(target.getMonth()+1)}-${pad(target.getDate())}`;
+            dateInput.value = `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`;
             timeInput.value = `${pad(target.getHours())}:${pad(target.getMinutes())}`;
         }
     };
 
     // Category change handler to show/hide transition time
-    document.getElementById("editTourneyCategory")?.addEventListener("change", function(e) {
+    document.getElementById("editTourneyCategory")?.addEventListener("change", function (e) {
         const transCont = document.getElementById("editTourneyTransitionContainer");
         if (transCont) {
             transCont.style.display = (e.target.value === 'upcoming') ? 'block' : 'none';
@@ -5748,7 +5748,7 @@ window.openEditTournamentModal = async function(tournamentId) {
     window.updateEditTourneyPrizeSummary();
 };
 
-window.submitEditTournament = async function(tournamentId) {
+window.submitEditTournament = async function (tournamentId) {
     const saveBtn = document.getElementById("editTourneySaveBtn");
     const titleVal = document.getElementById("editTourneyTitle")?.value.trim();
     const categoryVal = document.getElementById("editTourneyCategory")?.value || "ongoing";
@@ -5899,59 +5899,91 @@ window.submitEditTournament = async function(tournamentId) {
     }
 };
 
-window.sendGlobalNotification = async function() {
+window.sendGlobalNotification = async function () {
     const title = document.getElementById('globalNotifTitle').value.trim();
     const body = document.getElementById('globalNotifMsg').value.trim();
     if (!title || !body) {
         showToast('Title and message are required!', 'error');
         return;
     }
+    const btn = document.querySelector('button[onclick="sendGlobalNotification()"]');
+    if (btn) btn.innerText = 'Sending...';
+
+    let backendSent = false;
+    // 1. Attempt FCM Push Blast if Render backend is reachable
     try {
-        const btn = document.querySelector('button[onclick="sendGlobalNotification()"]');
-        if (btn) btn.innerText = 'Sending...';
-        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
         const response = await fetch('https://npc-secure-backend.onrender.com/send-blast', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, body })
+            body: JSON.stringify({ title, body }),
+            signal: controller.signal
         });
-        
-        const result = await response.json();
-        if (btn) btn.innerText = 'Blast to All Users 🚀';
-        
-        if (result.success) {
-            showToast('Blast sent! Success: ' + result.successCount + ', Failed: ' + result.failureCount, 'success');
-            document.getElementById('globalNotifTitle').value = '';
-            document.getElementById('globalNotifMsg').value = '';
-        } else {
-            showToast('Failed to send blast: ' + result.message, 'error');
+        clearTimeout(timeoutId);
+        if (response.ok) {
+            const result = await response.json();
+            if (result.success) {
+                backendSent = true;
+                showToast(`FCM Blast sent successfully! (Success: ${result.successCount})`, 'success');
+            }
         }
-    } catch(err) {
-        showToast('Error sending blast: ' + err.message, 'error');
+    } catch (e) {
+        console.warn('Backend FCM push offline or timed out, delivering via direct Firestore in-app broadcast...');
     }
+
+    // 2. Direct Firestore in-app broadcast (guaranteed delivery even with suspended backend)
+    if (!backendSent) {
+        try {
+            const usersSnap = await getDocs(collection(db, "users"));
+            const batch = writeBatch(db);
+            let count = 0;
+            usersSnap.forEach(userDoc => {
+                const notifRef = doc(collection(db, "users", userDoc.id, "notifications"));
+                batch.set(notifRef, {
+                    type: 'global_blast',
+                    title: title,
+                    message: body,
+                    read: false,
+                    popupShown: false,
+                    createdAt: serverTimestamp(),
+                    priority: 'high'
+                });
+                count++;
+            });
+            await batch.commit();
+            showToast(`In-app broadcast delivered to ${count} users! 🚀`, 'success');
+        } catch (err) {
+            showToast('Error sending in-app broadcast: ' + err.message, 'error');
+        }
+    }
+
+    document.getElementById('globalNotifTitle').value = '';
+    document.getElementById('globalNotifMsg').value = '';
+    if (btn) btn.innerText = 'Blast to All Users 🚀';
 };
 
 // ==========================================
 // 🚀 GLOBAL ADMIN ACTION INTERCEPTOR (LOGGING)
 // Automatically wraps all major UI actions to log them to the Admin Console
 // ==========================================
-(function() {
+(function () {
     const ACTION_FUNCTIONS = [
-        "walletRefundTransaction", "resolveWithdrawal", "removeApplication", 
-        "viewStatusModal", "saveRoomDetails", "openNotifyModal", "sendTeamNotification", 
-        "viewApplicationDetails", "viewRejectedDetails", "approveUpcoming", 
-        "openRejectUpcomingModal", "confirmRejectUpcoming", "removeUpcoming", 
-        "adminLogin", "logout", "addTournament", "deleteTournament", 
-        "markTournamentCompleted", "addCalendarEvent", "deleteCalendarEvent", 
-        "editCalendarEvent", "updateCalendarEvent", "executeGlobalSearch", 
-        "searchTeamByCode", "openTeamDetailsModal", "openGlobalMessageModal", 
-        "sendGlobalTournamentMessage", "openGlobalRoomBlast", "sendGlobalRoomBlast", 
-        "openChangeRequestReview", "allowChangeRequest", "rejectChangeRequest", 
-        "kickTeamFromSlot", "promoteFromWaitlist", "openAdminReviewModal", 
-        "handleReviewDecision", "sendGlobalNotification", "moveToWaitlist", "deleteSlot", 
-        "openPayoutModal", "processPayout", "saveLeaderboardRow", "saveAllLeaderboardRows", 
-        "clearLeaderboard", "showUserAnalyticsDashboard", "saveAllTeamRankings", 
-        "openRewardModal", "submitReward", "runV2DataMigration", "deleteUserDoc", 
+        "walletRefundTransaction", "resolveWithdrawal", "removeApplication",
+        "viewStatusModal", "saveRoomDetails", "openNotifyModal", "sendTeamNotification",
+        "viewApplicationDetails", "viewRejectedDetails", "approveUpcoming",
+        "openRejectUpcomingModal", "confirmRejectUpcoming", "removeUpcoming",
+        "adminLogin", "logout", "addTournament", "deleteTournament",
+        "markTournamentCompleted", "addCalendarEvent", "deleteCalendarEvent",
+        "editCalendarEvent", "updateCalendarEvent", "executeGlobalSearch",
+        "searchTeamByCode", "openTeamDetailsModal", "openGlobalMessageModal",
+        "sendGlobalTournamentMessage", "openGlobalRoomBlast", "sendGlobalRoomBlast",
+        "openChangeRequestReview", "allowChangeRequest", "rejectChangeRequest",
+        "kickTeamFromSlot", "promoteFromWaitlist", "openAdminReviewModal",
+        "handleReviewDecision", "sendGlobalNotification", "moveToWaitlist", "deleteSlot",
+        "openPayoutModal", "processPayout", "saveLeaderboardRow", "saveAllLeaderboardRows",
+        "clearLeaderboard", "showUserAnalyticsDashboard", "saveAllTeamRankings",
+        "openRewardModal", "submitReward", "runV2DataMigration", "deleteUserDoc",
         "openPostponeModal", "submitPostpone", "openEditTimingModal", "submitEditTiming",
         "openEditTournamentModal", "submitEditTournament"
     ];
@@ -5960,20 +5992,20 @@ window.sendGlobalNotification = async function() {
     ACTION_FUNCTIONS.forEach(fn => {
         if (typeof window[fn] === 'function') {
             originalFns[fn] = window[fn];
-            window[fn] = async function(...args) {
+            window[fn] = async function (...args) {
                 // Determine user-friendly action name
                 const humanName = fn.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
-                
+
                 console.info(`[ACTION] Triggered '${humanName}'`);
                 try {
                     const res = await originalFns[fn].apply(this, args);
-                    
+
                     // Only log success for state-changing operations
                     if (fn.match(/^(delete|remove|submit|save|approve|reject|send|update|add|mark|process|clear|kick|promote|allow)/)) {
                         console.info(`[SUCCESS] '${humanName}' completed successfully.`);
                     }
                     return res;
-                } catch(err) {
+                } catch (err) {
                     console.error(`[ERROR] '${humanName}' failed:`, err.message || err);
                     throw err;
                 }
