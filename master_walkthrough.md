@@ -15,7 +15,7 @@ The following critical infrastructure features and bug fixes have been successfu
 * **Immutable Backend Logging:** Built `POST /api/consent/record` on the Express backend. It utilizes a Firestore Transaction to permanently lock in the `userId`, `ip_address`, `user_agent`, `policy_version`, and a tamper-proof server-side timestamp into a new `consent_logs` collection.
 
 ### C. Backend Infrastructure & Performance
-* **Render "Keep-Alive" Daemon:** Fixed severe 50-second UI freezes caused by Render.com's 15-minute "Cold Start" sleep cycle. Implemented a native Node.js self-pinging background interval in `server.js` that hits the server's own URL every 14 minutes, keeping it awake 24/7.
+* **Render "Keep-Alive" Daemon (Removed):** The self-pinging interval and GitHub Actions keep-awake workflow were removed so the backend does not run 24/7 unnecessarily, allowing Render to sleep when idle and preserve free tier limits.
 * **Strict Transaction Ordering:** Fixed a persistent HTTP 500 error. Firestore requires all reads (`.get()`) to execute strictly before any writes (`.set()`, `.update()`, `.delete()`) in a transaction block. Refactored `server.js` to adhere to this pattern.
 * **Undefined Payload Sanitization:** Fixed Firestore SDK crashes caused by passing `undefined` fields (like `leaderEmail`). Added sanitization logic to fallback to empty strings (`""`) before pushing payloads.
 
@@ -63,7 +63,7 @@ esports-tournament/
 **Backend (Server: `npc-secure-backend`)**
 ```text
 npc-secure-backend/
-├── server.js             # Express API (Admin SDK tx ordering, DPDP logging, Keep-Alive Daemon)
+├── server.js             # Express API (Admin SDK tx ordering, DPDP logging)
 ├── package.json          # Dependencies (firebase-admin, express, cors)
 └── .env                  # Service Account Credentials (DO NOT EXPOSE)
 ```
@@ -83,7 +83,7 @@ npc-secure-backend/
 * **Why split Behavioral Tracking from the 5-Step Checklist? (NEW):** We created a separate "Live Payment Status" line (Tracking `processing payment` and `needs to pay`) independent of the 5-step Application Progress checklist. This allows admins to monitor user drop-off behavior without altering or breaking the strictly guarded "Approved -> Paid -> Verified" state logic required by the backend.
 * **Why `api.qrserver.com` instead of a client-side JS library? (NEW):** Using an image-based REST API allows us to instantly mount dynamic QR codes natively in `insertAdjacentHTML` template strings without bloating the client-side bundle with heavy QR generating libraries, ensuring maximum performance.
 * **Why sync `npc-esports@upi` to `riaz-1@ptyes`? (NEW):** There were two separate payment flows dynamically loaded. If a user was routed to the legacy payment screen in `main.js`, they would have transferred money to a dead/dummy account. Total sync guarantees 100% of revenue routes to the actual Admin account.
-* **Why a Backend Daemon for Keep-Alive?** We could have put a `setInterval` ping loop on the Frontend. But if 1,000 users leave the website open, it would DDoS the backend. By running it natively in Node.js, only one ping happens globally every 14 minutes.
+* **Backend Spin-down vs Keep-Alive:** The 24/7 keep-alive background ping daemon was removed so Render spins down when inactive, preventing exhaustion of free tier hours.
 * **Why Immutable DPDP Consent Logs?** To legally protect the platform, consent logs must be tamper-proof and include system metadata (IP Address and Server Timestamp) that cannot be safely generated or trusted if captured purely on the client side.
 * **Why are Registrations Keyed to Leader UID?** Only Team Leaders are authorized to initiate payments. The actual registration belongs to the Leader. Teammates read this document using `array-contains` queries.
 
@@ -98,7 +98,7 @@ The following logic blocks and configurations are highly fragile. Modifying them
 * **firestore.rules Access Matrix:** DO NOT alter the `allow update:` conditions for `/teams/{teamId}`. DO NOT remove `/systemEvents/{eventId}` or `/users/{userId}/private/{docId}` rules.
 
 **Backend Execution (`server.js`):**
-* **Keep-Alive Loop:** DO NOT remove or alter the `keepAliveTimer.unref()` interval at the bottom of `server.js`. Removing this will cause the server to fall asleep after 15 minutes, creating 50-second UI freezes for the next user.
+* **Backend Idle Behavior:** The keep-alive daemon has been intentionally removed so that the free instance spins down when idle. Cold starts may take ~30-50s on the first request after spinning down.
 * **Backend Transaction Ordering:** NEVER place a `.set()`, `.update()`, or `.delete()` command before a `.get()` command inside a Firebase Transaction block. All reads must occur sequentially first, or it throws a 500 error.
 * **Undefined Data Protection:** Firestore SDK completely rejects objects containing `undefined`. Ensure all payloads use `|| ""` or `|| null` fallbacks.
 
