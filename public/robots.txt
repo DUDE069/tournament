@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://npc-tournament.onrender.com/sitemap.xml
