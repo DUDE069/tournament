@@ -1,7 +1,6 @@
-// REPLACE ENTIRE firebase-messaging-sw.js WITH THIS
-
 // 1. Use importScripts for Service Workers (Safe across all browsers)
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
 
 // 2. Initialize the Firebase app
@@ -14,10 +13,52 @@ firebase.initializeApp({
     appId: "1:404452164488:web:03179cbf527d28a3b6303d"
 });
 
-// 3. Get the messaging instance
+// 3. Get instances
 const messaging = firebase.messaging();
+const db = firebase.firestore();
 
-// 4. Handle background push notifications
+let lastShownBroadcastId = null;
+
+// Helper to check for recent broadcast notifications even if browser tab is closed
+async function checkRecentBroadcasts() {
+    try {
+        const snap = await db.collection('broadcastNotifications')
+            .orderBy('createdAt', 'desc')
+            .limit(1)
+            .get();
+
+        if (!snap.empty) {
+            const doc = snap.docs[0];
+            const data = doc.data();
+            const id = doc.id;
+
+            if (lastShownBroadcastId === id) return;
+
+            // Check if created in the last 60 minutes
+            if (data.createdAt && data.createdAt.toDate) {
+                const ageMs = Date.now() - data.createdAt.toDate().getTime();
+                if (ageMs > 60 * 60 * 1000) return;
+            }
+
+            lastShownBroadcastId = id;
+
+            if (self.registration) {
+                self.registration.showNotification(data.title || "NPC Esports Announcement", {
+                    body: data.message || "New tournament update available!",
+                    icon: "/logo.png",
+                    badge: "/logo.png",
+                    requireInteraction: true,
+                    tag: "npc-blast-" + id,
+                    data: { url: "/" }
+                });
+            }
+        }
+    } catch (e) {
+        console.warn('[SW Background Check]', e);
+    }
+}
+
+// 4. Handle background push notifications from FCM
 messaging.onBackgroundMessage((payload) => {
     console.log('[FCM SW] Background message received:', payload);
 
@@ -28,6 +69,7 @@ messaging.onBackgroundMessage((payload) => {
         icon: icon || "/logo.png",
         badge: "/logo.png",
         requireInteraction: true,
+        tag: "npc-push-" + Date.now(),
         data: payload.data
     };
 
@@ -36,7 +78,47 @@ messaging.onBackgroundMessage((payload) => {
     }
 });
 
-// 5. Handle notification click (Keep your existing click logic!)
+// 5. Catch standard Web Push events
+self.addEventListener('push', (event) => {
+    if (event.data) {
+        try {
+            const payload = event.data.json();
+            const { title, body, icon } = payload.notification || payload.data || {};
+            const opt = {
+                body: body || payload.message || "New announcement!",
+                icon: icon || "/logo.png",
+                badge: "/logo.png",
+                requireInteraction: true,
+                tag: "npc-webpush-" + Date.now()
+            };
+            event.waitUntil(self.registration.showNotification(title || "NPC Esports", opt));
+            return;
+        } catch (e) {}
+    }
+    event.waitUntil(checkRecentBroadcasts());
+});
+
+// 6. Handle periodic background sync (runs in background when tabs are closed)
+self.addEventListener('periodicsync', (event) => {
+    if (event.tag === 'check-broadcasts') {
+        event.waitUntil(checkRecentBroadcasts());
+    }
+});
+
+self.addEventListener('sync', (event) => {
+    if (event.tag === 'check-broadcasts') {
+        event.waitUntil(checkRecentBroadcasts());
+    }
+});
+
+// 7. Handle messages from client tabs
+self.addEventListener('message', (event) => {
+    if (event.data === 'check-broadcasts') {
+        checkRecentBroadcasts();
+    }
+});
+
+// 8. Handle notification click
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
 

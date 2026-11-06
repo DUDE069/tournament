@@ -8895,8 +8895,14 @@ window.requestPushPermissions = async function() {
 // WITH THIS
 window._registerServiceWorker = function() {
     if (!("serviceWorker" in navigator)) return; 
-    navigator.serviceWorker.register("/firebase-messaging-sw.js").then(reg => { window._swRegistration = reg; }) // FIXED: Removed module type
-    .catch((err) => console.warn("Service Worker registration failed:", err));
+    navigator.serviceWorker.register("/firebase-messaging-sw.js").then(reg => { 
+        window._swRegistration = reg;
+        if ('periodicSync' in reg) {
+            reg.periodicSync.register('check-broadcasts', {
+                minInterval: 5 * 60 * 1000
+            }).catch(() => {});
+        }
+    }).catch((err) => console.warn("Service Worker registration failed:", err));
 };
 window.triggerPushNotification = function(title, body, options = {}) {
     if (!("Notification" in window) || Notification.permission !== "granted") return;

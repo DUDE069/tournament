@@ -426,5 +426,27 @@ describe('Firestore Rules', () => {
       const reqRef = adminDb.collection('withdrawal_requests').doc('req1');
       await assertSucceeds(reqRef.update({ status: 'completed' }));
     });
+
+    it('manages broadcastNotifications: public read, admin write only', async () => {
+      const adminDb = getAuthedDB({ uid: 'admin_user', email: 'ariyanabedin69@gmail.com' });
+      const userDb = getAuthedDB({ uid: 'regular_user' });
+      const unauthDb = getUnauthedDB();
+
+      // Non-admin write fails
+      await assertFails(userDb.collection('broadcastNotifications').doc('b1').set({
+        title: 'Hacked',
+        message: 'Spam'
+      }));
+
+      // Admin write succeeds
+      await assertSucceeds(adminDb.collection('broadcastNotifications').doc('b1').set({
+        title: 'Tournament Alert',
+        message: 'Room details in 10 mins'
+      }));
+
+      // Public and authenticated read succeeds
+      await assertSucceeds(userDb.collection('broadcastNotifications').doc('b1').get());
+      await assertSucceeds(unauthDb.collection('broadcastNotifications').doc('b1').get());
+    });
   });
 });

@@ -235,6 +235,11 @@ service cloud.firestore {
       allow read: if true; 
       allow write: if isAdmin(); 
     }
+    
+    match /broadcastNotifications/{notifId} { 
+      allow read: if true; 
+      allow write: if isAdmin(); 
+    }
 
     // ==========================================
     // 7. PUSH NOTIFICATION QUEUE

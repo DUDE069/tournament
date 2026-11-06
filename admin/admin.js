@@ -1470,19 +1470,21 @@ async function sendDualNotification(userId, { type, title, message, extra = {}, 
             });
         }
 
-        // 2. Actually trigger the push via our active REST API (Cloud Functions aren't deployed)
-        fetch('https://npc-secure-backend.onrender.com/send-targeted', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                uids: [userId],
-                title: title,
-                body: message,
-                type: type,
-                extra: extra,
-                actionLink: actionLink
-            })
-        }).catch(err => console.debug("Silent failure hitting push API", err));
+        // 2. Optional push via custom backend URL if explicitly configured
+        if (window.NPC_BACKEND_URL) {
+            fetch(window.NPC_BACKEND_URL + '/send-targeted', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    uids: [userId],
+                    title: title,
+                    body: message,
+                    type: type,
+                    extra: extra,
+                    actionLink: actionLink
+                })
+            }).catch(() => {});
+        }
 
     } catch (err) {
         // Push queue failure must NEVER break in-app notifications
@@ -5907,38 +5909,30 @@ window.sendGlobalNotification = async function () {
         return;
     }
     const btn = document.querySelector('button[onclick="sendGlobalNotification()"]');
-    if (btn) btn.innerText = 'Sending...';
-
-    let backendSent = false;
-    // 1. Attempt FCM Push Blast if Render backend is reachable
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3500);
-        const response = await fetch('https://npc-secure-backend.onrender.com/send-blast', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title, body }),
-            signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        if (response.ok) {
-            const result = await response.json();
-            if (result.success) {
-                backendSent = true;
-                showToast(`FCM Blast sent successfully! (Success: ${result.successCount})`, 'success');
-            }
-        }
-    } catch (e) {
-        console.warn('Backend FCM push offline or timed out, delivering via direct Firestore in-app broadcast...');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = 'Blasting... 🚀';
     }
 
-    // 2. Direct Firestore in-app broadcast (guaranteed delivery even with suspended backend)
-    if (!backendSent) {
-        try {
-            const usersSnap = await getDocs(collection(db, "users"));
+    try {
+        // 1. Write to public broadcastNotifications collection (instant pickup by Service Workers even when tabs are closed)
+        await addDoc(collection(db, "broadcastNotifications"), {
+            title: title,
+            message: body,
+            createdAt: serverTimestamp(),
+            priority: 'high',
+            tag: 'npc-blast-' + Date.now()
+        });
+
+        // 2. Deliver to every user's personal notifications subcollection in batches of 450
+        const usersSnap = await getDocs(collection(db, "users"));
+        const docs = usersSnap.docs;
+        let count = 0;
+
+        for (let i = 0; i < docs.length; i += 450) {
+            const chunk = docs.slice(i, i + 450);
             const batch = writeBatch(db);
-            let count = 0;
-            usersSnap.forEach(userDoc => {
+            chunk.forEach(userDoc => {
                 const notifRef = doc(collection(db, "users", userDoc.id, "notifications"));
                 batch.set(notifRef, {
                     type: 'global_blast',
@@ -5952,15 +5946,20 @@ window.sendGlobalNotification = async function () {
                 count++;
             });
             await batch.commit();
-            showToast(`In-app broadcast delivered to ${count} users! 🚀`, 'success');
-        } catch (err) {
-            showToast('Error sending in-app broadcast: ' + err.message, 'error');
+        }
+
+        showToast(`🚀 Global blast delivered instantly to ${count} users!`, 'success');
+        document.getElementById('globalNotifTitle').value = '';
+        document.getElementById('globalNotifMsg').value = '';
+    } catch (err) {
+        console.error("Error sending broadcast:", err);
+        showToast('Error sending broadcast: ' + err.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = 'Blast to All Users 🚀';
         }
     }
-
-    document.getElementById('globalNotifTitle').value = '';
-    document.getElementById('globalNotifMsg').value = '';
-    if (btn) btn.innerText = 'Blast to All Users 🚀';
 };
 
 // ==========================================
