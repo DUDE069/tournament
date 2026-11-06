@@ -7951,7 +7951,7 @@ window.createAccount = async function() {
 // ✅ NEW: Setup notifications after account is created
 try {
     const { setupNotifications } = await import('./notificationService.js'); // Corrected path
-    const result = await setupNotifications(db, auth);
+    const result = await setupNotifications(auth.app, db, auth);
     
     if (result.enabled) {
         console.log("[AUTH] 🔔 Notifications enabled!");

@@ -115,7 +115,18 @@ function listenForForegroundMessages(messaging, onMessage) {
 }
 
 // 5. MAIN SETUP FUNCTION
-export async function setupNotifications(app, db, auth) {
+export async function setupNotifications(appOrDb, dbOrAuth, maybeAuth) {
+    let app, db, auth;
+    if (maybeAuth) {
+        app = appOrDb;
+        db = dbOrAuth;
+        auth = maybeAuth;
+    } else {
+        db = appOrDb;
+        auth = dbOrAuth;
+        app = auth?.app || null;
+    }
+
     console.log("[NOTIF] Setting up notifications...");
 
     const granted = await requestNotificationPermission();

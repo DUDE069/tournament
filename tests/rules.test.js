@@ -47,7 +47,10 @@ afterAll(async () => {
 
 describe('Firestore Rules', () => {
   
-  const getAuthedDB = (auth) => testEnv.authenticatedContext(auth.uid, auth).firestore();
+  const getAuthedDB = (auth) => {
+    const { uid, ...claims } = auth;
+    return testEnv.authenticatedContext(uid, claims).firestore();
+  };
   const getUnauthedDB = () => testEnv.unauthenticatedContext().firestore();
 
   describe('1. Admin and Role Protection', () => {
@@ -233,6 +236,195 @@ describe('Firestore Rules', () => {
       const paymentRef = db.collection('users').doc('alice').collection('pendingPayment').doc('t1');
       await assertFails(paymentRef.set({ userId: 'alice', paymentStatus: 'pending', utr: 'short' }));
       await assertSucceeds(paymentRef.set({ userId: 'alice', paymentStatus: 'pending', utr: '123456789012' })); // exactly 12 chars
+    });
+  });
+
+  describe('8. Full Account Setup Batch Flow', () => {
+    it('Viewer signup: commits user doc, private doc, and zero wallet atomically', async () => {
+      const db = getAuthedDB({ uid: 'viewer1' });
+      const batch = db.batch();
+      
+      batch.set(db.collection('users').doc('viewer1'), {
+        uid: 'viewer1',
+        nickname: 'ViewerOne',
+        freeFireUid: '12345678',
+        role: 'viewer',
+        isAdmin: false,
+        isLeader: false,
+        teamId: null,
+        teamName: null,
+        teamCode: null
+      });
+      batch.set(db.collection('users').doc('viewer1').collection('private').doc('data'), {
+        email: 'viewer1@example.com',
+        age: 20
+      });
+      batch.set(db.collection('users').doc('viewer1').collection('wallet').doc('main'), {
+        balance: 0
+      });
+
+      await assertSucceeds(batch.commit());
+    });
+
+    it('Leader signup: creates team doc, user doc with leader role, private doc, and zero wallet', async () => {
+      const db = getAuthedDB({ uid: 'leader1' });
+      
+      // 1. Team creation
+      await assertSucceeds(db.collection('teams').doc('team_alpha').set({
+        teamId: 'team_alpha',
+        teamName: 'Alpha Squad',
+        code: 'NPC123456',
+        leaderId: 'leader1',
+        members: ['leader1'],
+        maxMembers: 5
+      }));
+
+      // 2. User profile + wallet batch
+      const batch = db.batch();
+      batch.set(db.collection('users').doc('leader1'), {
+        uid: 'leader1',
+        nickname: 'AlphaLeader',
+        freeFireUid: '87654321',
+        role: 'leader',
+        isAdmin: false,
+        isLeader: true,
+        teamId: 'team_alpha',
+        teamName: 'Alpha Squad',
+        teamCode: 'NPC123456'
+      });
+      batch.set(db.collection('users').doc('leader1').collection('private').doc('data'), {
+        email: 'leader1@example.com',
+        age: 22
+      });
+      batch.set(db.collection('users').doc('leader1').collection('wallet').doc('main'), {
+        balance: 0
+      });
+
+      await assertSucceeds(batch.commit());
+    });
+
+    it('Join Member signup: adds member to existing team and commits user profile', async () => {
+      // Seed existing team
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        const adminDb = context.firestore();
+        await adminDb.collection('teams').doc('team_alpha').set({
+          teamId: 'team_alpha',
+          teamName: 'Alpha Squad',
+          code: 'NPC123456',
+          leaderId: 'leader1',
+          members: ['leader1'],
+          maxMembers: 5
+        });
+      });
+
+      const db = getAuthedDB({ uid: 'member1' });
+      
+      // 1. Join team
+      await assertSucceeds(db.collection('teams').doc('team_alpha').update({
+        members: ['leader1', 'member1']
+      }));
+
+      // 2. Member profile + wallet batch
+      const batch = db.batch();
+      batch.set(db.collection('users').doc('member1'), {
+        uid: 'member1',
+        nickname: 'AlphaMember',
+        freeFireUid: '99887766',
+        role: 'member',
+        isAdmin: false,
+        isLeader: false,
+        teamId: 'team_alpha',
+        teamName: 'Alpha Squad',
+        teamCode: 'NPC123456'
+      });
+      batch.set(db.collection('users').doc('member1').collection('private').doc('data'), {
+        email: 'member1@example.com',
+        age: 19
+      });
+      batch.set(db.collection('users').doc('member1').collection('wallet').doc('main'), {
+        balance: 0
+      });
+
+      await assertSucceeds(batch.commit());
+    });
+  });
+
+  describe('9. In-App and Push Notification Flow', () => {
+    it('Teammate or Admin can send notification to user, user can mark read and delete', async () => {
+      // Alice sends notification to Bob
+      const aliceDb = getAuthedDB({ uid: 'alice' });
+      const notifRef = aliceDb.collection('users').doc('bob').collection('notifications').doc('match_alert');
+      await assertSucceeds(notifRef.set({
+        type: 'room_details',
+        title: 'Room Details',
+        message: 'Room 123 Pass 456',
+        read: false
+      }));
+
+      // Bob reads his notification
+      const bobDb = getAuthedDB({ uid: 'bob' });
+      const bobNotif = bobDb.collection('users').doc('bob').collection('notifications').doc('match_alert');
+      await assertSucceeds(bobNotif.get());
+
+      // Bob marks as read
+      await assertSucceeds(bobNotif.update({ read: true }));
+
+      // Bob deletes notification
+      await assertSucceeds(bobNotif.delete());
+    });
+  });
+
+  describe('10. Anti-Duplicate UTR Submission Flow', () => {
+    it('prevents submitting the same 12-digit UTR more than once', async () => {
+      const db = getAuthedDB({ uid: 'alice' });
+      const utrRef = db.collection('submitted_utrs').doc('123456789012');
+
+      // First submission succeeds
+      await assertSucceeds(utrRef.set({
+        userId: 'alice',
+        submittedAt: new Date()
+      }));
+
+      // Second submission with identical UTR fails (already exists)
+      const bobDb = getAuthedDB({ uid: 'bob' });
+      const duplicateRef = bobDb.collection('submitted_utrs').doc('123456789012');
+      await assertFails(duplicateRef.set({
+        userId: 'bob',
+        submittedAt: new Date()
+      }));
+    });
+  });
+
+  describe('11. Admin Panel Operations and Collection Group Listeners', () => {
+    it('admin with verified admin email can read collectionGroup queries and manage data', async () => {
+      const adminDb = getAuthedDB({ uid: 'admin_user', email: 'ariyanabedin69@gmail.com' });
+
+      // Admin collection group read
+      await assertSucceeds(adminDb.collectionGroup('verifications').get());
+      await assertSucceeds(adminDb.collectionGroup('upcomingRegistrations').get());
+
+      // Admin approves verification
+      const verifRef = adminDb.collection('tournaments').doc('t1').collection('verifications').doc('team1');
+      await assertSucceeds(verifRef.set({
+        status: 'approved',
+        paymentStatus: 'verified',
+        teamName: 'Alpha'
+      }));
+
+      // Admin credits user wallet
+      const walletRef = adminDb.collection('users').doc('alice').collection('wallet').doc('main');
+      await assertSucceeds(walletRef.set({ balance: 500 }));
+
+      // Admin approves withdrawal request
+      await testEnv.withSecurityRulesDisabled(async (context) => {
+        await context.firestore().collection('withdrawal_requests').doc('req1').set({
+          userId: 'alice',
+          amount: 200,
+          status: 'pending'
+        });
+      });
+      const reqRef = adminDb.collection('withdrawal_requests').doc('req1');
+      await assertSucceeds(reqRef.update({ status: 'completed' }));
     });
   });
 });
