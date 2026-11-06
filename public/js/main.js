@@ -5312,8 +5312,13 @@ function initNotifications() {
                 }
                 // --------------------------
 
+                // --- TRIGGER DESKTOP / NATIVE OS NOTIFICATION BANNER ---
+                if (typeof window.triggerPushNotification === 'function' && !notif.read && !notif.popupShown) {
+                    window.triggerPushNotification(notif.title || "NPC Esports", notif.message || "New notification");
+                }
+
                 // Check if it's an approval/rejection/room details/payment confirmation and hasn't been shown yet
-                if ((notif.type === "approval" || notif.type === "approved" || notif.type === "rejected" || notif.type === "room_details" || notif.type === "room_blast" || notif.type === "match_started" || notif.type === "payment_confirmed" || notif.type === "status_message" || notif.type === "admin_notice" || notif.type === "global_alert") && !notif.popupShown) {
+                if ((notif.type === "approval" || notif.type === "approved" || notif.type === "rejected" || notif.type === "room_details" || notif.type === "room_blast" || notif.type === "match_started" || notif.type === "payment_confirmed" || notif.type === "status_message" || notif.type === "admin_notice") && !notif.popupShown) {
                     console.log("🚀 Firing Popup for:", notif.type);
                     
                     // Shield the client instantly on the spot before making the async database update call
@@ -5339,7 +5344,7 @@ function initNotifications() {
                             if (typeof showMatchRoom === 'function') showMatchRoom(notif.tournamentId);
                         });
                     }
-                } else if (notif.type === "global_alert") {
+                } else if (notif.type === "global_alert" || notif.type === "global_blast") {
                     // Ghost Loop Fix: Skip if EITHER popupShown (DB flag) OR read (DB flag) is true.
                     // This ensures cross-device dismissals are respected even after APK reinstall.
                     if (notif.popupShown === true || notif.read === true) return;
@@ -8894,10 +8899,22 @@ window._registerServiceWorker = function() {
     .catch((err) => console.warn("Service Worker registration failed:", err));
 };
 window.triggerPushNotification = function(title, body, options = {}) {
-    if (Notification.permission !== "granted") return;
-    const opt = { body, icon: "/logo.png", badge: "/logo.png", tag: "npc-notification", ...options };
-    if (window._swRegistration) window._swRegistration.showNotification(title, opt).catch(() => new Notification(title, opt));
-    else new Notification(title, opt);
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    const opt = {
+        body: body || "",
+        icon: "/logo.png",
+        badge: "/logo.png",
+        requireInteraction: true,
+        tag: options.tag || ("npc-" + Date.now()),
+        ...options
+    };
+    if (window._swRegistration && typeof window._swRegistration.showNotification === 'function') {
+        window._swRegistration.showNotification(title, opt).catch(() => {
+            try { new Notification(title, opt); } catch (e) {}
+        });
+    } else {
+        try { new Notification(title, opt); } catch (e) {}
+    }
 };
 
 // =============================================================================
