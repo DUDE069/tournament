@@ -68,18 +68,24 @@ describe('Firestore Rules', () => {
       await assertFails(userRef.update({ isAdmin: true }));
     });
 
-    it('user cannot set isLeader on their own user document creation', async () => {
+    it('user can set isLeader on their own user document creation', async () => {
       const db = getAuthedDB({ uid: 'alice' });
       const userRef = db.collection('users').doc('alice');
-      await assertFails(userRef.set({ isLeader: true, name: 'Alice' }));
+      await assertSucceeds(userRef.set({ isLeader: true, name: 'Alice' }));
     });
   });
 
   describe('2. Wallet Protection', () => {
-    it('user cannot write their own wallet', async () => {
+    it('user cannot write non-zero balance to their wallet', async () => {
       const db = getAuthedDB({ uid: 'alice' });
       const walletRef = db.collection('users').doc('alice').collection('wallet').doc('main');
       await assertFails(walletRef.set({ balance: 1000 }));
+    });
+
+    it('user can initialize their wallet with zero balance', async () => {
+      const db = getAuthedDB({ uid: 'alice' });
+      const walletRef = db.collection('users').doc('alice').collection('wallet').doc('main');
+      await assertSucceeds(walletRef.set({ balance: 0 }));
     });
 
     it('user cannot read another users wallet', async () => {

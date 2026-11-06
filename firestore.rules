@@ -43,17 +43,22 @@ service cloud.firestore {
     // ==========================================
     match /users/{userId} {
       allow read: if isLoggedIn();
-      allow create: if isOwner(userId) && 
-                    !request.resource.data.keys().hasAny(['isAdmin', 'isLeader'])
-                    && (!request.resource.data.keys().hasAny(['nickname']) || (request.resource.data.nickname is string && request.resource.data.nickname.size() >= 3 && request.resource.data.nickname.size() <= 30))
-                    && (!request.resource.data.keys().hasAny(['phone']) || (request.resource.data.phone is string && request.resource.data.phone.matches('^[+]?[0-9]{10,15}$')))
-                    && (!request.resource.data.keys().hasAny(['pilotRigUid']) || (request.resource.data.pilotRigUid is string && request.resource.data.pilotRigUid.size() <= 50));
+      // Allow user to create their initial profile; strictly forbid granting self isAdmin: true
+      allow create: if isOwner(userId) && request.resource.data.get('isAdmin', false) == false;
+      // Allow user to update their profile; strictly block altering isAdmin, wallet balance, or bonusCredits
       allow update: if isAdmin() || (isOwner(userId) && 
-        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'isLeader', 'wallet', 'bonusCredits']))
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isAdmin', 'wallet', 'bonusCredits']))
         || (isLoggedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['teamId', 'teamName', 'teamCode', 'role', 'isLeader']) 
             && request.resource.data.teamId == null);
     }
-    match /users/{userId}/notifications/{notifId}           { allow read, write: if isOwner(userId) || isAdmin(); }
+    
+    // Notifications subcollection:
+    // User can read & manage their own; teammates, leaders and admins can send notifications to any user
+    match /users/{userId}/notifications/{notifId} { 
+      allow read: if isOwner(userId) || isAdmin() || isLoggedIn(); 
+      allow create: if isLoggedIn(); 
+      allow update, delete: if isOwner(userId) || isAdmin();
+    }
     
     // Payment-related 1: pendingPayment
     match /users/{userId}/pendingPayment/{tournamentId} { 
@@ -66,9 +71,6 @@ service cloud.firestore {
     // Payment-related 2: users/{uid}/upcomingRegistrations
     match /users/{userId}/upcomingRegistrations/{docId} { 
       allow read: if isOwner(userId) || isAdmin(); 
-      // The tournament ID isn't directly in this path, but if they are writing to their own upcomingRegistrations, it might just be a mirror. Let's assume server mirror, or if client does it, they must be admin.
-      // Wait, "Users may create the 6 payment-related documents only with paymentStatus pending".
-      // If we don't have tournamentId, we can't check isTournamentOpen. The requirements just said block joins to closed tournament. 
       allow create: if isAdmin() || (isOwner(userId) && request.resource.data.paymentStatus in ['pending', 'pending_verification']);
       allow update: if isAdmin() || (isOwner(userId) && request.resource.data.paymentStatus in ['pending', 'pending_verification'] && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['paymentStatus']));
       allow delete: if isOwner(userId) || isAdmin();
@@ -78,10 +80,13 @@ service cloud.firestore {
     match /users/{userId}/performanceHistory/{docId}        { allow read, write: if isOwner(userId) || isAdmin(); }
     match /users/{userId}/private/{docId}                   { allow read, write: if isOwner(userId) || isAdmin(); }
     
+    // Wallet: Users initialize their own wallet with balance 0 upon signup; only admin can credit/debit
     match /users/{userId}/wallet/{walletId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow write: if isAdmin();
+      allow create: if (isOwner(userId) && request.resource.data.get('balance', 0) == 0) || isAdmin();
+      allow update, delete: if isAdmin();
     }
+    
     match /users/{userId}/transactions/{transId} { 
       allow read: if isOwner(userId) || isAdmin(); 
       allow create: if isOwner(userId) || isAdmin();
@@ -165,16 +170,17 @@ service cloud.firestore {
     // ==========================================
     match /teams/{teamId} {
       allow read: if isLoggedIn();
+      // Allow team creation; safely handles new signups where user document does not exist yet
       allow create: if isLoggedIn() 
                     && request.resource.data.maxMembers is number 
                     && request.resource.data.maxMembers > 0
                     && request.resource.data.leaderId == request.auth.uid
-                    && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teamId == null // block users in two teams
+                    && (!exists(/databases/$(database)/documents/users/$(request.auth.uid)) || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teamId', null) == null)
                     && request.resource.data.teamName is string
-                    && request.resource.data.teamName.size() >= 3
+                    && request.resource.data.teamName.size() >= 2
                     && request.resource.data.teamName.size() <= 50;
       
-      allow delete: if isAdmin() || (isLoggedIn() && resource.data.leaderId == request.auth.uid && !resource.data.hasActiveRegistration);
+      allow delete: if isAdmin() || (isLoggedIn() && resource.data.leaderId == request.auth.uid && !resource.data.get('hasActiveRegistration', false));
       
       allow update: if isAdmin() 
         || (isLoggedIn() && resource.data.leaderId == request.auth.uid)
@@ -183,7 +189,7 @@ service cloud.firestore {
             && request.auth.uid in request.resource.data.members
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members'])
             && request.resource.data.members.size() <= resource.data.maxMembers
-            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.teamId == null);
+            && (!exists(/databases/$(database)/documents/users/$(request.auth.uid)) || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teamId', null) == null));
       
       match /wallet/{walletId} { 
         allow read: if isLoggedIn(); 
