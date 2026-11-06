@@ -3,7 +3,7 @@
 // ===============================
 
 // FIREBASE IMPORTS (SINGLE BLOCK - NO DUPLICATES)
-import { db, auth } from "./firebase.js";
+import { app, db, auth } from "./firebase.js";
 
 import {
   collection, onSnapshot, doc, setDoc, getDoc, serverTimestamp,
@@ -9785,12 +9785,26 @@ window.handleDpdpConsentSubmission = async function() {
             if (typeof showMessage === 'function') {
                 showMessage("Consent successfully recorded.", "success");
             }
-        } else {
-            console.error("Failed to record consent:", data.message);
-            if (typeof showMessage === 'function') showMessage("Failed to record consent. Please try again.", "error");
+            return;
         }
     } catch (e) {
-        console.error("Network error during consent submission:", e);
+        console.warn("Backend consent API offline, using direct Firestore fallback:", e);
+    }
+
+    // Direct Firestore fallback (resilient to backend downtime)
+    try {
+        await updateDoc(doc(db, "users", currentUser.uid), {
+            dpdpConsented: true,
+            dpdpConsentedAt: serverTimestamp()
+        });
+        if (userProfile) {
+            userProfile.dpdpConsented = true;
+        }
+        if (typeof showMessage === 'function') {
+            showMessage("Consent successfully recorded.", "success");
+        }
+    } catch (err) {
+        console.error("Direct consent recording failed:", err);
         if (typeof showMessage === 'function') showMessage("Network error. Please try again.", "error");
     }
 };

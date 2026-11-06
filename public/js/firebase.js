@@ -11,7 +11,7 @@ const firebaseConfig = {
   appId: "1:404452164488:web:03179cbf527d28a3b6303d"
 };
 
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
 // Enable offline caching using the modern API to fix deprecation warnings
 export const db = initializeFirestore(app, {
