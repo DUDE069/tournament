@@ -1470,21 +1470,20 @@ async function sendDualNotification(userId, { type, title, message, extra = {}, 
             });
         }
 
-        // 2. Optional push via custom backend URL if explicitly configured
-        if (window.NPC_BACKEND_URL) {
-            fetch(window.NPC_BACKEND_URL + '/send-targeted', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    uids: [userId],
-                    title: title,
-                    body: message,
-                    type: type,
-                    extra: extra,
-                    actionLink: actionLink
-                })
-            }).catch(() => {});
-        }
+        // 2. Optional push via backend to wake up closed devices via Google FCM (non-blocking)
+        const targetBackendUrl = window.NPC_BACKEND_URL || "https://npc-secure-backend.onrender.com";
+        fetch(`${targetBackendUrl}/send-targeted`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                uids: [userId],
+                title: title,
+                body: message,
+                type: type,
+                extra: extra,
+                actionLink: actionLink
+            })
+        }).catch(err => console.debug("[Push] Targeted push notice:", err));
 
     } catch (err) {
         // Push queue failure must NEVER break in-app notifications
@@ -5949,6 +5948,19 @@ window.sendGlobalNotification = async function () {
         }
 
         showToast(`🚀 Global blast delivered instantly to ${count} users!`, 'success');
+
+        // 3. Fire-and-forget push trigger to backend to wake up closed devices via Google FCM
+        const blastBackendUrl = window.NPC_BACKEND_URL || "https://npc-secure-backend.onrender.com";
+        fetch(`${blastBackendUrl}/send-blast`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, body })
+        }).then(res => res.json()).then(data => {
+            console.log('[PUSH BLAST DISPATCH RESULT]', data);
+        }).catch(err => {
+            console.warn('[PUSH BLAST BACKGROUND WARNING]', err);
+        });
+
         document.getElementById('globalNotifTitle').value = '';
         document.getElementById('globalNotifMsg').value = '';
     } catch (err) {

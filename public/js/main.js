@@ -8881,14 +8881,40 @@ window._addPayLaterNotification = async function(tournamentId, tournamentName, e
 // =============================================================================
 // PART 4.4 — BROWSER PUSH NOTIFICATION SYSTEM
 // =============================================================================
+window.onPushPermissionGranted = async function() {
+    console.log("[Push] Permission granted callback invoked.");
+    window._registerServiceWorker();
+    if (auth && auth.currentUser) {
+        try {
+            await setupNotifications(auth.app, db, auth);
+            console.log("[Push] Notifications and FCM token registered successfully.");
+        } catch (e) {
+            console.warn("[Push] Error during setupNotifications on permission grant:", e);
+        }
+    }
+};
+
 window.requestPushPermissions = async function() {
     if (!("Notification" in window)) return;
-    if (Notification.permission === "granted") { window._registerServiceWorker({ type: 'module' }); return; }
+    if (Notification.permission === "granted") { 
+        window._registerServiceWorker(); 
+        if (auth && auth.currentUser) {
+            setupNotifications(auth.app, db, auth).catch(() => {});
+        }
+        return; 
+    }
     if (Notification.permission === "default") {
         if (sessionStorage.getItem("npc_push_asked")) return;
         sessionStorage.setItem("npc_push_asked", "1");
-        await new Promise(r => setTimeout(r, 3000));
-        if ((await Notification.requestPermission()) === "granted") window._registerServiceWorker();
+        await new Promise(r => setTimeout(r, 2000));
+        try {
+            const perm = await Notification.requestPermission();
+            if (perm === "granted") {
+                await window.onPushPermissionGranted();
+            }
+        } catch (e) {
+            console.warn("[Push] Request permission error:", e);
+        }
     }
 };
 

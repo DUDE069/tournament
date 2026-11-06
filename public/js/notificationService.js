@@ -46,8 +46,9 @@ export async function initializeFCM(app) {
        // WITH THIS
         let swReg = null;
         if ('serviceWorker' in navigator) {
-            swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js'); // FIXED: Removed module type
-            console.log("[FCM] Service worker registered");
+            await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+            swReg = await navigator.serviceWorker.ready;
+            console.log("[FCM] Service worker ready");
         }
 
         // REPLACE WITH YOUR ACTUAL VAPID KEY
@@ -80,11 +81,11 @@ async function saveFCMToken(token, db, auth) {
     if (!auth.currentUser) return;
 
     try {
-        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
-        await updateDoc(doc(db, "users", auth.currentUser.uid), {
+        const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js');
+        await setDoc(doc(db, "users", auth.currentUser.uid), {
             fcmToken: token,
             fcmTokenUpdated: new Date().toISOString()
-        });
+        }, { merge: true });
         console.log("[FCM] Token saved to user profile");
     } catch (error) {
         console.error("[FCM] Error saving token:", error);

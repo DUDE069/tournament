@@ -68,9 +68,10 @@ messaging.onBackgroundMessage((payload) => {
         body: body || "You have a new notification!",
         icon: icon || "/logo.png",
         badge: "/logo.png",
+        vibrate: [200, 100, 200],
         requireInteraction: true,
-        tag: "npc-push-" + Date.now(),
-        data: payload.data
+        tag: "npc-push-" + (payload.data?.tag || Date.now()),
+        data: payload.data || { url: "/" }
     };
 
     if (self.registration) {
@@ -88,8 +89,10 @@ self.addEventListener('push', (event) => {
                 body: body || payload.message || "New announcement!",
                 icon: icon || "/logo.png",
                 badge: "/logo.png",
+                vibrate: [200, 100, 200],
                 requireInteraction: true,
-                tag: "npc-webpush-" + Date.now()
+                tag: "npc-webpush-" + (payload.data?.tag || Date.now()),
+                data: payload.data || { url: "/" }
             };
             event.waitUntil(self.registration.showNotification(title || "NPC Esports", opt));
             return;
