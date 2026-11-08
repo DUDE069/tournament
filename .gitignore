@@ -5,3 +5,4 @@ skills-lock.json
 .firebase/
 .claude/
 firebase-debug.log
+firestore-debug.log

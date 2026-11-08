@@ -70,7 +70,7 @@ const calendarRef    = collection(db, "calendarEvents");
 // DEBUG MODE (MASTER SWITCH)
 // ===============================
 const DEBUG_MODE = false;
-if (!DEBUG_MODE) { console.log = () => {}; console.error = () => {}; console.warn = () => {}; console.info = () => {}; }
+if (!DEBUG_MODE) { console.log = () => {}; console.info = () => {}; }
 
 // ===============================
 // GLOBAL STATE
