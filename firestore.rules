@@ -98,6 +98,14 @@ service cloud.firestore {
     }
 
     // ==========================================
+    // HERO BANNERS (HOMEPAGE SHOWCASE SLIDER)
+    // ==========================================
+    match /hero_banners/{bannerId} {
+      allow read: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ==========================================
     // 4. TOURNAMENTS COLLECTION
     // ==========================================
     match /tournaments/{tournamentId} {

@@ -195,11 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Set hero button text based on whether tutorial is completed
     const heroBtn = document.getElementById("heroMainBtn");
     if (heroBtn) {
-        if (localStorage.getItem("npc_tutorial_done")) {
-            heroBtn.textContent = "Our Socials";
-        } else {
-            heroBtn.textContent = "How to Play";
-        }
+        heroBtn.textContent = "Explore Our Socials";
     }
 });
 // Force the page to start at the absolute top
@@ -3743,7 +3739,7 @@ window.startTournamentMatches = async function(tournamentId) {
     
 const array = new Uint32Array(2);
 crypto.getRandomValues(array);
-const roomCode = 'NPC' + array[0].toString(36).substring(0, 6).toUpperCase();
+const roomCode = 'NPC' + array[0].toString(36).padStart(6, '0').substring(0, 6).toUpperCase();
 const password = 1000 + (array[1] % 9000);
     
     await updateDoc(doc(db, "tournaments", tournamentId), {

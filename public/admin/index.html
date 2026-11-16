@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/png" href="logo.png">
+  <title>NPC Esports — Admin Panel</title>
+  <link rel="stylesheet" href="admin.css">
+  <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Share+Tech+Mono&display=swap');
+
+    :root {
+      --green:  #00ff88;
+      --blue:   #4a90e2;
+      --red:    #ff4444;
+      --gold:   #ffd700;
+      --orange: #ff6b35;
+      --bg:     #0a0a0a;
+      --bg2:    #111;
+      --bg3:    #1a1a1a;
+      --border: #2a2a2a;
+      --text:   #e0e0e0;
+      --muted:  #666;
+    }
+
+    * { margin:0; padding:0; box-sizing:border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+      font-size: 15px;
+      min-height: 100vh;
+    }
+
+    /* ── LOGIN ─────────────────────────────────────── */
+    .login-section {
+      max-width: 400px;
+      margin: 100px auto;
+      text-align: center;
+      padding: 40px 30px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+    }
+    .login-section h1 {
+      color: var(--green);
+      font-size: 28px;
+      margin-bottom: 24px;
+      letter-spacing: 2px;
+    }
+    .login-section input {
+      width: 100%;
+      padding: 12px 16px;
+      margin: 8px 0;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      font-size: 14px;
+      font-family: inherit;
+    }
+    .login-section input:focus { outline: none; border-color: var(--green); }
+    .login-section button {
+      width: 100%;
+      padding: 13px;
+      background: var(--green);
+      color: #000;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+      border-radius: 8px;
+      margin-top: 12px;
+      font-size: 15px;
+      font-family: inherit;
+      letter-spacing: 1px;
+      transition: opacity .15s;
+    }
+    .login-section button:hover { opacity: .85; }
+
+  /* ── ADMIN PANEL WRAPPER ───────────────────────── */
+    .admin-panel { display: none; }
+
+    
+   /* ── HEADER ────────────────────────────────────── */
+    .admin-header {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+    .admin-header h1 {
+      color: var(--green);
+      font-size: 22px;
+      letter-spacing: 2px;
+      white-space: nowrap;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .admin-header .logout-btn {
+      background: var(--red);
+      color: #fff;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      transition: opacity .15s;
+    }
+    .admin-header .logout-btn:hover { opacity: .8; }
+
+    /* RESPONSIVE MEDIA QUERIES FOR HEADER */
+    @media (max-width: 640px) {
+      .admin-header {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 15px;
+      }
+      .header-actions {
+        width: 100%;
+        justify-content: space-between;
+      }
+      #globalSearch {
+        width: 100%;
+        order: 2;
+        margin-top: 5px;
+      }
+    }
+ 
+
+    /* ── TABS ──────────────────────────────────────── */
+    .tabs {
+      display: flex;
+      gap: 6px;
+      padding: 14px 24px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 9px 18px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: .5px;
+      transition: all .15s;
+      position: relative;
+    }
+    .tab:hover { border-color: #444; }
+    .tab.active { background: var(--green); color: #000; border-color: var(--green); }
+
+    /* badge on tab */
+    .tab-badge {
+      display: inline-block;
+      background: var(--red);
+      color: #fff;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+
+    /* ── CONTENT ───────────────────────────────────── */
+    .content { padding: 24px; max-width: 1100px; margin: 0 auto; }
+
+    .section { display: none; }
+    .section.active { display: block; }
+
+    h2 {
+      color: var(--blue);
+      font-size: 18px;
+      margin: 0 0 16px;
+      letter-spacing: 1px;
+      border-left: 3px solid var(--blue);
+      padding-left: 10px;
+    }
+
+    /* ── FORM ELEMENTS ─────────────────────────────── */
+    .form-group { margin-bottom: 14px; }
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: .5px;
+      text-transform: uppercase;
+    }
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      transition: border-color .15s;
+    }
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus { outline: none; border-color: var(--green); }
+
+    .form-row { display: flex; gap: 10px; }
+    .form-row .form-group { flex: 1; }
+
+    .btn-submit {
+      background: var(--green);
+      color: #000;
+      padding: 11px 24px;
+      border: none;
+      cursor: pointer;
+      font-weight: 700;
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 14px;
+      letter-spacing: .5px;
+      transition: opacity .15s;
+    }
+    .btn-submit:hover { opacity: .85; }
+    .btn-delete {
+      background: var(--red);
+      color: #fff;
+      padding: 6px 14px;
+      border: none;
+      cursor: pointer;
+      border-radius: 6px;
+      font-family: inherit;
+      font-size: 12px;
+      transition: opacity .15s;
+    }
+    .btn-delete:hover { opacity: .8; }
+
+    /* ── TOURNAMENT FORM BOX ───────────────────────── */
+    .form-box {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px;
+      margin-bottom: 28px;
+      max-width: 640px;
+    }
+
+    /* ── TOURNAMENT LIST ───────────────────────────── */
+    .item-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      padding: 14px 18px;
+      margin-bottom: 10px;
+      border-radius: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .item-card strong { color: var(--green); }
+    .item-card small { color: var(--muted); font-size: 12px; }
+
+    /* ── PARTITION / SECTION LABELS ────────────────── */
+    .partition {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 24px 0 14px;
+    }
+    .partition-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+    .partition-label.new      { background: rgba(255,215,0,.15);  color: var(--gold);  border: 1px solid var(--gold); }
+    .partition-label.accepted { background: rgba(0,255,136,.12);  color: var(--green); border: 1px solid var(--green); }
+    .partition-label.rejected { background: rgba(255,68,68,.12);  color: var(--red);   border: 1px solid var(--red); }
+    .partition-line { flex: 1; height: 1px; background: var(--border); }
+
+    /* ── APPLICATION CARDS ─────────────────────────── */
+    .app-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-left-width: 4px;
+      padding: 14px 18px;
+      margin-bottom: 10px;
+      border-radius: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+    }
+    .app-card.new      { border-left-color: var(--gold); }
+    .app-card.accepted { border-left-color: var(--green); }
+    .app-card.rejected { border-left-color: var(--red); }
+
+    .app-card-info strong { color: #fff; font-size: 15px; }
+    .app-card-info small  { color: var(--muted); font-size: 12px; display: block; margin-top: 2px; }
+
+    .app-card-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+    .btn-view {
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      padding: 7px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      transition: opacity .15s;
+    }
+    .btn-view:hover { opacity: .8; }
+
+    .btn-status {
+      background: #222;
+      color: var(--green);
+      border: 1px solid var(--green);
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all .15s;
+    }
+    .btn-status:hover { background: var(--green); color: #000; }
+
+    .btn-remove {
+      background: #1a1a1a;
+      color: var(--red);
+      border: 1px solid var(--red);
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all .15s;
+    }
+    .btn-remove:hover { background: var(--red); color: #fff; }
+
+    .status-pill {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      letter-spacing: .5px;
+    }
+    .pill-new      { background: rgba(255,215,0,.2);  color: var(--gold);  }
+    .pill-accepted { background: rgba(0,255,136,.15); color: var(--green); }
+    .pill-rejected { background: rgba(255,68,68,.15); color: var(--red);   }
+
+    /* ── EMPTY STATE ───────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .empty-state .emoji { font-size: 36px; display: block; margin-bottom: 10px; }
+
+    /* ── CALENDAR SECTION ──────────────────────────── */
+    .calendar-form {
+      background: var(--bg2);
+      padding: 22px;
+      border-radius: 12px;
+      margin-bottom: 28px;
+      border: 1px solid var(--border);
+      max-width: 640px;
+    }
+    .color-picker { display: flex; gap: 10px; margin-top: 6px; }
+    .color-option {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: transform .15s;
+    }
+    .color-option:hover { transform: scale(1.15); }
+    .color-option.selected { border-color: #fff; }
+    .color-option.event-upcoming  { background: #4a90e2; }
+    .color-option.event-special   { background: #ffd700; }
+    .color-option.event-completed { background: #666; }
+    .color-option.event-today     { background: #00ff88; }
+
+    .calendar-events-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 14px;
+    }
+    .event-card {
+      background: var(--bg2);
+      border-left: 4px solid;
+      padding: 14px;
+      border-radius: 8px;
+      border-top: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── TOAST ─────────────────────────────────────── */
+    @keyframes fadeInUp {
+      from { opacity:0; transform:translateY(8px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+
+    /* ── STATUS MODAL (Dark Theme) ──────────────────── */
+    .status-modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.85);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999; padding: 20px;
+    }
+    .status-modal {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      width: 100%;
+      max-width: 500px;
+      padding: 28px;
+    }
+    .status-modal h3 { color: var(--green); margin-bottom: 18px; font-size: 18px; }
+    .status-row {
+      display: flex; justify-content: space-between;
+      background: #0f0f0f;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+    }
+    .status-row .s-label { color: var(--muted); font-size: 13px; }
+    .status-row .s-value { color: #fff; font-size: 13px; font-weight: 600; }
+
+    /* ── LOADING ───────────────────────────────────── */
+    .loading-text { color: var(--muted); padding: 30px 0; text-align: center; }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════
+     LOGIN
+══════════════════════════════════════════════════ -->
+<div class="login-section" id="loginSection">
+  <h1>⚡ NPC ADMIN</h1>
+  <input type="email"    id="adminEmail" placeholder="Admin Email">
+  <input type="password" id="adminPass"  placeholder="Password">
+  <button onclick="adminLogin()">Login</button>
+  <p style="margin-top:18px;color:#444;font-size:13px;">Secure Admin Access Only</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     ADMIN PANEL
+══════════════════════════════════════════════════ -->
+<div class="admin-panel" id="adminPanel">
+
+  <!-- HEADER -->
+ <div class="admin-header">
+    <h1>🎮 NPC ESPORTS</h1>
+    <div class="header-actions">
+      <input type="text" id="globalSearch" placeholder="Search Team Code or Tourney ID..." style="padding:8px 12px; border-radius:6px; border:1px solid #333; background:#1a1a1a; color:#fff;">
+      <button onclick="executeGlobalSearch()" style="background:#4a90e2; color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; font-weight:bold;">Search</button>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+  </div>
+  <!-- TABS -->
+
+<button onclick="showUserAnalyticsDashboard()" style="background:var(--gold); color:#000; padding:10px 15px; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">
+    📊 View User Roster Analytics
+</button>
+
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('tournaments')">🏆 Tournaments</button>
+    <button class="tab" onclick="showTab('calendar')">📅 Calendar</button>
+    <button class="tab" onclick="showTab('verifications')">
+      👥 Verifications
+      <span class="tab-badge" id="verificationBadge" style="display:none">0</span>
+    </button>
+    <button class="tab" onclick="showTab('transactions')">
+      💸 Transactions
+      <span class="tab-badge" id="transactionBadge" style="display:none">0</span>
+    </button>
+    <button class="tab" onclick="showTab('withdrawals')">
+      🏦 Withdrawals
+      <span class="tab-badge" id="withdrawalBadge" style="display:none">0</span>
+    </button>
+    <button class="tab" onclick="showTab('registrations')">
+      📝 Registrations
+      <span class="tab-badge" id="registrationBadge" style="display:none">0</span>
+    </button>
+    <button class="tab" onclick="showTab('qr')">
+      📱 QR Generator
+    </button>
+    <button class="tab" onclick="showTab('banners')">
+      🖼️ Hero Banners
+    </button>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+   <div class="section active" id="tournamentsSection">
+      <h2>Add New Tournament</h2>
+      <div class="form-box">
+
+        <div class="form-group">
+          <label>Title</label>
+          <input type="text" id="tournamentTitle" placeholder="e.g., Free Fire Pro League">
+        </div>
+
+        <div class="form-group">
+          <label>Category</label>
+          <select id="tournamentCategory" onchange="handleCategoryChange(this)">
+            <option value="ongoing">Ongoing</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="limited">Limited</option>
+          </select>
+        </div>
+
+        <div id="sharedFields">
+          <div class="form-row">
+            <div class="form-group" id="feeGroup">
+              <label>Entry Fee (₹)</label>
+              <input type="number" id="tournamentFee" placeholder="e.g., 50">
+            </div>
+            <div class="form-group">
+              <label>Mode</label>
+              <select id="tournamentMode">
+                <option value="Solo">Solo</option>
+                <option value="Duo">Duo</option>
+                <option value="Squad">Squad</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group" id="durationGroup">
+            <label>Duration (minutes)</label>
+            <input type="number" id="tournamentDuration" value="60">
+          </div>
+          <div class="form-group" id="slotsGroup">
+            <label>Max Teams / Total Slots <span style="color:#888;font-size:11px;">(default 12)</span></label>
+            <input type="number" id="tournamentTotalSlots" value="12" min="2" max="64" placeholder="e.g., 12">
+          </div>
+          <div class="form-group" id="prizeGroup">
+            <label>Prize Pool (1st / 2nd / 3rd)</label>
+            <div class="form-row">
+              <div class="form-group"><input type="number" id="prizeFirst" placeholder="1st"></div>
+              <div class="form-group"><input type="number" id="prizeSecond" placeholder="2nd"></div>
+              <div class="form-group"><input type="number" id="prizeThird" placeholder="3rd"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="upcomingFields" style="display:none;">
+          <div class="form-group" style="background: rgba(255, 68, 68, 0.05); padding: 14px; border-radius: 8px; border: 1px dashed #ff4444; margin-bottom: 18px;">
+            <label style="color: #ff4444; font-weight:bold;">[HIDDEN] Auto-Move to Ongoing (Date & Time) ✱</label>
+            <input type="datetime-local" id="tournamentTransitionTime" style="border-color: #ff4444;">
+            <small style="color:var(--muted);font-size:11px;margin-top:6px;display:block;line-height:1.4;">
+              Users will <b>NOT</b> see this. At this exact moment, the system automatically moves the card to "Ongoing" and sends the payment notifications.
+            </small>
+          </div>
+          <div class="form-group">
+            <label>Tournament Date ✱</label>
+            <input type="date" id="tournamentEventDate">
+          </div>
+          <div class="form-group">
+            <label>Event Time ✱</label>
+            <input type="time" id="tournamentEventTime">
+          </div>
+        </div>
+
+        <div id="limitedFields" style="display:none;">
+          <div class="form-group">
+            <label>Event Date (For Calendar) ✱</label>
+            <input type="date" id="limitedEventDate">
+          </div>
+          <div class="form-group">
+            <label>Custom Info Paragraph (All details, rules, and prizes)</label>
+            <textarea id="limitedInfoParagraph" rows="6" placeholder="Enter all tournament details, prizes, rules, etc. here. No limit."></textarea>
+          </div>
+        </div>
+
+        <button class="btn-submit" onclick="addTournament()">+ Add Tournament</button>
+      </div>
+
+      <h2>Existing Tournaments</h2>
+      <div id="tournamentList"></div>
+    </div>
+
+<div style="background:#1a1a1a; padding:20px; border-radius:8px; border:1px solid #3b82f6; margin-bottom:20px;">
+    <h3 style="color:#3b82f6; margin-top:0;">🌍 Global Announcer</h3>
+    <input type="text" id="globalNotifTitle" placeholder="Notification Title" style="width:100%; padding:10px; margin-bottom:10px; background:#0f0f0f; color:#fff; border:1px solid #333; border-radius:4px;">
+    <textarea id="globalNotifMsg" placeholder="Type your message to ALL users..." style="width:100%; padding:10px; margin-bottom:10px; background:#0f0f0f; color:#fff; border:1px solid #333; border-radius:4px; height:80px;"></textarea>
+    <button onclick="sendGlobalNotification()" style="background:#3b82f6; color:#fff; padding:10px 20px; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Blast to All Users 🚀</button>
+</div>
+
+
+
+
+    <!-- ══ CALENDAR ══════════════════════════════════ -->
+    <div class="section" id="calendarSection">
+      <h2>Add Calendar Event</h2>
+      <div class="calendar-form">
+        <div class="form-group">
+          <label>Select Date</label>
+          <input type="date" id="eventDate">
+        </div>
+        <div class="form-group">
+          <label>Event Title</label>
+          <input type="text" id="eventTitle" placeholder="e.g., Mega Championship ₹5000">
+        </div>
+        <div class="form-group">
+          <label>Event Type (Color)</label>
+          <div class="color-picker" id="colorPicker">
+            <div class="color-option event-upcoming selected" onclick="selectColor('upcoming',this)" title="Upcoming"></div>
+            <div class="color-option event-special"   onclick="selectColor('special',this)"   title="Special"></div>
+            <div class="color-option event-completed" onclick="selectColor('completed',this)" title="Completed"></div>
+            <div class="color-option event-today"     onclick="selectColor('today',this)"     title="Today/Match Day"></div>
+          </div>
+          <input type="hidden" id="eventType" value="upcoming">
+        </div>
+        <div class="form-group">
+          <label>Prize Amount (₹)</label>
+          <input type="number" id="eventPrize" placeholder="e.g., 5000">
+        </div>
+        <div class="form-group">
+          <label>Description (optional)</label>
+          <input type="text" id="eventDesc" placeholder="Short tooltip description">
+        </div>
+        <button class="btn-submit" onclick="addCalendarEvent()">+ Add Calendar Event</button>
+      </div>
+
+      <h2>Manage Calendar Events</h2>
+      <div class="calendar-events-list" id="calendarEventsList"></div>
+    </div>
+
+    <!-- ⏳ ONGOING APPLICATIONS (was Verifications) -->
+    <div class="section" id="verificationsSection">
+      <h2>Ongoing Tournament Applications</h2>
+      <div id="ongoingApplicationsTourneyTabs" style="display:flex; gap:10px; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px; border-bottom: 1px solid #333;"></div>
+      <div id="verificationList">
+        <p class="loading-text">Loading...</p>
+      </div>
+    </div>
+
+    <!-- 📋 REGISTRATIONS (new tab merging upcoming) -->
+    <div class="section" id="registrationsSection">
+      <h2>Upcoming Tournament Registrations</h2>
+      <div id="upcomingTourneyTabs" style="display:flex; gap:10px; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px; border-bottom: 1px solid #333;"></div>
+      <div id="upcomingRegistrationsList">
+        <p class="loading-text">Loading...</p>
+      </div>
+    </div>
+
+    <!-- 💳 TRANSACTION VERIFICATION -->
+    <div class="section" id="transactionsSection">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h2>Transaction Verification</h2>
+        <input type="text" id="transactionSearch" placeholder="Search by Team ID or UTR" oninput="filterTransactions()" style="padding:10px; background:#0f0f0f; color:#fff; border:1px solid #333; border-radius:4px; width:250px;">
+      </div>
+      <div id="ongoingTourneyTabs" style="display:flex; gap:10px; margin-bottom: 15px; overflow-x: auto; padding-bottom: 5px; border-bottom: 1px solid #333;"></div>
+      <div id="transactionList">
+        <p class="loading-text">Loading…</p>
+      </div>
+    </div>
+
+    <!-- ══ WITHDRAWAL REQUESTS ═══ -->
+    <div class="section" id="withdrawalsSection">
+      <h2>Wallet Withdrawals</h2>
+      <div id="withdrawalList">
+        <p class="loading-text">Loading withdrawals…</p>
+      </div>
+    </div>
+
+    <!-- 📱 QR CODE GENERATOR -->
+    <div class="section" id="qrSection">
+      <h2>Generate Custom QR Code (No Limits)</h2>
+      <div class="form-box">
+        <div class="form-group">
+          <label>Website URL / Text to Encode</label>
+          <input type="text" id="qrUrl" placeholder="e.g., https://yourwebsite.com/register" value="https://">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>QR Code Color</label>
+            <input type="color" id="qrDarkColor" value="#00ff88" style="height: 40px; cursor: pointer; padding: 0; border: none; width: 100%;">
+          </div>
+          <div class="form-group">
+            <label>Background Color</label>
+            <input type="color" id="qrLightColor" value="#ffffff" style="height: 40px; cursor: pointer; padding: 0; border: none; width: 100%;">
+          </div>
+        </div>
+        <div class="form-group" style="display: flex; align-items: center; gap: 10px;">
+          <input type="checkbox" id="qrTransparentBg" style="width: auto; transform: scale(1.3); margin: 0;">
+          <label style="margin: 0; padding-top: 2px;">Make Background Transparent</label>
+        </div>
+        
+        <button class="btn-submit" onclick="window.generateCustomQR()">🎨 Generate QR Code</button>
+        
+        <div id="qrResult" style="margin-top:20px; text-align:center; display:none; background:#111; padding:20px; border-radius:12px; border:1px solid #333;">
+          <img id="qrImage" src="" style="max-width: 100%; border-radius: 8px; margin-bottom:15px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); background: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAMUlEQVQ4T2NkYNgfQIhZWVn/M5KkmRhhYnQwi2k8jIYZQO/QjJpxNGsYjcP//0FwEgBaHCAwzP1P6AAAAABJRU5ErkJggg==') repeat;">
+          <br>
+          <a id="qrDownloadBtn" href="" download="NPC_QR_Code.png" class="btn-submit" style="text-decoration:none; display:inline-block; background:var(--blue); color:#fff;">⬇️ Download High-Res PNG</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🖼️ HERO BANNERS & MEDIA MANAGER -->
+    <div class="section" id="bannersSection">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h2 style="margin:0;">🖼️ Hero Banner & Showcase Manager</h2>
+          <p style="color:#888; margin:4px 0 0 0; font-size:13px;">Manage images, videos, badges, and titles displayed on the homepage hero slider.</p>
+        </div>
+        <button class="btn-submit" onclick="window.seedDefaultBanners()" style="background:#222; border:1px solid #444; color:#00ff88; padding:8px 16px; font-size:12px; border-radius:6px; cursor:pointer;">
+          ⚡ Seed / Restore Default Banners
+        </button>
+      </div>
+
+      <!-- Add Banner Form -->
+      <div class="form-box" style="margin-bottom:30px; background:#121824; border:1px solid #1f293d; padding:20px; border-radius:10px;">
+        <h3 id="bannerFormTitle" style="color:#00ff88; margin-top:0; font-size:16px;">+ Add New Hero Banner</h3>
+        <input type="hidden" id="bannerEditId" value="">
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Banner Category / Pill Badge *</label>
+            <input type="text" id="bannerTagInput" placeholder="e.g., LIVE PLATFORM, MEGA TOURNAMENT" value="FEATURED TOURNAMENT">
+          </div>
+          <div class="form-group">
+            <label>Media Type *</label>
+            <select id="bannerMediaType" onchange="window.handleMediaTypeChange()" style="width:100%; padding:10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:6px;">
+              <option value="image">🖼️ Image (JPEG, PNG, WebP)</option>
+              <option value="video">🎥 Video Clip (MP4, WebM)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group" style="flex:2;">
+            <label>Media Source * (Direct URL or Upload)</label>
+            <input type="text" id="bannerMediaUrl" placeholder="https://example.com/banner.jpg or upload below" style="width:100%;">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>Or Upload File (Max 15MB)</label>
+            <input type="file" id="bannerFileInput" accept="image/*,video/*" onchange="window.handleBannerFileSelect(event)" style="padding:6px; background:#1a1a1a; color:#fff; border:1px solid #333; border-radius:6px; width:100%;">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Main Heading / Title *</label>
+            <input type="text" id="bannerHeadingInput" placeholder="e.g., BGMI & Free Fire Grand Championship">
+          </div>
+          <div class="form-group">
+            <label>Subtitle / Description</label>
+            <input type="text" id="bannerSubtextInput" placeholder="e.g., Daily Squad Battles • ₹50,000 Prize Pool">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Button Text Override</label>
+            <input type="text" id="bannerBtnTextInput" placeholder="e.g., Explore Our Socials" value="Explore Our Socials">
+          </div>
+          <div class="form-group">
+            <label>Display Order (Priority)</label>
+            <input type="number" id="bannerOrderInput" value="1" min="1" max="99">
+          </div>
+          <div class="form-group" style="display:flex; align-items:center; gap:10px; padding-top:24px;">
+            <input type="checkbox" id="bannerActiveInput" checked style="width:auto; transform:scale(1.4);">
+            <label style="margin:0; cursor:pointer;" for="bannerActiveInput">Active on Homepage</label>
+          </div>
+        </div>
+
+        <!-- Live Preview Box -->
+        <div id="bannerPreviewContainer" style="display:none; margin:15px 0; padding:15px; background:#0b0f19; border:1px solid #222; border-radius:8px; text-align:center;">
+          <p style="color:#888; font-size:12px; margin:0 0 8px 0;">Media Preview:</p>
+          <img id="bannerImgPreview" src="" style="max-height:180px; max-width:100%; border-radius:6px; display:none; margin:0 auto; box-shadow:0 4px 15px rgba(0,0,0,0.5);">
+          <video id="bannerVideoPreview" controls muted autoplay loop style="max-height:180px; max-width:100%; border-radius:6px; display:none; margin:0 auto; box-shadow:0 4px 15px rgba(0,0,0,0.5);"></video>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:15px;">
+          <button class="btn-submit" id="saveBannerBtn" onclick="window.saveHeroBanner()" style="background:#00ff88; color:#000; font-weight:bold; flex:2;">
+            💾 Save & Publish Banner
+          </button>
+          <button type="button" onclick="window.resetBannerForm()" style="background:#222; border:1px solid #444; color:#aaa; padding:10px 20px; border-radius:6px; cursor:pointer; flex:1;">
+            ↺ Reset
+          </button>
+        </div>
+        <div id="bannerUploadProgress" style="display:none; margin-top:10px; color:#00ff88; font-size:13px; font-weight:bold;">
+          Uploading media to Firebase Storage... please wait.
+        </div>
+      </div>
+
+      <!-- Active Banners List -->
+      <h3 style="color:#fff; margin-bottom:12px; font-size:16px;">Active Homepage Banners</h3>
+      <div id="adminBannersList" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">
+        <div style="color:#888; padding:20px; text-align:center; grid-column: 1 / -1;">Loading banners from database...</div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /admin-panel -->
+
+<script type="module" src="admin.js?v=1000016"></script>
+</body>
+</html>

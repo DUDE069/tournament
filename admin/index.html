@@ -514,6 +514,9 @@
     <button class="tab" onclick="showTab('qr')">
       📱 QR Generator
     </button>
+    <button class="tab" onclick="showTab('banners')">
+      🖼️ Hero Banners
+    </button>
   </div>
 
   <!-- CONTENT -->
@@ -721,6 +724,101 @@
           <br>
           <a id="qrDownloadBtn" href="" download="NPC_QR_Code.png" class="btn-submit" style="text-decoration:none; display:inline-block; background:var(--blue); color:#fff;">⬇️ Download High-Res PNG</a>
         </div>
+      </div>
+    </div>
+
+    <!-- 🖼️ HERO BANNERS & MEDIA MANAGER -->
+    <div class="section" id="bannersSection">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h2 style="margin:0;">🖼️ Hero Banner & Showcase Manager</h2>
+          <p style="color:#888; margin:4px 0 0 0; font-size:13px;">Manage images, videos, badges, and titles displayed on the homepage hero slider.</p>
+        </div>
+        <button class="btn-submit" onclick="window.seedDefaultBanners()" style="background:#222; border:1px solid #444; color:#00ff88; padding:8px 16px; font-size:12px; border-radius:6px; cursor:pointer;">
+          ⚡ Seed / Restore Default Banners
+        </button>
+      </div>
+
+      <!-- Add Banner Form -->
+      <div class="form-box" style="margin-bottom:30px; background:#121824; border:1px solid #1f293d; padding:20px; border-radius:10px;">
+        <h3 id="bannerFormTitle" style="color:#00ff88; margin-top:0; font-size:16px;">+ Add New Hero Banner</h3>
+        <input type="hidden" id="bannerEditId" value="">
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Banner Category / Pill Badge *</label>
+            <input type="text" id="bannerTagInput" placeholder="e.g., LIVE PLATFORM, MEGA TOURNAMENT" value="FEATURED TOURNAMENT">
+          </div>
+          <div class="form-group">
+            <label>Media Type *</label>
+            <select id="bannerMediaType" onchange="window.handleMediaTypeChange()" style="width:100%; padding:10px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:6px;">
+              <option value="image">🖼️ Image (JPEG, PNG, WebP)</option>
+              <option value="video">🎥 Video Clip (MP4, WebM)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group" style="flex:2;">
+            <label>Media Source * (Direct URL or Upload)</label>
+            <input type="text" id="bannerMediaUrl" placeholder="https://example.com/banner.jpg or upload below" style="width:100%;">
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>Or Upload File (Max 15MB)</label>
+            <input type="file" id="bannerFileInput" accept="image/*,video/*" onchange="window.handleBannerFileSelect(event)" style="padding:6px; background:#1a1a1a; color:#fff; border:1px solid #333; border-radius:6px; width:100%;">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Main Heading / Title *</label>
+            <input type="text" id="bannerHeadingInput" placeholder="e.g., BGMI & Free Fire Grand Championship">
+          </div>
+          <div class="form-group">
+            <label>Subtitle / Description</label>
+            <input type="text" id="bannerSubtextInput" placeholder="e.g., Daily Squad Battles • ₹50,000 Prize Pool">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Button Text Override</label>
+            <input type="text" id="bannerBtnTextInput" placeholder="e.g., Explore Our Socials" value="Explore Our Socials">
+          </div>
+          <div class="form-group">
+            <label>Display Order (Priority)</label>
+            <input type="number" id="bannerOrderInput" value="1" min="1" max="99">
+          </div>
+          <div class="form-group" style="display:flex; align-items:center; gap:10px; padding-top:24px;">
+            <input type="checkbox" id="bannerActiveInput" checked style="width:auto; transform:scale(1.4);">
+            <label style="margin:0; cursor:pointer;" for="bannerActiveInput">Active on Homepage</label>
+          </div>
+        </div>
+
+        <!-- Live Preview Box -->
+        <div id="bannerPreviewContainer" style="display:none; margin:15px 0; padding:15px; background:#0b0f19; border:1px solid #222; border-radius:8px; text-align:center;">
+          <p style="color:#888; font-size:12px; margin:0 0 8px 0;">Media Preview:</p>
+          <img id="bannerImgPreview" src="" style="max-height:180px; max-width:100%; border-radius:6px; display:none; margin:0 auto; box-shadow:0 4px 15px rgba(0,0,0,0.5);">
+          <video id="bannerVideoPreview" controls muted autoplay loop style="max-height:180px; max-width:100%; border-radius:6px; display:none; margin:0 auto; box-shadow:0 4px 15px rgba(0,0,0,0.5);"></video>
+        </div>
+
+        <div style="display:flex; gap:10px; margin-top:15px;">
+          <button class="btn-submit" id="saveBannerBtn" onclick="window.saveHeroBanner()" style="background:#00ff88; color:#000; font-weight:bold; flex:2;">
+            💾 Save & Publish Banner
+          </button>
+          <button type="button" onclick="window.resetBannerForm()" style="background:#222; border:1px solid #444; color:#aaa; padding:10px 20px; border-radius:6px; cursor:pointer; flex:1;">
+            ↺ Reset
+          </button>
+        </div>
+        <div id="bannerUploadProgress" style="display:none; margin-top:10px; color:#00ff88; font-size:13px; font-weight:bold;">
+          Uploading media to Firebase Storage... please wait.
+        </div>
+      </div>
+
+      <!-- Active Banners List -->
+      <h3 style="color:#fff; margin-bottom:12px; font-size:16px;">Active Homepage Banners</h3>
+      <div id="adminBannersList" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">
+        <div style="color:#888; padding:20px; text-align:center; grid-column: 1 / -1;">Loading banners from database...</div>
       </div>
     </div>
 

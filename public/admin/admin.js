@@ -1,0 +1,6390 @@
+// =============================================================================
+//  NPC Esports — admin.js  (v3 — upgraded)
+//  FILE: admin/admin.js  →  ADMIN PANEL ONLY
+// =============================================================================
+//
+//  WHAT'S NEW IN v3:
+//  ─────────────────
+//  1. REMOVE BUTTON BUG FIX
+//     • Queries now filter out archived:true documents so removed items
+//       actually disappear from the list immediately.
+//
+//  2. PROGRESS TRACKING SYSTEM (Status Modal)
+//     • Replaced "Payment Status" field with a 5-stage delivery-style tracker:
+//       1. Application Submitted ✔  2. Verification Approved ✔
+//       3. Payment Completed  4. Payment Verified  5. Confirmation Received
+//     • Stages update in real-time from Firestore participant doc.
+//
+//  3. "NOTIFY THIS TEAM" BUTTON
+//     • Replaces old "Confirm Payment / Reject Payment" buttons.
+//     • Opens a compose modal → writes to users/{id}/notifications (in-app)
+//       AND queues a push notification via pushQueue collection (FCM handler
+//       reads from there server-side).
+//
+//  4. DUAL NOTIFICATION SYSTEM (in-app + push)
+//     • In-app: always written to users/{uid}/notifications subcollection.
+//     • Push:   written to pushQueue/{uid}/tasks — a Cloud Function (or your
+//               own FCM sender) picks these up.  Push is ALWAYS optional;
+//               in-app is MANDATORY and never skipped.
+//
+//  5. ROOM ID & PASSWORD MANAGEMENT
+//     • New "Room & Password" sub-panel inside the Status Modal for accepted
+//       applications.  Admin sets/updates roomId + roomPassword on the
+//       participant doc.  On save, all team members are notified instantly.
+//
+//  6. reject-upcoming now uses a custom modal (no more browser `prompt()`).
+//
+//  HOW TO MAINTAIN:
+//  ─────────────────
+//  • Push notifications: set up a Firebase Cloud Function that listens to
+//    pushQueue/{uid}/tasks and calls FCM.  The admin.js side just writes the
+//    task document — no FCM SDK needed here.
+//  • To add a new notification type: add a case in `sendDualNotification()`.
+//  • Progress stages are driven by participant doc fields:
+//      paymentStatus ("submitted"|"paid") → stage 3
+//      paymentStatus ("verified")         → stage 4
+//      confirmationReceived (true)         → stage 5
+// =============================================================================
+
+import { db, auth, storage } from "./firebase.js";
+import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+
+// ===============================
+// ADMIN CONSOLE LOG SYSTEM
+// ===============================
+// All console.log/warn/error/info are intercepted and mirrored
+// into a floating, collapsible panel visible only in the admin UI.
+// This lets the admin see real-time data flow without DevTools.
+// ===============================
+window.ENABLE_CONSOLE_LOGS = true;
+
+const originalConsole = {
+    log: console.log.bind(console),
+    error: console.error.bind(console),
+    warn: console.warn.bind(console),
+    info: console.info.bind(console)
+};
+
+// ── Build the Admin Console Panel (DOM) ──────────────────────────────────────
+(function buildAdminConsole() {
+    if (document.getElementById('admin-console-panel')) return;
+
+    const panel = document.createElement('div');
+    panel.id = 'admin-console-panel';
+    panel.style.cssText = `
+        position: fixed; bottom: 16px; right: 16px; z-index: 99999;
+        width: 400px; max-width: calc(100vw - 32px);
+        background: #0a0a0a; border: 1px solid #222;
+        border-radius: 12px; font-family: 'Share Tech Mono', monospace;
+        font-size: 11px; box-shadow: 0 8px 32px rgba(0,0,0,0.7);
+        transition: height 0.25s ease;
+        display: flex; flex-direction: column;
+    `;
+
+    panel.innerHTML = `
+        <div id="admin-console-header" style="
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 12px; background: #111; border-radius: 12px 12px 0 0;
+            border-bottom: 1px solid #222; cursor: pointer; user-select: none;
+        " onclick="window.toggleAdminConsole()">
+            <span style="color:#00ff88;font-weight:700;letter-spacing:1px;font-size:11px;">
+                ⚡ ADMIN CONSOLE
+            </span>
+            <div style="display:flex;gap:8px;align-items:center;">
+                <span id="admin-console-count" style="background:#1a1a1a;color:#555;padding:2px 7px;border-radius:10px;font-size:10px;">0 logs</span>
+                <button onclick="event.stopPropagation(); window.clearAdminConsole()" 
+                    style="background:transparent;border:1px solid #333;color:#555;border-radius:4px;cursor:pointer;padding:2px 8px;font-size:10px;font-family:inherit;"
+                    onmouseover="this.style.borderColor='#ff4444';this.style.color='#ff4444'"
+                    onmouseout="this.style.borderColor='#333';this.style.color='#555'">Clear</button>
+                <span id="admin-console-toggle-icon" style="color:#555;font-size:14px;">▼</span>
+            </div>
+        </div>
+        <div id="admin-console-body" style="
+            height: 220px; overflow-y: auto; padding: 8px 0;
+            display: flex; flex-direction: column; gap: 0;
+        ">
+            <div style="color:#333;text-align:center;padding:20px 0;font-size:11px;">Console ready — logs will appear here</div>
+        </div>
+    `;
+
+    document.body.appendChild(panel);
+
+    // Scrollbar style
+    const style = document.createElement('style');
+    style.textContent = `
+        #admin-console-body::-webkit-scrollbar { width: 4px; }
+        #admin-console-body::-webkit-scrollbar-track { background: #111; }
+        #admin-console-body::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+    `;
+    document.head.appendChild(style);
+
+    window._adminConsoleCollapsed = false;
+    window._adminConsoleLogCount = 0;
+})();
+
+window.toggleAdminConsole = function () {
+    const body = document.getElementById('admin-console-body');
+    const icon = document.getElementById('admin-console-toggle-icon');
+    if (!body) return;
+    window._adminConsoleCollapsed = !window._adminConsoleCollapsed;
+    body.style.display = window._adminConsoleCollapsed ? 'none' : 'flex';
+    if (icon) icon.textContent = window._adminConsoleCollapsed ? '▲' : '▼';
+};
+
+window.clearAdminConsole = function () {
+    const body = document.getElementById('admin-console-body');
+    if (body) {
+        body.innerHTML = '<div style="color:#333;text-align:center;padding:20px 0;font-size:11px;">Cleared</div>';
+        window._adminConsoleLogCount = 0;
+        const countEl = document.getElementById('admin-console-count');
+        if (countEl) countEl.textContent = '0 logs';
+    }
+};
+
+window._adminLog = function (level, args) {
+    const body = document.getElementById('admin-console-body');
+    if (!body) return;
+
+    window._adminConsoleLogCount = (window._adminConsoleLogCount || 0) + 1;
+    const countEl = document.getElementById('admin-console-count');
+    if (countEl) countEl.textContent = window._adminConsoleLogCount + ' log' + (window._adminConsoleLogCount !== 1 ? 's' : '');
+
+    const colors = {
+        log: { badge: '#333', text: '#00ff88', label: 'LOG' },
+        info: { badge: '#1a3a5c', text: '#3b82f6', label: 'INF' },
+        warn: { badge: '#3a2a00', text: '#ffd700', label: 'WRN' },
+        error: { badge: '#3a0000', text: '#ff4444', label: 'ERR' }
+    };
+    const c = colors[level] || colors.log;
+
+    const now = new Date();
+    const ts = now.getHours().toString().padStart(2, '0') + ':' +
+        now.getMinutes().toString().padStart(2, '0') + ':' +
+        now.getSeconds().toString().padStart(2, '0');
+
+    const msg = args.map(a => {
+        if (a === null) return 'null';
+        if (a === undefined) return 'undefined';
+        if (typeof a === 'object') {
+            try { return JSON.stringify(a, null, 0).substring(0, 300); }
+            catch (e) { return String(a); }
+        }
+        return String(a);
+    }).join(' ');
+
+    const row = document.createElement('div');
+    row.style.cssText = `
+        padding: 4px 12px; border-bottom: 1px solid #0f0f0f;
+        display: flex; gap: 8px; align-items: flex-start;
+        transition: background 0.15s;
+    `;
+    row.onmouseover = () => row.style.background = '#111';
+    row.onmouseout = () => row.style.background = 'transparent';
+
+    row.innerHTML = `
+        <span style="color:#444;flex-shrink:0;padding-top:1px;">${ts}</span>
+        <span style="background:${c.badge};color:${c.text};padding:1px 5px;border-radius:3px;font-size:9px;font-weight:700;flex-shrink:0;letter-spacing:1px;">${c.label}</span>
+        <span style="color:${c.text};word-break:break-all;line-height:1.5;opacity:0.9;">${msg.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+    `;
+
+    // Remove "ready" placeholder on first log
+    if (body.children.length === 1 && body.children[0].style.textAlign === 'center') {
+        body.innerHTML = '';
+    }
+
+    body.appendChild(row);
+    body.scrollTop = body.scrollHeight;
+};
+
+// ── Intercept all console methods ────────────────────────────────────────────
+console.log = function (...args) {
+    if (window.ENABLE_CONSOLE_LOGS) originalConsole.log(...args);
+    window._adminLog('log', args);
+};
+console.error = function (...args) {
+    if (window.ENABLE_CONSOLE_LOGS) originalConsole.error(...args);
+    window._adminLog('error', args);
+};
+console.warn = function (...args) {
+    if (window.ENABLE_CONSOLE_LOGS) originalConsole.warn(...args);
+    window._adminLog('warn', args);
+};
+console.info = function (...args) {
+    if (window.ENABLE_CONSOLE_LOGS) originalConsole.info(...args);
+    window._adminLog('info', args);
+};
+
+window.addEventListener('error', e => {
+    originalConsole.error("Global JS Error:", e.message, "at", e.filename, "line", e.lineno);
+    window._adminLog('error', [`[GLOBAL] ${e.message} @ ${e.filename}:${e.lineno}`]);
+});
+window.addEventListener('unhandledrejection', e => {
+    originalConsole.error("Unhandled Promise Rejection:", e.reason);
+    window._adminLog('error', [`[PROMISE] ${e.reason}`]);
+});
+
+
+import {
+    getFirestore, collection, doc, getDocs, getDoc, updateDoc, setDoc, deleteDoc,
+    query, where, orderBy, onSnapshot, writeBatch, serverTimestamp, addDoc, limit, collectionGroup, increment
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+import {
+    signInWithEmailAndPassword, onAuthStateChanged, signOut,
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+// ---------------------------------------------------------------------------
+//  Listener teardown map
+// ---------------------------------------------------------------------------
+const _listeners = {
+    badge: null,
+    verifications: null,
+    registrations: null,
+    tournaments: null,
+    calendar: null,
+};
+
+function teardownAllListeners() {
+    Object.values(_listeners).forEach(u => { if (u) u(); });
+    Object.keys(_listeners).forEach(k => _listeners[k] = null);
+}
+
+// ---------------------------------------------------------------------------
+//  Shared Firestore refs
+// ---------------------------------------------------------------------------
+const tournamentsRef = collection(db, "tournaments");
+const calendarRef = collection(db, "calendarEvents");
+
+let currentFieldStatuses = {};
+
+// ============================================================================
+//  1. AUTH GUARD
+// ============================================================================
+window.isAdminSession = false;
+
+onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+        console.log('[AUTH] No user session — redirecting to home');
+        window.location.replace("/");
+        return;
+    }
+
+    console.info('[AUTH] User session detected:', user.email);
+    const userSnap = await getDoc(doc(db, "users", user.uid));
+    if (!userSnap.exists() || userSnap.data().isAdmin !== true) {
+        console.warn('[AUTH] Access denied — not an admin account:', user.email);
+        window.location.replace("/");
+        return;
+    }
+
+    window.isAdminSession = true;
+    console.info('[AUTH] ✅ Admin verified:', user.email, '— Loading admin panel...');
+    showAdminUI();
+    initAdminListeners();
+});
+
+function showLoginUI() {
+    teardownAllListeners();
+    document.getElementById("loginSection").style.display = "block";
+    document.getElementById("adminPanel").style.display = "none";
+    console.log('[UI] Login screen shown');
+}
+function showAdminUI() {
+    if (!window.isAdminSession) return;
+    document.getElementById("loginSection").style.display = "none";
+    document.getElementById("adminPanel").style.display = "block";
+    console.info('[UI] ✅ Admin panel shown');
+}
+function initAdminListeners() {
+    console.log('[INIT] Starting badge listener, tournament loader, and calendar loader...');
+    startBadgeListener();
+    loadTournaments();
+    loadCalendarEvents();
+    console.log('[INIT] All admin listeners initialized');
+}
+
+// ============================================================================
+//  2. BADGE LISTENERS
+// ============================================================================
+function startBadgeListener() {
+    if (_listeners.badge) return;
+
+    // BUG FIX: filter out archived docs in badge count
+    const vQuery = query(
+        collectionGroup(db, "verifications"),
+        where("status", "==", "pending"),
+        where("archived", "==", false)
+    );
+    _listeners.badge = onSnapshot(vQuery, (snap) => {
+        // Pass docId to debounce — same new verification doc won't double-beep
+        snap.docChanges().forEach(c => { if (c.type === "added") playAdminAlert(c.doc.id); });
+        updateTabBadge("verificationBadge", snap.size);
+    }, err => {
+        // Fallback if composite index not yet created — query without archived filter
+        console.warn("Badge listener (archived filter) failed, falling back:", "Permission Denied or Invalid Data");
+        const fallback = query(
+            collectionGroup(db, "verifications"),
+            where("status", "==", "pending")
+        );
+        _listeners.badge = onSnapshot(fallback, (snap) => {
+            updateTabBadge("verificationBadge", snap.size);
+        });
+    });
+
+    const rQuery = query(
+        collectionGroup(db, "upcomingRegistrations"),
+        where("status", "==", "pending"),
+        where("archived", "==", false)
+    );
+    onSnapshot(rQuery, (snap) => {
+        // ✅ FIX: Sound alert for new upcoming registrations (badge listener)
+        // Pass docId to debounce — prevents double-beep if registrations tab is also open
+        snap.docChanges().forEach(c => {
+            const grandparentColId = c.doc.ref.parent.parent?.parent?.id;
+            if (c.type === "added" && grandparentColId === "tournaments") playAdminAlert(c.doc.id);
+        });
+        // ✅ FIX: Only count tournament-side docs (not user mirror docs)
+        const tournamentSideCount = snap.docs.filter(d => d.ref.parent.parent?.parent?.id === "tournaments").length;
+        updateTabBadge("registrationBadge", tournamentSideCount);
+    }, () => {
+        // Fallback
+        onSnapshot(
+            query(collectionGroup(db, "upcomingRegistrations"), where("status", "==", "pending")),
+            (snap) => {
+                const tournamentSideCount = snap.docs.filter(d => d.ref.parent.parent?.parent?.id === "tournaments").length;
+                updateTabBadge("registrationBadge", tournamentSideCount);
+            }
+        );
+    });
+}
+
+function updateTabBadge(badgeId, count) {
+    const badge = document.getElementById(badgeId);
+    if (!badge) return;
+    badge.textContent = count;
+    badge.style.display = count > 0 ? "inline-block" : "none";
+}
+
+// ============================================================================
+//  3. TAB NAVIGATION
+// ============================================================================
+window.currentTab = "tournaments";
+
+window.showTab = function (tabName) {
+    window.currentTab = tabName;
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    document.querySelector(`[onclick="showTab('${tabName}')"]`)?.classList.add("active");
+    document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+    const sectionMap = {
+        tournaments: "tournamentsSection",
+        calendar: "calendarSection",
+        verifications: "verificationsSection",
+        transactions: "transactionsSection",
+        withdrawals: "withdrawalsSection",
+        registrations: "registrationsSection",
+        qr: "qrSection",
+        banners: "bannersSection",
+    };
+    document.getElementById(sectionMap[tabName])?.classList.add("active");
+
+    if (tabName === "banners") {
+        window.loadAdminBanners();
+    }
+    if (tabName === "verifications") {
+        loadVerifications();
+    } else {
+        if (_listeners.verifications) { _listeners.verifications(); _listeners.verifications = null; }
+    }
+
+    if (tabName === "transactions") {
+        loadTransactions();
+    } else {
+        if (_listeners.transactions) { _listeners.transactions(); _listeners.transactions = null; }
+    }
+
+    if (tabName === "withdrawals") {
+        loadWithdrawals();
+    } else {
+        if (_listeners.withdrawals) { _listeners.withdrawals(); _listeners.withdrawals = null; }
+    }
+
+    if (tabName === "registrations") {
+        loadUpcomingRegistrations();
+    } else {
+        if (_listeners.registrations) { _listeners.registrations(); _listeners.registrations = null; }
+    }
+};
+
+window.generateCustomQR = function () {
+    const url = document.getElementById("qrUrl").value.trim();
+    if (!url || url === "https://") {
+        alert("Please enter a valid URL.");
+        return;
+    }
+
+    const darkColor = document.getElementById("qrDarkColor").value;
+    let lightColor = document.getElementById("qrLightColor").value;
+    const isTransparent = document.getElementById("qrTransparentBg").checked;
+
+    if (isTransparent) {
+        lightColor = "#00000000"; // Transparent hex
+    }
+
+    if (typeof QRCode === "undefined") {
+        alert("QR Code library is still loading. Please try again in a second.");
+        return;
+    }
+
+    QRCode.toDataURL(url, {
+        width: 1024,
+        margin: 1,
+        color: {
+            dark: darkColor,
+            light: lightColor
+        }
+    }, function (err, dataUrl) {
+        if (err) {
+            console.error(err);
+            alert("Error generating QR code");
+            return;
+        }
+        document.getElementById("qrImage").src = dataUrl;
+        document.getElementById("qrDownloadBtn").href = dataUrl;
+        document.getElementById("qrResult").style.display = "block";
+    });
+};
+
+let _allTransactions = [];
+
+function loadTransactions() {
+    if (_listeners.transactions) { _listeners.transactions(); _listeners.transactions = null; }
+
+    const container = document.getElementById("transactionList");
+    if (!container) return;
+    container.innerHTML = '<p class="loading-text">Loading transactions...</p>';
+
+    // Query both verifications (Ongoing) and upcomingRegistrations (Upcoming)
+    const qVerif = query(collectionGroup(db, "verifications"), orderBy("submittedAt", "desc"));
+    const qUpcoming = query(collectionGroup(db, "upcomingRegistrations"), orderBy("submittedAt", "desc"));
+
+    window._transactionsData = { verif: [], upcoming: [] };
+
+    const updateAllTransactions = () => {
+        _allTransactions = [...window._transactionsData.verif, ...window._transactionsData.upcoming]
+            .sort((a, b) => (b.submittedAt?.toMillis?.() || 0) - (a.submittedAt?.toMillis?.() || 0));
+        filterTransactions();
+    };
+
+    _listeners.transactionsVerif = onSnapshot(qVerif, (snap) => {
+        window._transactionsData.verif = snap.docs
+            .map(doc => ({ id: doc.id, ...doc.data(), tournamentId: doc.ref.parent.parent.id, _collection: "verifications" }))
+            .filter(t => t.utr || t.paymentUtr)
+            .filter(t => t.paymentStatus === "submitted" || t.status === "pending");
+        updateAllTransactions();
+    }, (err) => console.error("Verifications load error:", err));
+
+    _listeners.transactionsUpcoming = onSnapshot(qUpcoming, (snap) => {
+        window._transactionsData.upcoming = snap.docs
+            .map(doc => ({ id: doc.id, ...doc.data(), tournamentId: doc.ref.parent.parent.id, _collection: "upcomingRegistrations" }))
+            .filter(t => t.utr || t.paymentUtr)
+            .filter(t => t.paymentStatus === "submitted");
+        updateAllTransactions();
+    }, (err) => console.error("Upcoming load error:", err));
+
+    _listeners.transactions = () => {
+        if (_listeners.transactionsVerif) _listeners.transactionsVerif();
+        if (_listeners.transactionsUpcoming) _listeners.transactionsUpcoming();
+    };
+}
+
+window.filterTransactions = function () {
+    const container = document.getElementById("transactionList");
+    const searchVal = (document.getElementById("transactionSearch")?.value || "").toLowerCase();
+
+    const filtered = _allTransactions.filter(t => {
+        const transactionUtr = t.utr || t.paymentUtr;
+        // Only show ones with UTR
+        if (!transactionUtr) return false;
+
+        if (!searchVal) return true;
+        return (t.teamId && t.teamId.toLowerCase().includes(searchVal)) ||
+            (transactionUtr && transactionUtr.toLowerCase().includes(searchVal));
+    });
+
+    if (filtered.length === 0) {
+        container.innerHTML = '<p style="color:#888;">No pending transactions found.</p>';
+        document.getElementById("transactionBadge").style.display = "none";
+        return;
+    }
+
+    document.getElementById("transactionBadge").textContent = filtered.length;
+    document.getElementById("transactionBadge").style.display = "inline-block";
+
+    // Build Tabs
+    const tourneyIds = new Set(_allTransactions.map(t => t.tournamentId));
+    const tabsContainer = document.getElementById("ongoingTourneyTabs");
+
+    if (window._currentTransactionFilter === undefined) {
+        window._currentTransactionFilter = 'all';
+    }
+
+    if (tabsContainer) {
+        let tabsHtml = `<button onclick="window._currentTransactionFilter='all'; filterTransactions()" style="padding:6px 12px; background:${window._currentTransactionFilter === 'all' ? '#00ff88' : '#333'}; color:${window._currentTransactionFilter === 'all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
+
+        tourneyIds.forEach(tId => {
+            let tName = tId;
+            if (window._adminActiveTournaments) {
+                const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
+                if (tDoc) tName = tDoc.data().title || tId;
+            }
+            tabsHtml += `<button onclick="window._currentTransactionFilter='${tId}'; filterTransactions()" style="padding:6px 12px; background:${window._currentTransactionFilter === tId ? '#00ff88' : '#333'}; color:${window._currentTransactionFilter === tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
+        });
+        tabsContainer.innerHTML = tabsHtml;
+    }
+
+    // Filter by selected tab
+    const tabFiltered = window._currentTransactionFilter === 'all'
+        ? filtered
+        : filtered.filter(t => t.tournamentId === window._currentTransactionFilter);
+
+    if (tabFiltered.length === 0) {
+        container.innerHTML = '<p style="color:#888;">No pending transactions found for this tournament.</p>';
+        return;
+    }
+
+    // Group by tournamentId (for display purposes, even if filtered to 1)
+    const grouped = {};
+    tabFiltered.forEach(t => {
+        if (!grouped[t.tournamentId]) grouped[t.tournamentId] = [];
+        grouped[t.tournamentId].push(t);
+    });
+
+    let html = '';
+    for (const [tId, txs] of Object.entries(grouped)) {
+        html += `<div style="margin-bottom: 24px; padding: 16px; background: var(--bg2); border: 1px solid #333; border-radius: 8px;">`;
+        html += `<h3 style="color: var(--blue); margin-top: 0; margin-bottom: 12px; font-size: 16px; border-bottom: 1px solid #333; padding-bottom: 8px;">🏆 Tournament: ${tId}</h3>`;
+
+        html += txs.map(t => {
+            // Extra info from the new backend merge
+            const leaderName = t.teamName ? `${t.teamName} (Leader: ${t.nickPlayer1 || 'Unknown'})` : 'Unknown';
+            const phone = t.phone ? `Phone: ${t.phone}` : '';
+            const backupEmail = t.backupEmail ? `Backup Email: ${t.backupEmail}` : '';
+            const transactionUtr = t.utr || t.paymentUtr;
+
+            return `
+        <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #444; margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap: wrap; gap: 10px;">
+            <div style="flex: 1; min-width: 250px;">
+              <p style="margin:0 0 5px; color:#fff;"><strong>Team ID:</strong> ${t.teamId}</p>
+              <p style="margin:0 0 5px; color:#ccc;"><strong>Team Info:</strong> ${leaderName}</p>
+              ${phone ? `<p style="margin:0 0 5px; color:#ccc;"><strong>${phone}</strong></p>` : ''}
+              ${backupEmail ? `<p style="margin:0 0 5px; color:#ccc;"><strong>${backupEmail}</strong></p>` : ''}
+              <p style="margin:10px 0 5px; color:#00ff88; font-size:18px;"><strong>UTR:</strong> <span style="letter-spacing:1px;">${transactionUtr}</span></p>
+              <p style="margin:0 0 5px; color:#ffd700;"><strong>Amount:</strong> ₹${t.expectedAmount || 0}</p>
+              ${t.screenshotUrl ? `<a href="${t.screenshotUrl}" target="_blank" style="color:#3b82f6; display:inline-block; margin-top:5px;">View Screenshot</a>` : ''}
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; min-width: 200px;">
+              <button onclick="approveTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', '${transactionUtr}', ${t.expectedAmount || 0}, '${t._collection}')" style="background:#00ff88; color:#000; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">✅ Approve Payment</button>
+              <button onclick="rejectPaymentTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', '${t._collection}')" style="background:#ff4444; color:#fff; padding:10px 15px; border:none; border-radius:4px; cursor:pointer; font-weight:bold; width:100%;">❌ Reject (Invalid UTR)</button>
+              <button onclick="walletRefundTransaction('${t.tournamentId}', '${t.id}', '${t.teamId}', '${t.userId}', ${t.expectedAmount || 0}, '${t._collection}')" style="background:transparent; color:#888; border:1px solid #444; padding:8px 15px; border-radius:4px; cursor:pointer; font-size: 12px; width:100%;">Refund to Wallet (Waitlist)</button>
+            </div>
+          </div>
+        </div>
+      `;
+        }).join("");
+        html += `</div>`;
+    }
+
+    container.innerHTML = html;
+};
+
+window.approveTransaction = async function (tournamentId, docId, teamId, userId, utr, amount, collectionName = "verifications") {
+    if (!confirm("Are you sure you want to approve this transaction? This will confirm their slot.")) return;
+    console.info(`[ACTION] Triggered 'Approve Payment' for ${teamId}`);
+    try {
+        console.info(`[DATA OUT] Submitting update to ${collectionName} and slots...`);
+        const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
+
+        // 1. Mark verification as approved
+        await updateDoc(docRef, { status: "approved", approvedAt: serverTimestamp() });
+
+        // 2. Mark slot as verified (prevent cron from deleting it)
+        await setDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
+            paymentStatus: "verified",
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 3. Mark team history as verified so they get trust score
+        await setDoc(doc(db, "team_verification_history", teamId), {
+            isVerified: true,
+            lastVerifiedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 4. Update the actual participant record
+        await setDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+            paymentStatus: 'verified',
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 5. Update user's personal pendingPayment record
+        await setDoc(doc(db, "users", userId, "pendingPayment", tournamentId), {
+            paymentStatus: 'verified',
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 6. Fix for Upcoming Tournaments: Ensure their dashboard is fully updated
+        try {
+            await setDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
+                paymentStatus: 'verified',
+                status: 'approved',
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            await setDoc(doc(db, "users", userId, "upcomingRegistrations", tournamentId), {
+                paymentStatus: 'verified',
+                status: 'accepted',
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            await setDoc(doc(db, "tournaments", tournamentId, "teamSessions", teamId), {
+                paymentStatus: 'verified',
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+        } catch (e) { }
+
+        // 7. Send Notification to User
+        try {
+            await sendDualNotification(userId, {
+                type: "success",
+                title: "💳 Payment Verified!",
+                message: `Your payment of ₹${amount} for tournament ${tournamentId} has been successfully verified. Your slot is now confirmed!`,
+                extra: { tournamentId, utr },
+                actionLink: `tournament=${tournamentId}`,
+            });
+        } catch (e) {
+            console.warn("Could not send notification:", e);
+        }
+
+        showToast("Transaction approved successfully!");
+        console.info(`[DATA OUT] Transaction completed successfully.`);
+    } catch (e) {
+        console.error(`[ERROR] Failed to execute approveTransaction: ${e.message}`);
+        console.error("Error approving transaction:", e);
+        alert("Error: " + e.message);
+    }
+};
+
+window.rejectPaymentTransaction = async function (tournamentId, docId, teamId, userId, collectionName = "verifications") {
+    if (!confirm("Are you sure you want to REJECT this payment? The user will be notified to enter the correct UTR.")) return;
+    console.info(`[ACTION] Triggered 'Reject Payment' for ${teamId}`);
+    try {
+        console.info(`[DATA OUT] Submitting update to ${collectionName} and slots...`);
+        const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
+
+        // 1. Mark verification as rejected
+        await updateDoc(docRef, { status: "payment_rejected", rejectedAt: serverTimestamp(), paymentStatus: "payment_rejected" });
+
+        // 2. Mark slot as rejected
+        await setDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
+            paymentStatus: "Payment Rejected",
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 3. Update the actual participant record
+        await setDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+            paymentStatus: 'payment_rejected',
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 4. Update user's personal pendingPayment record
+        await setDoc(doc(db, "users", userId, "pendingPayment", tournamentId), {
+            paymentStatus: 'payment_rejected',
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 5. Send Notification
+        await sendDualNotification(userId, {
+            type: "payment_rejected",
+            title: "❌ Payment Verification Failed",
+            message: "We could not verify your payment UTR. Please click here to enter the correct UTR or pay again.",
+            extra: { tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        });
+
+        showToast("Payment rejected and user notified.", "warning");
+        console.info(`[DATA OUT] Transaction completed successfully.`);
+    } catch (e) {
+        console.error(`[ERROR] Failed to execute rejectPaymentTransaction: ${e.message}`);
+        console.error("Error rejecting transaction:", e);
+        alert("Error: " + e.message);
+    }
+};
+
+window.walletRefundTransaction = async function (tournamentId, docId, teamId, userId, amount, collectionName = "verifications") {
+    if (!confirm(`Are you sure you want to refund ₹${amount} to their wallet and move them to waitlist?`)) return;
+    try {
+        const docRef = doc(db, "tournaments", tournamentId, collectionName, docId);
+
+        // 1. Mark verification as waitlisted
+        await updateDoc(docRef, { status: "waitlisted", waitlistedAt: serverTimestamp() });
+
+        // 2. Mark slot as waitlisted (this moves them to the waitlist queue in slot management)
+        await setDoc(doc(db, "tournaments", tournamentId, "slots", teamId), {
+            teamId: teamId,
+            paymentStatus: "Waitlist",
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 3. Refund to Wallet
+        const walletRef = doc(db, "users", userId, "wallet", "main");
+        const walletSnap = await getDoc(walletRef);
+        let currentBalance = 0;
+        if (walletSnap.exists()) {
+            currentBalance = walletSnap.data().balance || 0;
+        }
+        await setDoc(walletRef, {
+            balance: currentBalance + Number(amount),
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // 4. Add Transaction History
+        await addDoc(collection(db, "users", userId, "transactions"), {
+            amount: Number(amount),
+            type: "refund",
+            description: `Refund for Tournament Waitlist (${tournamentId})`,
+            timestamp: serverTimestamp()
+        });
+
+        showToast("Refunded to Wallet and Waitlisted!");
+    } catch (e) {
+        console.error("Error refunding to wallet:", e);
+        alert("Error: " + e.message);
+    }
+};
+
+function loadWithdrawals() {
+    if (_listeners.withdrawals) { _listeners.withdrawals(); _listeners.withdrawals = null; }
+
+    const container = document.getElementById("withdrawalList");
+    if (!container) return;
+    container.innerHTML = '<p class="loading-text">Loading withdrawals...</p>';
+
+    const q = query(collection(db, "withdrawal_requests"), where("status", "==", "pending"), orderBy("requestedAt", "asc"));
+
+    _listeners.withdrawals = onSnapshot(q, (snap) => {
+        if (snap.empty) {
+            container.innerHTML = '<p style="color:#888;">No pending withdrawals.</p>';
+            document.getElementById("withdrawalBadge").style.display = "none";
+            return;
+        }
+
+        document.getElementById("withdrawalBadge").textContent = snap.size;
+        document.getElementById("withdrawalBadge").style.display = "inline-block";
+
+        container.innerHTML = snap.docs.map(doc => {
+            const w = doc.data();
+            return `
+        <div style="background:#1a1a1a; padding:15px; border-radius:8px; border:1px solid #3b82f6; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <p style="margin:0 0 5px; color:#fff;"><strong>User ID:</strong> ${w.userId}</p>
+            <p style="margin:0 0 5px; color:#00ff88; font-size:18px;"><strong>Amount:</strong> ₹${w.amount}</p>
+            <p style="margin:0 0 5px; color:#3b82f6;"><strong>UPI ID:</strong> ${w.upiId}</p>
+          </div>
+          <div>
+            <button onclick="resolveWithdrawal('${doc.id}', '${w.userId}', ${w.amount})" style="background:#00ff88; color:#000; padding:10px 20px; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">Mark Paid</button>
+          </div>
+        </div>
+      `;
+        }).join("");
+    });
+}
+
+window.resolveWithdrawal = async function (docId, userId, amount) {
+    if (!confirm(`Did you successfully send ₹${amount} via UPI? This will deduct the funds from the user's wallet.`)) return;
+    try {
+        const { runTransaction } = await import("https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js");
+
+        await runTransaction(db, async (transaction) => {
+            const walletRef = doc(db, "users", userId, "wallet", "main");
+            const requestRef = doc(db, "withdrawal_requests", docId);
+
+            const walletDoc = await transaction.get(walletRef);
+            if (!walletDoc.exists()) throw new Error("Wallet not found!");
+
+            const currentBal = walletDoc.data().balance || 0;
+            if (currentBal < amount) throw new Error("User no longer has sufficient balance! Reject this request.");
+
+            // Deduct balance
+            transaction.update(walletRef, {
+                balance: currentBal - amount,
+                updatedAt: serverTimestamp()
+            });
+
+            // Log the transaction for the user
+            const txRef = doc(collection(db, "users", userId, "transactions"));
+            transaction.set(txRef, {
+                type: 'debit',
+                amount: amount,
+                description: `Withdrawal to UPI`,
+                status: 'completed',
+                createdAt: serverTimestamp()
+            });
+
+            // Mark request complete
+            transaction.update(requestRef, {
+                status: "completed",
+                completedAt: serverTimestamp()
+            });
+        });
+
+        showToast("Withdrawal completed and funds deducted!");
+    } catch (e) {
+        console.error("Error resolving withdrawal:", e);
+        alert("Error: " + e.message);
+    }
+};
+
+
+// ============================================================================
+//  4. ONGOING APPLICATIONS
+//  BUG FIX: query now excludes archived:true documents
+// ============================================================================
+function loadVerifications() {
+    if (_listeners.verifications) { _listeners.verifications(); _listeners.verifications = null; }
+
+    const container = document.getElementById("verificationList");
+    if (!container) return;
+    container.innerHTML = '<p class="loading-text">Loading applications…</p>';
+
+    // Query all statuses but EXCLUDE archived docs
+    // NOTE: This requires a Firestore composite index on (submittedAt DESC) with
+    // a collection group query.  If "archived" filter causes index errors, the
+    // catch below falls back to client-side filtering.
+    const q = query(
+        collectionGroup(db, "verifications"),
+        orderBy("submittedAt", "desc")
+    );
+
+    _listeners.verifications = onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach(c => {
+            if (c.type === "added" && c.doc.data().status === "pending") playAdminAlert(c.doc.id);
+        });
+        window._lastVerificationsSnapshot = snapshot;
+        window.renderVerificationList(snapshot);
+    }, err => {
+        container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: Permission Denied or Invalid Data</p>`;
+    });
+}
+
+window.renderVerificationList = function (snapshot) {
+    const container = document.getElementById("verificationList");
+    if (!container) return;
+
+    const pending = [];
+    const accepted = [];
+    const rejected = [];
+    const tourneyIds = new Set();
+
+    if (window._currentVerificationFilter === undefined) {
+        window._currentVerificationFilter = 'all';
+    }
+
+    snapshot.forEach(vDoc => {
+        const d = { id: vDoc.id, tournamentId: vDoc.ref.parent.parent.id, ...vDoc.data() };
+        if (d.archived === true) return; // CLIENT-SIDE: skip archived docs
+
+        tourneyIds.add(d.tournamentId);
+
+        if (window._currentVerificationFilter !== 'all' && d.tournamentId !== window._currentVerificationFilter) return;
+
+        const isPaymentSubmitted = (d.paymentStatus === "submitted" && !!d.utr);
+
+        if (d.status === "rejected") {
+            rejected.push(d);
+        } else if (d.status === "approved" || isPaymentSubmitted) {
+            accepted.push(d);
+        } else if (d.status === "pending") {
+            pending.push(d);
+        }
+    });
+
+    const tabsContainer = document.getElementById("ongoingApplicationsTourneyTabs");
+    if (tabsContainer) {
+        let tabsHtml = `<button onclick="window._currentVerificationFilter='all'; window.renderVerificationList(window._lastVerificationsSnapshot)" style="padding:6px 12px; background:${window._currentVerificationFilter === 'all' ? '#00ff88' : '#333'}; color:${window._currentVerificationFilter === 'all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
+
+        tourneyIds.forEach(tId => {
+            let tName = tId;
+            if (window._adminActiveTournaments) {
+                const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
+                if (tDoc) tName = tDoc.data().title || tId;
+            }
+            tabsHtml += `<button onclick="window._currentVerificationFilter='${tId}'; window.renderVerificationList(window._lastVerificationsSnapshot)" style="padding:6px 12px; background:${window._currentVerificationFilter === tId ? '#00ff88' : '#333'}; color:${window._currentVerificationFilter === tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
+        });
+        tabsContainer.innerHTML = tabsHtml;
+    }
+
+    if (!pending.length && !accepted.length && !rejected.length) {
+        container.innerHTML = `<div class="empty-state"><span class="emoji">✅</span>No applications yet.</div>`;
+        return;
+    }
+
+    let html = "";
+    html += partition("new", `🆕 New Applications (${pending.length})`);
+    html += pending.length ? pending.map(d => applicationCard(d, "new")).join("") : noItems();
+    html += partition("accepted", `✅ Accepted (${accepted.length})`);
+    html += accepted.length ? accepted.map(d => applicationCard(d, "accepted")).join("") : noItems();
+    html += partition("rejected", `❌ Rejected (${rejected.length})`);
+    html += rejected.length ? rejected.map(d => applicationCard(d, "rejected")).join("") : noItems();
+
+    container.innerHTML = html;
+}
+
+function partition(type, label) {
+    return `
+    <div class="partition">
+      <span class="partition-label ${type}">${label}</span>
+      <div class="partition-line"></div>
+    </div>`;
+}
+
+function noItems() {
+    return `<div style="color:var(--muted);font-size:13px;padding:8px 0 16px;">— None —</div>`;
+}
+
+
+
+function applicationCard(d, type) {
+    const pillClass = type === "new" ? "pill-new" : type === "accepted" ? "pill-accepted" : "pill-rejected";
+    const pillLabel = type === "new" ? "PENDING" : type === "accepted" ? "APPROVED" : "REJECTED";
+
+    // ✅ FIX: Detect if it is a resubmission by checking for leftover rejection notes
+    const isResubmitted = type === "new" && (d.rejectionNote || d.rejectionReason);
+
+    const badgeHtml = isResubmitted
+        ? `<span style="background:var(--orange, #ff9800); color:#000; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">⚠️ Resubmitted</span>`
+        : (type === "new" ? `<span style="background:var(--blue, #4a90e2); color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">🆕 New</span>` : "");
+
+    let actions = "";
+    if (type === "new") {
+
+        const appData = {
+            teamName: d.teamName || "—",
+            leaderEmail: d.leaderEmail || "—",
+            phone: d.phone || "—",
+            backupEmail: d.backupEmail || "—",   // ✅ FIX: Include backup Gmail
+            payoutUpiId: d.payoutUpiId || d.upiId || "—",
+            uids: d.uids || [],
+            playersData: d.playersData || d.uids?.map((uid, i) => ({
+                uid: uid,
+                type: d[`typePlayer${i + 1}`] || "friend", // Captures NPC User status
+                nickname: d[`nickPlayer${i + 1}`] || d[`player${i + 1}Nickname`] || ""
+            })) || []
+        };
+
+        actions = `
+      <div style="display:flex; flex-direction:column; gap:8px; width:100%; margin-top:10px;">
+        <button class="btn-view" style="width:100%; padding:10px; font-size:14px; box-sizing:border-box;" 
+          onclick="openAdminReviewModal('${d.tournamentId}', '${d.id}', '${encodeURIComponent(JSON.stringify(appData))}', 'ongoing')">
+          🔍 Review Application
+        </button>
+      </div>
+    `;
+    } else if (type === "accepted") {
+        actions = `
+      <button class="btn-status" onclick="viewStatusModal('${d.tournamentId}','${d.id}')">📊 Status</button>
+      <button class="btn-remove" data-tid="${d.tournamentId}" data-uid="${d.id}" onclick="removeApplication('${d.tournamentId}','${d.id}')">Remove</button>`;
+    } else {
+        actions = `
+      <button class="btn-view"   onclick="viewRejectedDetails('${d.tournamentId}','${d.id}')">Review</button>
+      <button class="btn-remove" data-tid="${d.tournamentId}" data-uid="${d.id}" onclick="removeApplication('${d.tournamentId}','${d.id}')">Remove</button>`;
+    }
+
+    return `
+    <div class="app-card ${type}" id="appcard-${d.id}" style="${isResubmitted ? 'border-left: 4px solid #ff9800;' : ''}">
+      <div class="app-card-info">
+        <div style="font-size:11px; color:var(--muted); margin-bottom:4px; font-family:monospace; text-transform:uppercase; letter-spacing:1px;">
+            🏆 TOURN ID: <span style="color:var(--blue); font-weight:bold;">${d.tournamentId}</span>
+        </div>
+        <strong style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">${escHtml(d.teamName ?? "—")} ${badgeHtml}</strong>
+        <small>Leader: ${escHtml(d.leaderEmail ?? "—")}</small>
+        ${d.rejectionNote ? `<small style="color:var(--red);">Reason: ${escHtml(d.rejectionNote)}</small>` : ""}
+      </div>
+      <div class="app-card-actions">
+        <span class="status-pill ${pillClass}">${pillLabel}</span>
+        ${actions}
+      </div>
+    </div>`;
+}
+
+// ============================================================================
+//  5. REMOVE APPLICATION (Ongoing tab)
+//  Notifies team BEFORE archiving so they know what happened
+// ============================================================================
+window.removeApplication = async function (tournamentId, userId) {
+    if (!confirm("Remove this application from the list? The team will be notified.")) return;
+    try {
+        // Fetch team name and tournament name before archiving so we can notify properly
+        let teamName = "Your team";
+        let tournamentName = tournamentId;
+        let memberIds = [userId];
+        try {
+            const vSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
+            if (vSnap.exists()) teamName = vSnap.data().teamName || teamName;
+            const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+            if (tSnap.exists()) tournamentName = tSnap.data().title || tournamentName;
+            const uSnap = await getDoc(doc(db, "users", userId));
+            if (uSnap.exists() && uSnap.data().teamId) {
+                const tmSnap = await getDoc(doc(db, "teams", uSnap.data().teamId));
+                if (tmSnap.exists()) memberIds = [...new Set([...(tmSnap.data().members || []), userId])];
+            }
+        } catch (_) { }
+
+        await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
+            archived: true,
+            archivedAt: serverTimestamp(),
+        });
+
+        // Notify every team member
+        await Promise.all(memberIds.map(mid => sendDualNotification(mid, {
+            type: "application_removed",
+            title: "⚠️ Application Removed",
+            message: `Your application for "${tournamentName}" was removed from the Verification stage. If this was a mistake, tap to re-submit.`,
+            extra: { tournamentId, tournamentName, stage: "ongoing", teamName },
+            actionLink: `resubmit=ongoing&tournament=${tournamentId}`,
+            silent: true
+        })));
+
+        // Immediate UI removal — don’t wait for snapshot
+        document.getElementById(`appcard-${userId}`)?.remove();
+        showToast("Application removed & team notified.", "success");
+    } catch (e) {
+        showToast("Error removing: Permission Denied.", "error");
+    }
+};
+
+
+// ============================================================================
+//  6. STATUS MODAL  (Accepted applications)
+//  UPGRADE: replaced Payment Status row with 5-stage progress tracker
+//  ADDED: "Notify This Team" button + Room ID & Password management
+// ============================================================================
+window.viewStatusModal = async function (tournamentId, userId) {
+    if (!window.isAdminSession) return;
+    // Store the listener so we can stop it when modal closes
+    if (window._statusModalListener) {
+        window._statusModalListener(); // Cleanup any existing listener
+    }
+
+    try {
+        const [vSnap, pSnap, uSnap] = await Promise.all([
+            getDoc(doc(db, "tournaments", tournamentId, "verifications", userId)),
+            getDoc(doc(db, "tournaments", tournamentId, "participants", userId)),
+            getDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId))
+        ]);
+
+        const v = vSnap.exists() ? vSnap.data() : {};
+        const p = pSnap.exists() ? pSnap.data() : {};
+        const u = uSnap.exists() ? uSnap.data() : {};
+
+        const collectionName = uSnap.exists() ? "upcomingRegistrations" : "verifications";
+        v._collection = collectionName;
+        u._collection = collectionName;
+
+        // Fallback to fetch team session to get true live payment status if others lag
+        let sessionData = {};
+        const teamId = v.teamId || p.teamId || u.teamId;
+        if (teamId) {
+            try {
+                const sSnap = await getDoc(doc(db, "tournaments", tournamentId, "teamSessions", teamId));
+                if (sSnap.exists()) sessionData = sSnap.data();
+            } catch (e) { }
+        }
+
+        const processedAt = v.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? (u.processedAt?.toDate?.()?.toLocaleString("en-IN") ?? "—");
+
+        // Remove any existing modal
+        document.getElementById("statusModalOverlay")?.remove();
+
+        // Create modal (without innerHTML update function yet)
+        const overlay = document.createElement("div");
+        overlay.id = "statusModalOverlay";
+        overlay.className = "status-modal-overlay";
+
+        // Create content container that we'll update
+        const contentDiv = document.createElement("div");
+        contentDiv.className = "status-modal";
+        contentDiv.style.cssText = "max-width:520px;width:100%;";
+
+        overlay.appendChild(contentDiv);
+        document.body.appendChild(overlay);
+
+        // Close on backdrop click
+        overlay.addEventListener("click", e => {
+            if (e.target === overlay) {
+                if (window._statusModalListener) {
+                    window._statusModalListener();
+                    window._statusModalListener = null;
+                }
+                overlay.remove();
+            }
+        });
+
+        // Function to render/update the modal content
+        function renderStatusContent(updatedP, updatedV, updatedU, updatedS) {
+            const pData = { ...updatedV, ...updatedU, ...updatedP, ...updatedS };
+            const currentPaymentStatus = pData.paymentStatus || "";
+
+            // Stage calculations from live data
+            const stage3 = ["submitted", "paid", "verified", "pending_verification"].includes(currentPaymentStatus);
+            const stage4 = (currentPaymentStatus === "verified" || currentPaymentStatus === "paid" || currentPaymentStatus === "Payment Verified");
+            const stage5 = pData.confirmationReceived === true;
+
+            // Team code from either the verification doc or participant doc
+            const teamCode = pData.teamCode || "N/A";
+            const theUtr = pData.paymentUtr || pData.utr || "";
+
+
+
+
+
+
+
+
+
+
+            contentDiv.innerHTML = `
+        <h3>📊 Team Status — ${escHtml(pData.teamName ?? "—")}</h3>
+
+        <!-- ✅ TEAM UNIQUE CODE — Prominent, copyable -->
+        <div style="background:#0a1f0a;border:1px solid var(--green);border-radius:10px;padding:14px 16px;margin-bottom:14px;text-align:center;">
+          <p style="color:var(--muted);font-size:10px;letter-spacing:1.5px;text-transform:uppercase;margin:0 0 6px;">🔑 Team Unique Code</p>
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;">
+            <span id="statusTeamCode" style="font-family:monospace;font-size:22px;font-weight:900;color:var(--green);letter-spacing:3px;">${escHtml(teamCode)}</span>
+            <button onclick="navigator.clipboard.writeText('${escHtml(teamCode)}').then(()=>{this.textContent='✅';setTimeout(()=>{this.textContent='📋 Copy'},1200)})" 
+              style="padding:5px 12px;background:#1a3a1a;color:var(--green);border:1px solid var(--green);border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;">📋 Copy</button>
+          </div>
+          <p style="color:#555;font-size:10px;margin:6px 0 0;">Paste this in the website search bar to pull up all team details instantly</p>
+        </div>
+
+        <div class="status-row">
+          <span class="s-label">Tournament</span>
+          <span class="s-value" style="color:var(--blue);">${escHtml(tournamentId)}</span>
+        </div>
+        <div class="status-row">
+          <span class="s-label">Leader</span>
+          <span class="s-value">${escHtml(pData.leaderEmail ?? "—")}</span>
+        </div>
+        <div class="status-row">
+          <span class="s-label">Live Payment Status</span>
+          <span class="s-value" style="font-weight:bold; color:${currentPaymentStatus === 'processing payment' ? 'var(--orange)' : currentPaymentStatus === 'needs to pay' ? 'var(--red)' : 'var(--green)'}; text-transform:uppercase;">${escHtml(currentPaymentStatus || "PENDING")}</span>
+        </div>
+        <div class="status-row">
+          <span class="s-label">Approved At</span>
+          <span class="s-value">${processedAt}</span>
+        </div>
+        ${pData.phone ? `<div class="status-row"><span class="s-label">Phone</span><span class="s-value">${escHtml(pData.phone)}</span></div>` : ""}
+        ${pData.transactionCode ? `<div class="status-row"><span class="s-label">Transaction ID</span><span class="s-value" style="font-family:monospace;color:var(--gold);">${escHtml(pData.transactionCode)}</span></div>` : ""}
+        ${theUtr ? `<div class="status-row"><span class="s-label">UTR / Payment Ref</span><span class="s-value" style="font-family:monospace;color:var(--gold);">${escHtml(theUtr)}</span></div>` : ""}
+
+        <div style="margin:20px 0 6px;">
+          <p style="color:var(--muted);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:12px;">✅ Application Progress Checklist</p>
+          ${progressTracker([
+                { label: "Application Submitted", done: true },
+                { label: "Verification Approved by Admin", done: true },
+                { label: "Payment Receipt Submitted", done: stage3 },
+                { label: "Payment Verified by Admin", done: stage4 },
+                { label: "Confirmation Acknowledged", done: stage5 },
+            ])}
+        </div>
+
+        <!-- Live indicator -->
+        <div id="confirmationLiveIndicator" style="text-align:center;margin:10px 0;">
+          ${stage5
+                    ? `<span style="background:var(--green);color:#000;padding:8px 16px;border-radius:20px;font-weight:bold;font-size:13px;">✅ Confirmation Received!</span>`
+                    : `<span style="background:#333;color:#888;padding:8px 16px;border-radius:20px;font-size:13px;">⏳ Waiting for user confirmation...</span>`
+                }
+        </div>
+
+        <!-- Room ID & Password -->
+        <div style="margin:18px 0;padding:14px;background:#0f0f0f;border-radius:10px;border:1px solid var(--border);">
+          <p style="color:var(--muted);font-size:11px;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;">🔑 Room ID & Password</p>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <input id="smRoomId" placeholder="Room ID" value="${escHtml(pData.roomId ?? "")}" style="flex:1;padding:8px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;font-size:13px;">
+            <input id="smRoomPass" placeholder="Password" value="${escHtml(pData.roomPassword ?? "")}" style="flex:1;padding:8px 12px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;font-size:13px;">
+          </div>
+          <button onclick="saveRoomDetails('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}')" style="width:100%;padding:9px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;">💾 Save & Notify Team</button>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:4px;">
+          <button onclick="openNotifyModal('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}', '${escHtml(pData.teamName ?? "Team")}')" style="flex:1;padding:10px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">🔔 Notify This Team</button>
+          ${(stage3 && !stage4 && theUtr) ? `
+          <button onclick="if(confirm('Force approve this payment manually? This will confirm their slot.')){ window.approveTransaction('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}', '${userId}', '${escHtml(theUtr)}', '${pData.entryFee || 0}', '${pData._collection || "verifications"}'); document.getElementById('statusModalOverlay').remove(); }" style="flex:1;padding:10px;background:var(--gold);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-size:13px;">✅ Approve Payment</button>
+          ` : ""}
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button onclick="document.getElementById('statusModalOverlay').remove(); if(window._statusModalListener){window._statusModalListener();window._statusModalListener=null;}" style="flex:1;background:#222;color:var(--muted);border:1px solid #333;border-radius:6px;cursor:pointer;font-family:inherit;padding:8px;">Close</button>
+          
+          <button onclick="if(confirm('🛠️ DEV OVERRIDE: Force approve payment regardless of current status?')){ window.approveTransaction('${tournamentId}', '${userId}', '${escHtml(pData.teamId || "")}', '${userId}', '${escHtml(theUtr || "MANUAL_OVERRIDE")}', '${pData.entryFee || 0}', '${pData._collection || "verifications"}'); document.getElementById('statusModalOverlay').remove(); }" style="padding:8px;background:transparent;color:#ff4444;border:1px dashed #ff4444;border-radius:6px;cursor:pointer;font-family:inherit;font-size:11px;">🛠️ Force Override</button>
+        </div>
+      `;
+        }
+
+        // Initial render
+        renderStatusContent(p, v, u, sessionData);
+
+        // Real-time listener for live updates (try listening to session for payment status instead)
+        if (teamId) {
+            window._statusModalListener = onSnapshot(doc(db, "tournaments", tournamentId, "teamSessions", teamId), (snap) => {
+                if (!snap.exists()) return;
+                const updatedS = snap.data();
+                renderStatusContent(p, v, u, updatedS);
+            });
+        }
+
+    } catch (e) {
+        showToast("Error loading status: Permission Denied.", "error");
+    }
+};
+
+
+// ── Progress tracker HTML builder ─────────────────────────────────────────
+function progressTracker(stages) {
+    return `<div style="display:flex;flex-direction:column;gap:0;">` +
+        stages.map((s, i) => {
+            const isLast = i === stages.length - 1;
+            const dot = s.done
+                ? `<div style="width:24px;height:24px;border-radius:50%;background:var(--green);display:flex;align-items:center;justify-content:center;color:#000;font-size:13px;font-weight:700;flex-shrink:0;">✓</div>`
+                : `<div style="width:24px;height:24px;border-radius:50%;border:2px solid #333;display:flex;align-items:center;justify-content:center;color:#555;font-size:13px;flex-shrink:0;">○</div>`;
+            const connector = isLast ? "" : `<div style="width:2px;height:18px;background:${s.done ? "var(--green)" : "#333"};margin-left:11px;margin-top:2px;margin-bottom:2px;"></div>`;
+            const labelColor = s.done ? "#fff" : "var(--muted)";
+            return `
+        <div style="display:flex;align-items:flex-start;gap:10px;">
+          <div style="display:flex;flex-direction:column;align-items:center;">
+            ${dot}
+            ${connector}
+          </div>
+          <span style="color:${labelColor};font-size:13px;padding-top:3px;">${s.label}</span>
+        </div>`;
+        }).join("") + `</div>`;
+}
+
+// ── Save Room ID & Password — notifies all members ─────────────────────────
+window.saveRoomDetails = async function (tournamentId, userId, teamId) {
+    const roomId = document.getElementById("smRoomId")?.value.trim();
+    const roomPass = document.getElementById("smRoomPass")?.value.trim();
+
+    if (!roomId || !roomPass) {
+        showToast("Enter both Room ID and Password.", "warning");
+        return;
+    }
+
+    try {
+        // Save to participant doc if it exists
+        try {
+            await updateDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+                roomId: roomId,
+                roomPassword: roomPass,
+                roomUpdatedAt: serverTimestamp(),
+                roomUpdatedBy: auth.currentUser?.email ?? "admin",
+            });
+        } catch (ignore) { /* Document might not exist yet, this is fine */ }
+
+        // Get tournament name
+        let tournamentName = tournamentId;
+        try {
+            const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+            if (tSnap.exists()) tournamentName = tSnap.data().title ?? tournamentId;
+        } catch (_) { }
+
+        // Resolve true Firebase Auth members from teamId
+        let ids = [userId];
+        if (teamId) {
+            try {
+                const tSnap = await getDoc(doc(db, "teams", teamId));
+                if (tSnap.exists() && Array.isArray(tSnap.data().members)) {
+                    ids = [...new Set([...tSnap.data().members, userId])];
+                }
+            } catch (e) { }
+        }
+
+        // Notify all members (dual: in-app + push)
+        await Promise.all(ids.map(mid => sendDualNotification(mid, {
+            type: "room_details",
+            title: "🔑 Room Details Ready!",
+            message: `Room ID: ${roomId} | Password: ${roomPass}`,
+            extra: { roomId, roomPassword: roomPass, tournamentId, tournamentName },
+            actionLink: `tournament=${tournamentId}`,
+        })));
+
+        document.getElementById("statusModalOverlay")?.remove();
+        showToast(`✅ Room details saved & notified ${ids.length} member(s)!`, "success");
+        document.getElementById("statusModalOverlay")?.remove();
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
+};
+
+// ============================================================================
+//  7. NOTIFY THIS TEAM MODAL
+//  NEW: replaced Confirm Payment / Reject Payment buttons
+// ============================================================================
+window.openNotifyModal = function (tournamentId, userId, teamId, teamName) {
+    if (!window.isAdminSession) return;
+    document.getElementById("notifyModalOverlay")?.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "notifyModalOverlay";
+    overlay.className = "status-modal-overlay";
+    overlay.innerHTML = `
+    <div class="status-modal" style="max-width:460px;width:100%;">
+      <h3>🔔 Notify Team — ${escHtml(teamName)}</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">
+        In-app notification is always sent. Push notification sent only if team has granted permission.
+      </p>
+
+      <div style="margin-bottom:12px;">
+        <label style="color:var(--muted);font-size:11px;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Quick Message</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          ${[
+            "Your application is approved. Proceed to tournament.",
+            "Payment received. Room details coming soon!",
+            "Match starts in 30 minutes. Get ready!",
+            "Check your room ID in the app.",
+        ].map(msg => `
+            <button onclick="document.getElementById('notifyMsgInput').value='${msg.replace(/'/g, "\\'")}'"
+              style="background:#1a1a1a;border:1px solid #333;color:var(--muted);padding:5px 10px;border-radius:16px;cursor:pointer;font-size:12px;font-family:inherit;transition:all .15s;"
+              onmouseover="this.style.borderColor='var(--green)';this.style.color='var(--green)'"
+              onmouseout="this.style.borderColor='#333';this.style.color='var(--muted)'">
+              ${escHtml(msg.length > 40 ? msg.slice(0, 38) + "…" : msg)}
+            </button>`).join("")}
+        </div>
+        <textarea id="notifyMsgInput"
+          placeholder="Or type a custom message…"
+          style="width:100%;min-height:80px;background:#1a1a1a;border:1px solid #333;color:#fff;padding:10px;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;box-sizing:border-box;"
+        >Your application is approved. Proceed to tournament.</textarea>
+      </div>
+
+      <button onclick="sendTeamNotification('${tournamentId}', '${userId}', '${escHtml(teamId || "")}', '${escHtml(teamName)}')"
+        style="width:100%;padding:12px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;font-size:14px;">
+        Send Notification
+      </button>
+      <button onclick="document.getElementById('notifyModalOverlay').remove()"
+        style="width:100%;margin-top:8px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">
+        Cancel
+      </button>
+    </div>`;
+
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+};
+
+// WITH THIS
+window.sendTeamNotification = async function (tournamentId, userId, teamId, teamName) {
+    const message = document.getElementById("notifyMsgInput")?.value.trim();
+    if (!message) { showToast("Please enter a message.", "warning"); return; }
+
+    try {
+        // 1. Write directly to the live Participant doc so the frontend pops up immediately
+        try {
+            await updateDoc(doc(db, "tournaments", tournamentId, "participants", userId), {
+                statusMessage: message,
+                statusMessageShown: false,
+                statusMessageUpdatedAt: serverTimestamp()
+            });
+        } catch (ignore) { /* Document might not exist yet, this is fine */ }
+
+        // Resolve true Firebase Auth members from teamId
+        let ids = [userId];
+        if (teamId) {
+            try {
+                const tSnap = await getDoc(doc(db, "teams", teamId));
+                if (tSnap.exists() && Array.isArray(tSnap.data().members)) {
+                    ids = [...new Set([...tSnap.data().members, userId])];
+                }
+            } catch (e) { }
+        }
+
+        // 2. Send dual notification so it lands perfectly in the Inbox!
+        await Promise.all(ids.map(mid => sendDualNotification(mid, {
+            type: "status_message", // FIXED: Matches frontend inbox icons/clicks
+            title: "💬 Message from Admin",
+            message,
+            extra: { tournamentId, teamName },
+            actionLink: `tournament=${tournamentId}`,
+        })));
+
+        document.getElementById("notifyModalOverlay")?.remove();
+        showToast(`Notification sent to ${ids.length} member(s)!`, "success");
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
+};
+
+// ============================================================================
+//  8. DUAL NOTIFICATION HELPER
+//  NEW FUNCTION — used throughout this file
+//
+//  HOW IT WORKS:
+//  • In-app:  writes to users/{uid}/notifications  — ALWAYS
+//  • Push:    writes to pushQueue/{uid}/tasks       — Cloud Function picks up
+//             and sends FCM only if user's FCM token exists and is not blocked.
+//             If no Cloud Function is set up yet, push is silently skipped.
+// ============================================================================
+async function sendDualNotification(userId, { type, title, message, extra = {}, actionLink = "", silent = false }) {
+    // A. In-app (MANDATORY — never skip)
+    try {
+        await addDoc(collection(db, "users", userId, "notifications"), {
+            type,
+            title,
+            message,
+            ...extra,
+            actionLink,
+            read: false,
+            // If silent is true, we pretend the popup was already shown so the client UI skips the popup bubble,
+            // but since read is false, it still shows up in the notification inbox.
+            popupShown: silent ? true : false,
+            createdAt: serverTimestamp(),
+        });
+    } catch (err) {
+        console.error("Failed to send in-app notification:", err);
+    }
+
+    // B. Push (optional — write to pushQueue; Cloud Function handles FCM)
+    // FIX: Skip push queue for obvious test accounts like "1111" to prevent database errors
+    if (!userId || userId.length < 10) {
+        return;
+    }
+
+    // If the notification is explicitly marked silent, don't trigger a push notification either.
+    if (silent) {
+        return;
+    }
+
+    const ENABLE_PUSH_QUEUE = false; // Set to true when Firebase background workers are active
+
+    try {
+        if (ENABLE_PUSH_QUEUE) {
+            // 1. Write to legacy push queue for history
+            await addDoc(collection(db, "pushQueue", userId, "tasks"), {
+                type,
+                title,
+                message,
+                ...extra,
+                createdAt: serverTimestamp(),
+                sent: true,
+            });
+        }
+
+        // 2. Optional push via backend to wake up closed devices via Google FCM (non-blocking)
+        const targetBackendUrl = window.NPC_BACKEND_URL || "https://npc-secure-backend.onrender.com";
+        fetch(`${targetBackendUrl}/send-targeted`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                uids: [userId],
+                title: title,
+                body: message,
+                type: type,
+                extra: extra,
+                actionLink: actionLink
+            })
+        }).catch(err => console.debug("[Push] Targeted push notice:", err));
+
+    } catch (err) {
+        // Push queue failure must NEVER break in-app notifications
+        // FIX: Changed from console.warn to console.debug so it doesn't clutter your console with yellow errors
+        console.debug(`[Push] Skipped queue for ${userId}. (Usually means test account or offline)`);
+    }
+}
+// ============================================================================
+//  9. VIEW & DECIDE MODAL  (approve / reject)
+// ============================================================================
+function fieldVerifyRow(label, value, fieldKey) {
+    return `
+    <div style="display:flex;justify-content:space-between;align-items:center;background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+      <span style="color:var(--muted);font-size:13px;">${label}:
+        <b style="color:#fff;margin-left:6px;">${escHtml(value ?? "—")}</b>
+      </span>
+      <div style="display:flex;gap:6px;">
+        <button onclick="toggleField('${fieldKey}','ok')"  id="btn-${fieldKey}-ok"
+          style="background:#333;color:var(--green);border:1px solid var(--green);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px;">✓</button>
+        <button onclick="toggleField('${fieldKey}','err')" id="btn-${fieldKey}-err"
+          style="background:#333;color:var(--red);border:1px solid var(--red);width:30px;height:30px;border-radius:50%;cursor:pointer;font-size:14px;">✗</button>
+      </div>
+    </div>`;
+}
+
+window.toggleField = function (field, status) {
+    currentFieldStatuses[field] = status;
+    const ok = document.getElementById(`btn-${field}-ok`);
+    const err = document.getElementById(`btn-${field}-err`);
+    if (ok) { ok.style.background = status === "ok" ? "var(--green)" : "#333"; ok.style.color = status === "ok" ? "#000" : "var(--green)"; }
+    if (err) { err.style.background = status === "err" ? "var(--red)" : "#333"; err.style.color = status === "err" ? "#fff" : "var(--red)"; }
+};
+
+window.viewApplicationDetails = async function (tournamentId, userId) {
+    try {
+        const docSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
+        if (!docSnap.exists()) { showToast("Application not found.", "error"); return; }
+
+        const v = docSnap.data();
+        document.getElementById("verifModal")?.remove();
+        currentFieldStatuses = {};
+
+        const uidsArray = Array.isArray(v.uids) ? v.uids : (v.uids ? [v.uids] : []);
+        const uidRowsHtml = uidsArray.map((uid, i) =>
+            fieldVerifyRow(`Player ${i + 1} UID`, uid, `uid_${i}`)
+        ).join("") || `<div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;color:var(--muted);font-size:13px;">No UIDs submitted</div>`;
+
+        let entryFee = "—";
+        try {
+            const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+            if (tSnap.exists()) entryFee = "₹" + (tSnap.data().entryFee ?? "—");
+        } catch (_) { }
+
+        const modal = document.createElement("div");
+        modal.id = "verifModal";
+        modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
+        modal.innerHTML = `
+      <div style="background:var(--bg2);width:100%;max-width:580px;padding:28px;border-radius:14px;border:1px solid var(--border);max-height:92vh;overflow-y:auto;">
+        <h2 style="color:var(--green);margin-bottom:6px;">Review Application</h2>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">Team: <b style="color:#fff;">${escHtml(v.teamName ?? "—")}</b></p>
+
+        <div style="background:rgba(0,255,136,0.08);border:2px solid var(--green);border-radius:10px;padding:12px 18px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;">
+          <div>
+            <p style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 4px;">Team Code</p>
+            <h3 style="color:var(--green);font-size:24px;font-weight:900;letter-spacing:2px;margin:0;font-family:monospace;">${escHtml(v.teamCode ?? "N/A")}</h3>
+          </div>
+          <span style="font-size:28px;">🏷️</span>
+        </div>
+
+        <div style="display:grid;gap:8px;margin-bottom:16px;">
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Leader Email: <b style="color:#fff;margin-left:6px;">${escHtml(v.leaderEmail ?? "—")}</b></span>
+          </div>
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Tournament ID: <b style="color:#fff;margin-left:6px;">${escHtml(tournamentId)}</b></span>
+          </div>
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Entry Fee: <b style="color:var(--gold);margin-left:6px;">${entryFee}</b></span>
+          </div>
+        </div>
+
+        <p style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Verify Each Field</p>
+        <div style="display:grid;gap:8px;">
+          ${fieldVerifyRow("Phone Number", v.phone, "phone")}
+          ${fieldVerifyRow("Backup Email", v.backupEmail, "backupEmail")}
+          ${uidRowsHtml}
+        </div>
+
+        <div style="margin-top:20px;">
+          <label style="color:var(--muted);font-size:12px;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:8px;">
+            Rejection Reason (required if rejecting)
+          </label>
+          <select id="reasonSelect" style="width:100%;padding:10px;background:#000;color:#fff;border:1px solid #444;border-radius:8px;margin-bottom:10px;font-family:inherit;">
+            <option value="">-- Select Reason --</option>
+            <option value="Invalid UID">❌ Invalid Player UID</option>
+            <option value="Incorrect Phone">❌ Phone Number Wrong</option>
+            <option value="Email Mismatch">❌ Email Mismatch</option>
+            <option value="Blacklisted Team">🚫 Team is Blacklisted</option>
+            <option value="Incomplete Info">⚠️ Insufficient Information</option>
+            <option value="custom">✍️ Other (write below)</option>
+          </select>
+          <textarea id="adminNote" placeholder="Optional notes…"
+            style="width:100%;height:60px;background:#000;color:#fff;border:1px solid #444;padding:10px;border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:20px;">
+          <button id="approveBtn" style="flex:1;background:var(--green);color:#000;border:none;padding:12px;font-weight:700;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;">
+            ✅ Approve Team
+          </button>
+          <button id="rejectBtn"  style="flex:1;background:var(--red);color:#fff;border:none;padding:12px;font-weight:700;border-radius:8px;cursor:pointer;font-family:inherit;font-size:14px;">
+            ❌ Reject Team
+          </button>
+        </div>
+        <button onclick="document.getElementById('verifModal').remove()"
+          style="width:100%;margin-top:10px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">
+          Cancel
+        </button>
+      </div>`;
+
+        document.body.appendChild(modal);
+        modal.querySelector("#approveBtn").addEventListener("click", () => processDecision(tournamentId, userId, "approved"));
+        modal.querySelector("#rejectBtn").addEventListener("click", () => processDecision(tournamentId, userId, "rejected"));
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
+};
+
+// ============================================================================
+//  10. PROCESS DECISION  (approve / reject + dual notify all teammates)
+// ============================================================================
+async function processDecision(tournamentId, userId, status) {
+    const reasonSelect = document.getElementById("reasonSelect").value;
+    const customNote = document.getElementById("adminNote")?.value?.trim() ?? "";
+    const finalReason = reasonSelect === "custom" ? customNote : reasonSelect;
+
+    if (status === "rejected" && !finalReason) {
+        showToast("Please select or write a rejection reason.", "warning");
+        return;
+    }
+
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId, "verifications", userId), {
+            status,
+            rejectionNote: finalReason,
+            fieldStatus: currentFieldStatuses,
+            processedAt: serverTimestamp(),
+            processedBy: auth.currentUser?.uid ?? "admin",
+        });
+
+        // Collect team member IDs
+        let allMemberIds = [userId];
+        try {
+            const applicantSnap = await getDoc(doc(db, "users", userId));
+            if (applicantSnap.exists()) {
+                const teamId = applicantSnap.data().teamId;
+                if (teamId) {
+                    const teamSnap = await getDoc(doc(db, "teams", teamId));
+                    if (teamSnap.exists()) {
+                        const members = teamSnap.data().members ?? [];
+                        allMemberIds = [...new Set([...members, userId])];
+                    }
+                }
+            }
+        } catch (lookupErr) {
+            console.warn("Team lookup failed:", "Permission Denied or Invalid Data");
+        }
+
+        const msgApproved = "Your team has been verified! ✅ Proceed to the payment stage.";
+        const msgRejected = `Your application was rejected. Reason: ${finalReason}`;
+
+        await Promise.all(
+            allMemberIds.map(mid => sendDualNotification(mid, {
+                type: status === "approved" ? "approval" : "rejected",
+                title: status === "approved" ? "Application Approved! ✅" : "Application Rejected ❌",
+                message: status === "approved" ? msgApproved : msgRejected,
+                extra: { tournamentId, rejectionNote: finalReason || "" },
+                actionLink: `tournament=${tournamentId}`,
+            }))
+        );
+
+        document.getElementById("verifModal")?.remove();
+        showToast(
+            status === "approved"
+                ? `✅ Team approved! Notified ${allMemberIds.length} member(s).`
+                : `❌ Team rejected. Notified ${allMemberIds.length} member(s).`,
+            status === "approved" ? "success" : "error"
+        );
+    } catch (e) {
+        console.error("Decision Error:", e);
+        showToast("Action failed: Permission Denied.", "error");
+    }
+}
+
+// ============================================================================
+//  11. REJECTED DETAILS (read-only)
+// ============================================================================
+window.viewRejectedDetails = async function (tournamentId, userId) {
+    try {
+        const docSnap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", userId));
+        if (!docSnap.exists()) { showToast("Application not found.", "error"); return; }
+
+        const v = docSnap.data();
+        document.getElementById("rejectedDetailModal")?.remove();
+
+        const modal = document.createElement("div");
+        modal.id = "rejectedDetailModal";
+        modal.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.92);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px;";
+        modal.innerHTML = `
+      <div style="background:var(--bg2);width:100%;max-width:520px;padding:28px;border-radius:14px;border:1px solid var(--red);max-height:90vh;overflow-y:auto;">
+        <h2 style="color:var(--red);margin-bottom:6px;">❌ Rejected Application</h2>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:20px;">Read-only view</p>
+        <div style="display:grid;gap:8px;">
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Team Name: <b style="color:#fff;margin-left:6px;">${escHtml(v.teamName ?? "—")}</b></span>
+          </div>
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Leader Email: <b style="color:#fff;margin-left:6px;">${escHtml(v.leaderEmail ?? "—")}</b></span>
+          </div>
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Tournament: <b style="color:#fff;margin-left:6px;">${escHtml(tournamentId)}</b></span>
+          </div>
+          <div style="background:rgba(255,68,68,.1);padding:14px;border-radius:8px;border:1px solid var(--red);">
+            <span style="color:var(--muted);font-size:13px;display:block;margin-bottom:4px;">Rejection Reason:</span>
+            <b style="color:var(--red);font-size:15px;">${escHtml(v.rejectionNote || v.rejectionReason || "— No reason recorded —")}</b>
+          </div>
+          ${v.processedAt ? `
+          <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+            <span style="color:var(--muted);font-size:13px;">Rejected At: <b style="color:#fff;margin-left:6px;">${v.processedAt.toDate?.()?.toLocaleString("en-IN") ?? "—"}</b></span>
+          </div>` : ""}
+        </div>
+        <button onclick="document.getElementById('rejectedDetailModal').remove()"
+          style="width:100%;margin-top:16px;background:transparent;color:var(--muted);border:1px solid var(--border);cursor:pointer;font-family:inherit;padding:10px;border-radius:8px;">
+          Close
+        </button>
+      </div>`;
+        document.body.appendChild(modal);
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
+};
+
+// ============================================================================
+//  12. UPCOMING REGISTRATIONS TAB
+//  BUG FIX: archived filter applied; reject uses custom modal (no prompt())
+// ============================================================================
+window._currentUpcomingFilter = 'all';
+
+function loadUpcomingRegistrations() {
+    if (_listeners.registrations) { _listeners.registrations(); _listeners.registrations = null; }
+
+    const container = document.getElementById("upcomingRegistrationsList");
+    if (!container) return;
+    container.innerHTML = '<p class="loading-text">Loading...</p>';
+
+    const q = query(
+        collectionGroup(db, "upcomingRegistrations"),
+        orderBy("registeredAt", "desc")
+    );
+
+    _listeners.registrations = onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach(c => {
+            const grandparentColId = c.doc.ref.parent.parent?.parent?.id;
+            if (c.type === "added" && c.doc.data().status === "pending" && grandparentColId === "tournaments") {
+                playAdminAlert(c.doc.id);
+            }
+        });
+
+        window._lastUpcomingSnapshot = snapshot;
+        window.renderUpcomingList(snapshot);
+    }, err => {
+        container.innerHTML = `<p style="color:var(--red);padding:20px;">Error: Permission Denied or Invalid Data</p>`;
+    });
+}
+
+window.renderUpcomingList = function (snapshot) {
+    const container = document.getElementById("upcomingRegistrationsList");
+    if (!container) return;
+
+    const pending = [];
+    const approved = [];
+    const rejected = [];
+    const tourneyIds = new Set();
+
+    snapshot.forEach(d => {
+        const grandparentColId = d.ref.parent.parent?.parent?.id;
+        if (grandparentColId !== "tournaments") return;
+
+        const data = { id: d.id, tournamentId: d.ref.parent.parent.id, ...d.data() };
+        if (data.archived === true) return;
+
+        tourneyIds.add(data.tournamentId);
+
+        if (window._currentUpcomingFilter !== 'all' && data.tournamentId !== window._currentUpcomingFilter) return;
+
+        if (data.status === "pending") pending.push(data);
+        else if (data.status === "approved") approved.push(data);
+        else if (data.status === "rejected") rejected.push(data);
+    });
+
+    const tabsContainer = document.getElementById("upcomingTourneyTabs");
+    if (tabsContainer) {
+        let tabsHtml = `<button onclick="window._currentUpcomingFilter='all'; window.renderUpcomingList(window._lastUpcomingSnapshot)" style="padding:6px 12px; background:${window._currentUpcomingFilter === 'all' ? '#00ff88' : '#333'}; color:${window._currentUpcomingFilter === 'all' ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">All</button>`;
+
+        tourneyIds.forEach(tId => {
+            let tName = tId;
+            if (window._adminActiveTournaments) {
+                const tDoc = window._adminActiveTournaments.find(doc => doc.id === tId);
+                if (tDoc) tName = tDoc.data().title || tId;
+            }
+            tabsHtml += `<button onclick="window._currentUpcomingFilter='${tId}'; window.renderUpcomingList(window._lastUpcomingSnapshot)" style="padding:6px 12px; background:${window._currentUpcomingFilter === tId ? '#00ff88' : '#333'}; color:${window._currentUpcomingFilter === tId ? '#000' : '#fff'}; border:none; border-radius:4px; cursor:pointer; white-space:nowrap; font-weight:bold;">${tName}</button>`;
+        });
+        tabsContainer.innerHTML = tabsHtml;
+    }
+
+    if (!pending.length && !approved.length && !rejected.length) {
+        container.innerHTML = `<div class="empty-state"><span class="emoji">📋</span>No registrations found for this filter.</div>`;
+        return;
+    }
+
+    let html = "";
+    html += partition("new", `🆕 New Registrations (${pending.length})`);
+    html += pending.length ? pending.map(d => upcomingCard(d, "new")).join("") : noItems();
+    html += partition("accepted", `✅ Approved (${approved.length})`);
+    html += approved.length ? approved.map(d => upcomingCard(d, "accepted")).join("") : noItems();
+    html += partition("rejected", `❌ Rejected (${rejected.length})`);
+    html += rejected.length ? rejected.map(d => upcomingCard(d, "rejected")).join("") : noItems();
+
+    container.innerHTML = html;
+}
+
+function upcomingCard(d, type) {
+    const pillClass = type === "new" ? "pill-new" : type === "accepted" ? "pill-accepted" : "pill-rejected";
+    const pillLabel = type === "new" ? "PENDING" : type === "accepted" ? "APPROVED" : "REJECTED";
+    const eventDate = d.eventDate
+        ? new Date(d.eventDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+        : "TBA";
+
+    // ✅ FIX: Detect if it is a resubmission
+    const isResubmitted = type === "new" && (d.rejectionNote || d.rejectionReason);
+
+    const badgeHtml = isResubmitted
+        ? `<span style="background:var(--orange, #ff9800); color:#000; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">⚠️ Resubmitted</span>`
+        : (type === "new" ? `<span style="background:var(--blue, #4a90e2); color:#fff; padding:2px 6px; border-radius:4px; font-size:10px; font-weight:bold; margin-left:8px;">🆕 New</span>` : "");
+
+
+    let actions = "";
+    if (type === "new") {
+
+        const appData = {
+            teamName: d.teamName || "—",
+            leaderEmail: d.leaderEmail || "—",
+            phone: d.phone || "—",
+            backupEmail: d.backupEmail || "—",   // ✅ FIX: Include backup Gmail
+            payoutUpiId: d.payoutUpiId || d.upiId || "—",
+            uids: d.uids || [],
+            playersData: d.playersData || d.uids?.map((uid, i) => ({
+                uid: uid,
+                type: d[`typePlayer${i + 1}`] || "friend", // Captures NPC User status
+                nickname: d[`nickPlayer${i + 1}`] || d[`player${i + 1}Nickname`] || ""
+            })) || []
+        };
+
+        actions = `
+      <div style="display:flex; flex-direction:column; gap:8px; width:100%; margin-top:10px;">
+        <button class="btn-view" style="width:100%; padding:10px; font-size:14px; box-sizing:border-box;" 
+          onclick="openAdminReviewModal('${d.tournamentId}', '${d.id}', '${encodeURIComponent(JSON.stringify(appData))}', 'upcoming')">
+          🔍 Review Registration
+        </button>
+      </div>
+    `;
+    } else if (type === "accepted") {
+        // ✅ FIX 1: Added the Status button so you can track pre-payments!
+        actions = `
+      <button class="btn-status" onclick="viewStatusModal('${d.tournamentId}','${d.id}')">📊 Status</button>
+      <button class="btn-remove" onclick="removeUpcoming('${d.tournamentId}','${d.id}','${d.id}')" id="regcard-${d.id}">Remove</button>
+    `;
+    } else {
+        actions = `<button class="btn-remove" onclick="removeUpcoming('${d.tournamentId}','${d.id}','${d.id}')" id="regcard-${d.id}">Remove</button>`;
+    }
+
+    return `
+    <div class="app-card ${type}" id="regcard-${d.id}" style="${isResubmitted ? 'border-left: 4px solid #ff9800;' : ''}">
+      <div class="app-card-info">
+        <div style="font-size:11px; color:var(--muted); margin-bottom:4px; font-family:monospace; text-transform:uppercase; letter-spacing:1px;">
+            📅 TOURN ID: <span style="color:var(--green); font-weight:bold;">${d.tournamentId}</span>
+        </div>
+        <strong style="display:flex; align-items:center; flex-wrap:wrap; gap:4px;">${escHtml(d.teamName ?? "—")} ${badgeHtml}</strong>
+        <small>Leader: ${escHtml(d.leaderEmail ?? "—")}</small>
+        <small>📅 Event Date: ${eventDate}</small>
+        ${d.rejectionReason ? `<small style="color:var(--red);">Reason: ${escHtml(d.rejectionReason)}</small>` : ""}
+      </div>
+      <div class="app-card-actions">
+        <span class="status-pill ${pillClass}">${pillLabel}</span>
+        ${actions}
+      </div>
+    </div>`;
+}
+// WITH THIS
+window.approveUpcoming = async function (tournamentId, userId) {
+    try {
+        // ✅ FIX: Fetch the actual registration document so we can copy the Player UIDs and Nicknames into the Slot
+        const regRef = doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId);
+        const regSnap = await getDoc(regRef);
+        const regData = regSnap.exists() ? regSnap.data() : {};
+
+        // ✅ FIX: Use writeBatch to update BOTH the tournament doc AND the user's personal log
+        // This ensures the user's dashboard card changes from "pending" to "accepted" immediately.
+        const batch = writeBatch(db);
+
+        // 1. Update the tournament's upcomingRegistrations sub-collection (admin view)
+        batch.update(regRef, {
+            status: "approved",
+            processedAt: serverTimestamp()
+        });
+
+        // 2. ✅ FIX: Update the USER'S personal registration log (user view)
+        //    This is the document their dashboard reads. Without this, user stays on "pending".
+        const userRegRef = doc(db, "users", userId, "upcomingRegistrations", tournamentId);
+        batch.set(userRegRef, {
+            status: "accepted",
+            paymentStatus: "pending",
+            processedAt: serverTimestamp(),
+            tournamentId: tournamentId
+        }, { merge: true }); // merge:true is safe — won't erase existing fields
+
+        await batch.commit();
+
+        // 3. Resolve all team members to notify (fetch team members)
+        let allMemberIds = [userId];
+        try {
+            const uSnap = await getDoc(doc(db, "users", userId));
+            if (uSnap.exists() && uSnap.data().teamId) {
+                const tSnap = await getDoc(doc(db, "teams", uSnap.data().teamId));
+                if (tSnap.exists()) {
+                    // ✅ FIX: Use Set to deduplicate — prevents double-notification
+                    allMemberIds = [...new Set([...(tSnap.data().members ?? []), userId])];
+                }
+            }
+        } catch (_) { }
+
+        // 4. ✅ FIX: Also auto-create the slot entry so Slot Management table is never "undefined"
+        try {
+            const uSnap = await getDoc(doc(db, "users", userId));
+            if (uSnap.exists()) {
+                const uData = uSnap.data();
+                if (uData.teamId) {
+                    const tSnap = await getDoc(doc(db, "teams", uData.teamId));
+                    if (tSnap.exists()) {
+                        const tData = tSnap.data();
+                        // WITH THIS
+                        // ✅ FIX: Deduplicate members before writing slot
+                        const deduped = [...new Set([...(tData.members || []), userId])];
+
+                        await setDoc(doc(db, "tournaments", tournamentId, "slots", uData.teamId), {
+                            teamId: uData.teamId,
+                            teamName: regData.teamName || uData.teamName || tData.teamName || "Unknown Team",
+                            teamCode: regData.teamCode || uData.teamCode || tData.code || "N/A",
+                            members: deduped,
+                            memberCount: deduped.length,
+                            leaderId: tData.leaderId || userId,
+                            leaderEmail: uData.email || "",
+                            paymentStatus: "Pending Payment", // ✅ Explicit string — never "undefined"
+                            playersData: regData.playersData || null, // Copies actual In-game UIDs/Nicknames
+                            uids: regData.uids || null,
+                            nickPlayer1: regData.nickPlayer1 || regData.player1Nickname || null,
+                            nickPlayer2: regData.nickPlayer2 || regData.player2Nickname || null,
+                            nickPlayer3: regData.nickPlayer3 || regData.player3Nickname || null,
+                            nickPlayer4: regData.nickPlayer4 || regData.player4Nickname || null,
+                            assignedAt: serverTimestamp()
+                        }, { merge: true });
+                    }
+                }
+            }
+        } catch (slotErr) {
+            // Slot write failure must not block the approval
+            console.warn("[SLOT AUTO-FILL] Failed:", "Permission Denied or Invalid Data");
+        }
+
+        // 5. Send dual notifications to all members
+        await Promise.all(allMemberIds.map(mid => sendDualNotification(mid, {
+            type: "upcoming_approved",
+            title: "Registration Approved! 🎉",
+            message: "Your upcoming tournament registration has been approved! Stay tuned for match details.",
+            extra: { tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        })));
+
+        showToast(`Registration approved! Notified ${allMemberIds.length} member(s).`, "success");
+
+    } catch (e) {
+        showToast("Error approving: Permission Denied.", "error");
+    }
+};
+
+// UPGRADE: custom modal instead of browser prompt()
+window.openRejectUpcomingModal = function (tournamentId, userId) {
+    document.getElementById("rejectUpcomingModal")?.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "rejectUpcomingModal";
+    overlay.className = "status-modal-overlay";
+    overlay.innerHTML = `
+    <div class="status-modal" style="max-width:420px;width:100%;">
+      <h3 style="color:var(--red);">❌ Reject Registration</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:14px;">Select or write a reason. The team will be notified.</p>
+      <select id="rejectUpcomingReason" style="width:100%;padding:10px;background:#000;color:#fff;border:1px solid #444;border-radius:8px;margin-bottom:10px;font-family:inherit;">
+        <option value="">-- Select Reason --</option>
+        <option value="Registration closed">Registration closed</option>
+        <option value="Slots full">Slots full</option>
+        <option value="Incomplete details">Incomplete details</option>
+        <option value="Duplicate registration">Duplicate registration</option>
+        <option value="custom">Other (write below)</option>
+      </select>
+      <textarea id="rejectUpcomingNote" placeholder="Custom reason (optional)…"
+        style="width:100%;height:60px;background:#000;color:#fff;border:1px solid #444;padding:10px;border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button onclick="confirmRejectUpcoming('${tournamentId}','${userId}')"
+          style="flex:1;padding:10px;background:var(--red);color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;">
+          Confirm Reject
+        </button>
+        <button onclick="document.getElementById('rejectUpcomingModal').remove()"
+          style="flex:1;padding:10px;background:#222;color:var(--muted);border:1px solid #333;border-radius:8px;cursor:pointer;font-family:inherit;">
+          Cancel
+        </button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+};
+
+window.confirmRejectUpcoming = async function (tournamentId, userId) {
+    const select = document.getElementById("rejectUpcomingReason").value;
+    const custom = document.getElementById("rejectUpcomingNote").value.trim();
+    const reason = select === "custom" ? custom : select;
+    if (!reason) { showToast("Please select or enter a reason.", "warning"); return; }
+
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
+            status: "rejected", rejectionReason: reason, processedAt: serverTimestamp(),
+        });
+        await sendDualNotification(userId, {
+            type: "rejected",
+            title: "Registration Rejected",
+            message: `Your registration was rejected. Reason: ${reason}`,
+            extra: { tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        });
+        document.getElementById("rejectUpcomingModal")?.remove();
+        showToast("Registration rejected & team notified.", "error");
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
+};
+
+// BUG FIX: immediate DOM removal on removeUpcoming + team notification
+window.removeUpcoming = async function (tournamentId, userId, cardId) {
+    if (!confirm("Remove this registration? The team will be notified.")) return;
+    try {
+        // Gather info before archiving
+        let tournamentName = tournamentId;
+        let memberIds = [userId];
+        try {
+            const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+            if (tSnap.exists()) tournamentName = tSnap.data().title || tournamentName;
+            const uSnap = await getDoc(doc(db, "users", userId));
+            if (uSnap.exists() && uSnap.data().teamId) {
+                const tmSnap = await getDoc(doc(db, "teams", uSnap.data().teamId));
+                if (tmSnap.exists()) memberIds = [...new Set([...(tmSnap.data().members || []), userId])];
+            }
+        } catch (_) { }
+
+        await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
+            archived: true, archivedAt: serverTimestamp(),
+        });
+
+        // Notify every team member
+        await Promise.all(memberIds.map(mid => sendDualNotification(mid, {
+            type: "application_removed",
+            title: "⚠️ Registration Removed",
+            message: `Your registration for "${tournamentName}" was removed from the Registration stage. If this was a mistake, tap to re-submit.`,
+            extra: { tournamentId, tournamentName, stage: "upcoming" },
+            actionLink: `resubmit=upcoming&tournament=${tournamentId}`,
+            silent: true
+        })));
+
+        document.getElementById(`regcard-${cardId}`)?.remove();
+        showToast("Removed & team notified.", "success");
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
+};
+
+
+// ============================================================================
+//  13. AUTH ACTIONS
+// ============================================================================
+window.adminLogin = async function () {
+    const email = document.getElementById("adminEmail").value.trim();
+    const pass = document.getElementById("adminPass").value;
+    if (!email || !pass) { showToast("Enter email and password.", "warning"); return; }
+    try {
+        await signInWithEmailAndPassword(auth, email, pass);
+    } catch (e) {
+        showToast("Login failed: Invalid credentials or Permission Denied.", "error");
+    }
+};
+
+window.logout = async function () {
+    teardownAllListeners();
+    await signOut(auth);
+};
+
+// ============================================================================
+//  14. TOURNAMENTS
+// ============================================================================
+let currentTournamentCategory = "ongoing";
+
+window.handleCategoryChange = function (selectElement) {
+    const category = selectElement.value;
+    const sharedFields = document.getElementById('sharedFields');
+    const upcomingFields = document.getElementById('upcomingFields');
+    const limitedFields = document.getElementById('limitedFields');
+
+    // Hide everything specific first
+    if (upcomingFields) upcomingFields.style.display = 'none';
+    if (limitedFields) limitedFields.style.display = 'none';
+
+    if (category === 'limited') {
+        // HIDE standard stats (Fee, Duration, Prizes), SHOW custom paragraph
+        if (sharedFields) sharedFields.style.display = 'none';
+        if (limitedFields) limitedFields.style.display = 'block';
+    } else if (category === 'upcoming') {
+        // SHOW standard stats AND upcoming timings
+        if (sharedFields) sharedFields.style.display = 'block';
+        if (upcomingFields) upcomingFields.style.display = 'block';
+    } else {
+        // ONGOING: SHOW ONLY standard stats
+        if (sharedFields) sharedFields.style.display = 'block';
+    }
+};
+
+function updateCalendarNote() {
+    const feeInput = document.getElementById("upcomingFee");
+    const noteEl = document.getElementById("calendarMarkNote");
+    if (!feeInput || !noteEl) return;
+    const fee = Number(feeInput.value);
+    noteEl.textContent = fee > 200
+        ? "⭐ Entry fee > ₹200 — will be marked as Special event on calendar."
+        : "📅 Will be marked as Upcoming event on calendar.";
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("upcomingFee")?.addEventListener("input", updateCalendarNote);
+});
+
+// ✅ Fix - use auth.currentUser instead, since the auth guard already verified admin
+window.addTournament = async function () {
+    if (!auth.currentUser) { showToast("Not allowed", "error"); return; }
+
+    const title = document.getElementById("tournamentTitle")?.value.trim();
+    const category = document.getElementById("tournamentCategory")?.value;
+
+    if (!title || !category) {
+        showToast("Title and Category are required", "error");
+        return;
+    }
+
+    const btn = document.querySelector(".btn-submit");
+    const originalText = btn.textContent;
+    btn.textContent = "Adding...";
+    btn.disabled = true;
+    console.info('[TOURNAMENT] Adding new tournament:', title, '| Category:', category);
+
+    try {
+        // Base Tournament Data
+        let tournamentData = {
+            title: title,
+            category: category,
+            status: 'open',
+            createdAt: serverTimestamp()
+        };
+
+        // ─── LIMITED TOURNAMENT LOGIC ───
+        if (category === 'limited') {
+            const paragraph = document.getElementById("limitedInfoParagraph")?.value.trim();
+            const eventDate = document.getElementById("limitedEventDate")?.value;
+
+            if (!paragraph || !eventDate) {
+                showToast("Date and Info Paragraph are required for Limited tournaments.", "error");
+                btn.textContent = originalText; btn.disabled = false; return;
+            }
+
+            tournamentData.infoParagraph = paragraph;
+            tournamentData.eventDate = eventDate;
+            tournamentData.mode = "Any"; // No specific mode needed
+
+            // 🌟 Auto-create Calendar Event (Yellow/Special)
+            await addDoc(collection(db, "calendarEvents"), {
+                date: eventDate,
+                title: `⚡ [Limited] ${title}`,
+                type: 'special', // This assigns the Yellow color in your calendar
+                prize: 'Special',
+                description: "Exclusive Limited Tournament Event",
+                createdAt: serverTimestamp()
+            });
+
+        }
+        // ─── ONGOING & UPCOMING LOGIC ───
+        else {
+            tournamentData.entryFee = Number(document.getElementById("tournamentFee")?.value) || 0;
+            tournamentData.mode = document.getElementById("tournamentMode")?.value || "Solo";
+            tournamentData.duration = Number(document.getElementById("tournamentDuration")?.value) || 60;
+            tournamentData.totalSlots = Math.max(2, Number(document.getElementById("tournamentTotalSlots")?.value) || 12);
+            tournamentData.prize = {
+                first: Number(document.getElementById("prizeFirst")?.value) || 0,
+                second: Number(document.getElementById("prizeSecond")?.value) || 0,
+                third: Number(document.getElementById("prizeThird")?.value) || 0
+            };
+
+            if (category === 'upcoming') {
+                const eventDate = document.getElementById("tournamentEventDate")?.value;
+                const eventTime = document.getElementById("tournamentEventTime")?.value;
+                const transitionTime = document.getElementById("tournamentTransitionTime")?.value; // Hidden timer
+
+                if (!eventDate || !eventTime) {
+                    showToast("Event Date and Time are required for Upcoming tournaments.", "error");
+                    btn.textContent = originalText; btn.disabled = false; return;
+                }
+
+                tournamentData.eventDate = eventDate;
+                tournamentData.eventTime = eventTime;
+                tournamentData.transitionTime = transitionTime || null;
+
+                // 🌟 Auto-create Calendar Event (Blue/Upcoming)
+                await addDoc(collection(db, "calendarEvents"), {
+                    date: eventDate,
+                    title: `🏆 ${title}`,
+                    type: 'upcoming', // Blue color in your calendar
+                    prize: tournamentData.prize.first,
+                    description: `Upcoming ${tournamentData.mode} Tournament`,
+                    createdAt: serverTimestamp()
+                });
+            }
+        }
+
+        // Save Tournament to Firestore
+        const newRef = await addDoc(collection(db, "tournaments"), tournamentData);
+        console.info('[TOURNAMENT] ✅ Saved to Firestore. ID:', newRef.id, '| Data:', JSON.stringify(tournamentData).substring(0, 200));
+
+        showToast(`${category.toUpperCase()} Tournament added successfully!`, "success");
+
+        // Reset Form Inputs
+        document.getElementById("tournamentTitle").value = "";
+        if (document.getElementById("limitedInfoParagraph")) document.getElementById("limitedInfoParagraph").value = "";
+        if (document.getElementById("tournamentFee")) document.getElementById("tournamentFee").value = "";
+
+    } catch (err) {
+        console.error("[TOURNAMENT] Add Tournament Error:", err.message, err);
+        showToast("Error adding tournament", "error");
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+    }
+};
+window.deleteTournament = async function (id) {
+    try {
+        const tSnap = await getDoc(doc(db, "tournaments", id));
+        const tData = tSnap.exists() ? tSnap.data() : {};
+        const now = new Date();
+        const actualEnd = tData.endTime ? new Date(tData.endTime) : (tData.eventDate ? (tData.eventTime ? new Date(`${tData.eventDate}T${tData.eventTime}`) : new Date(tData.eventDate)) : null);
+        const isTournamentOver = actualEnd && actualEnd <= now;
+
+        if (!isTournamentOver && (tData.category === "ongoing" || tData.status === "live")) {
+            showToast("\u274c Cannot delete: This tournament is live/ongoing.", "error");
+            return;
+        }
+
+        if (!isTournamentOver) {
+            const regsSnap = await getDocs(collection(db, "tournaments", id, "upcomingRegistrations"));
+            const activeRegs = regsSnap.docs.filter(d => d.data().status === "pending" || d.data().status === "approved");
+            if (activeRegs.length > 0) {
+                showToast(`\u274c Cannot delete: ${activeRegs.length} team(s) have active registrations. Reject all first.`, "error");
+                return;
+            }
+            const partSnap = await getDocs(collection(db, "tournaments", id, "participants"));
+            if (!partSnap.empty) {
+                showToast(`\u274c Cannot delete: ${partSnap.size} team(s) are confirmed participants. This data cannot be lost.`, "error");
+                return;
+            }
+            // Check for pending verifications
+            const verifSnap = await getDocs(collection(db, "tournaments", id, "verifications"));
+            const pendingVerifs = verifSnap.docs.filter(d => d.data().status === 'pending');
+            if (pendingVerifs.length > 0) {
+                showToast(`\u274c Cannot delete: ${pendingVerifs.length} team(s) have pending payment verifications. Resolve them first.`, "error");
+                return;
+            }
+        }
+    } catch (checkErr) {
+        console.warn("[DELETE CHECK]", checkErr);
+    }
+
+    if (!confirm("Delete this tournament? This action is permanent and cannot be undone.")) return;
+
+    try {
+        showToast("Deleting tournament and all related data...", "info");
+
+        // Cascade delete sub-collections first (Firestore does NOT auto-delete sub-collections)
+        const subCollections = ['upcomingRegistrations', 'verifications', 'slots', 'leaderboard', 'lockedRegistrations', 'teamSessions', 'limitedNotifyList'];
+        for (const colName of subCollections) {
+            try {
+                const snap = await getDocs(collection(db, "tournaments", id, colName));
+                const batchDel = writeBatch(db);
+                snap.docs.forEach(d => batchDel.delete(d.ref));
+                if (!snap.empty) await batchDel.commit();
+            } catch (e) {
+                console.warn(`[DELETE] Could not clean up ${colName}:`, e.message);
+            }
+        }
+
+        await deleteDoc(doc(db, "tournaments", id));
+        showToast("\u2705 Tournament and all related data deleted successfully.", "success");
+    } catch (e) {
+        console.error("[DELETE] Error:", e);
+        showToast("Error deleting tournament: " + e.message, "error");
+    }
+};
+
+
+
+window.markTournamentCompleted = async function (tournamentId) {
+    if (!confirm("Mark tournament as Completed? It will move to the Results tab.")) return;
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId), {
+            status: "completed",
+            category: "ongoing", // Keep in ongoing structure but completed status
+            completedAt: serverTimestamp()
+        });
+        showToast("Tournament marked as completed!", "success");
+        window.renderAdminLeaderboardGrid(tournamentId);
+    } catch (e) {
+        showToast("Error updating status: " + e.message, "error");
+    }
+};
+
+function loadTournaments() {
+    if (_listeners.tournaments) return;
+    console.log('[TOURNAMENTS] Starting real-time tournament listener...');
+    const q = query(tournamentsRef, orderBy("createdAt", "desc"));
+    _listeners.tournaments = onSnapshot(q, (snapshot) => {
+        const box = document.getElementById("tournamentList");
+        if (!box) return;
+        box.innerHTML = "";
+
+        console.log('[TOURNAMENTS] Snapshot received —', snapshot.size, 'tournaments loaded');
+
+        // Store for periodic checks
+        window._adminActiveTournaments = snapshot.docs;
+
+        // Run interval only once
+        if (!window._adminTimerInterval) {
+            window._adminTimerInterval = setInterval(() => {
+                if (window._adminActiveTournaments) {
+                    window._adminActiveTournaments.forEach(d => {
+                        checkAdminAutoPromotion(d.id, d.data());
+                    });
+                }
+            }, 30000); // Check every 30 seconds
+        }
+
+        snapshot.forEach(d => {
+            const t = d.data();
+
+            // ✅ Trigger immediately on load as well
+            checkAdminAutoPromotion(d.id, t);
+
+            const div = document.createElement("div");
+            div.className = "item-card";
+
+            const isActive = (t.category === "ongoing" || t.status === "live");
+            const actualEnd = t.endTime ? new Date(t.endTime) : (t.eventDate ? (t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}`) : new Date(t.eventDate)) : null);
+            const isTournamentOver = actualEnd && actualEnd <= new Date();
+
+            // Format specific timing and real-time registration status
+            let timingDisplay = '';
+            let regStatusBadge = '';
+            const nowMs = Date.now();
+            const actualEndMs = actualEnd ? actualEnd.getTime() : null;
+
+            if (actualEndMs) {
+                const endDateObj = new Date(actualEndMs);
+                const timeFormatted = endDateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                const dateFormatted = endDateObj.toLocaleDateString([], { day: 'numeric', month: 'short' });
+                timingDisplay = ` · ⏰ <b>${dateFormatted}, ${timeFormatted}</b>`;
+
+                if (t.category === 'ongoing' || t.status === 'live') {
+                    if (actualEndMs > nowMs) {
+                        const minsLeft = Math.round((actualEndMs - nowMs) / 60000);
+                        const hrs = Math.floor(minsLeft / 60);
+                        const mins = minsLeft % 60;
+                        const leftStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+                        regStatusBadge = ` <span style="background:#059669;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;">🟢 Reg Open (${leftStr} left)</span>`;
+                    } else {
+                        regStatusBadge = ` <span style="background:#dc2626;color:#fff;font-size:10px;padding:2px 6px;border-radius:4px;font-weight:600;">⚠️ Reg Ended</span>`;
+                    }
+                }
+            } else if (t.eventDate) {
+                timingDisplay = ` · 📅 ${t.eventDate}${t.eventTime ? ` at ${t.eventTime}` : ''}`;
+            }
+
+            const postponeBtn = isActive
+                ? `<button class="btn-status" onclick="window.openPostponeModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}', '${t.eventDate || ''}', '${t.transitionTime || ''}')" style="background:#f97316;color:#fff;border:none;">🗓️ Postpone</button>`
+                : '';
+
+            const canEditTiming = t.status !== 'completed';
+            const editTimingBtn = canEditTiming
+                ? `<button class="btn-status" onclick="window.openEditTimingModal('${d.id}', '${escHtml(t.title).replace(/'/g, "\\'")}')" style="background:#3b82f6;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;">✏️ Edit Time</button>`
+                : '';
+
+            const editDetailsBtn = canEditTiming
+                ? `<button class="btn-status" onclick="window.openEditTournamentModal('${d.id}')" style="background:#ff6b35;color:#fff;border:none;display:inline-flex;align-items:center;gap:4px;font-weight:700;" title="Edit tournament name, entry fee, prizes, slot size, timing, and rules">✏️ Edit Details</button>`
+                : '';
+
+            const deleteBtn = (isActive && !isTournamentOver)
+                ? `<button class="btn-delete" disabled title="Cannot delete: tournament is active or ongoing" style="opacity:0.35;cursor:not-allowed;" onclick="event.preventDefault();">🔒 Delete</button>`
+                : `<button class="btn-delete" onclick="deleteTournament('${d.id}')">Delete</button>`;
+
+            const completeBtn = (t.status !== 'completed')
+                ? `<button class="btn-status" onclick="markTournamentCompleted('${d.id}')" style="background:#3b82f6;color:#fff;border:none;">🏆 Publish Results</button>`
+                : `<button class="btn-status" onclick="window.renderAdminLeaderboardGrid('${d.id}')" style="background:#00ff88;color:#000;border:none;">🏆 Edit Leaderboard</button>`;
+
+            const p1Disp = `₹${t.prize?.first || 0}`;
+            const p2Disp = (t.prize?.second !== null && t.prize?.second !== undefined && Number(t.prize?.second) > 0) ? `₹${t.prize.second}` : 'None';
+            const p3Disp = (t.prize?.third !== null && t.prize?.third !== undefined && Number(t.prize?.third) > 0) ? `₹${t.prize.third}` : 'None';
+            const slotsDisp = t.totalSlots ? ` · 🎯 Slots: <b>${t.totalSlots}</b>` : '';
+            const prizesDisp = ` · 🏆 Prizes: ${p1Disp} / ${p2Disp} / ${p3Disp}`;
+
+            div.innerHTML = `
+        <div>
+          <strong>${escHtml(t.title)}</strong><br>
+          <small style="color:var(--muted); font-size:11px;">UID: <span style="user-select:all; background:#222; padding:2px 4px; border-radius:3px; color:#aaa; font-family:monospace; cursor:copy;" onclick="navigator.clipboard.writeText('${d.id}'); showToast('UID copied!', 'success');">${d.id}</span></small><br>
+          <small>₹${t.entryFee} · ${t.mode} · <b style="text-transform:uppercase;">${t.category}</b>${slotsDisp}${prizesDisp}${timingDisplay}${regStatusBadge}</small>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+          <button class="btn-status" onclick="manageTournamentSlots('${d.id}')" style="background:var(--gold);color:#000;border:none;">
+            🎯 Manage Slots
+          </button>
+          ${editDetailsBtn}
+          ${postponeBtn}
+          ${editTimingBtn}
+          ${completeBtn}
+          ${deleteBtn}
+        </div>`;
+            box.appendChild(div);
+        });
+    });
+}
+
+// ✅ NEW FEATURE: Admin Auto-Promotion & Notification Dispatcher
+async function checkAdminAutoPromotion(tId, t) {
+    const now = new Date();
+
+    // ── Phase 1: Auto-Promotion to Ongoing ──
+    if (t.category === 'upcoming' && t.transitionTime && !t.promotionNotified) {
+        let transitionDateTime = new Date(t.transitionTime);
+        if (transitionDateTime <= now) {
+            console.log(`[AUTO-ADMIN] Hidden timer triggered for ${t.title}. Moving to Ongoing...`);
+            try {
+                const targetEndMs = t.endTime || (t.eventDate ? (t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}`).getTime() : new Date(t.eventDate).getTime()) : null);
+                await updateDoc(doc(db, "tournaments", tId), {
+                    category: 'ongoing',
+                    status: 'live',
+                    endTime: targetEndMs || (now.getTime() + 60 * 60 * 1000),
+                    promotionNotified: true
+                });
+
+                triggerAdminPhase1Alert(t.title);
+
+                const regsSnap = await getDocs(collection(db, "tournaments", tId, "upcomingRegistrations"));
+                const batch = writeBatch(db);
+                let count = 0;
+
+                regsSnap.forEach((docSnap) => {
+                    const reg = docSnap.data();
+                    if (reg.status === 'approved') {
+                        const notifRef = doc(collection(db, "users", reg.userId, "notifications"));
+                        batch.set(notifRef, {
+                            type: "tournament_live",
+                            title: "🔴 Tournament Registration Locked!",
+                            message: `"${t.title}" is now Ongoing! Click here to complete your payment and secure your slot before the match starts.`,
+                            tournamentId: tId,
+                            read: false,
+                            createdAt: serverTimestamp(),
+                            actionLink: `tournament=${tId}`
+                        });
+                        count++;
+                    }
+                });
+
+                if (count > 0) await batch.commit();
+                console.log(`[AUTO-ADMIN] Successfully promoted and notified ${count} teams.`);
+            } catch (err) {
+                console.warn("[AUTO-ADMIN] Promotion error:", err);
+            }
+        }
+    }
+
+    // ── Phase 2: Urgent Match Start Warning (30-40 mins before start) ──
+    if (t.category === 'ongoing' && (t.endTime || t.eventDate) && !t.adminPhase2Notified) {
+        let matchStartTime = t.endTime ? new Date(t.endTime) : (t.eventTime ? new Date(`${t.eventDate}T${t.eventTime}`) : new Date(t.eventDate));
+        let timeDiffMinutes = (matchStartTime - now) / (1000 * 60);
+
+        if (timeDiffMinutes <= 40 && timeDiffMinutes > 0) {
+            try {
+                await updateDoc(doc(db, "tournaments", tId), {
+                    adminPhase2Notified: true
+                });
+
+                triggerAdminPhase2Alert(t.title, Math.round(timeDiffMinutes));
+            } catch (err) {
+                console.warn("[AUTO-ADMIN] Phase 2 Alert error:", err);
+            }
+        }
+    }
+}
+
+function triggerAdminPhase1Alert(title) {
+    const overlay = document.createElement("div");
+    overlay.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,0,0,0.2);z-index:99999;pointer-events:none;animation:flashBg 1s infinite;";
+    document.body.appendChild(overlay);
+
+    const popup = document.createElement("div");
+    popup.style = "position:fixed;top:20px;right:20px;background:#c62828;color:white;padding:20px;border-radius:10px;z-index:100000;box-shadow:0 0 20px red;border:2px solid #ff5252;width:300px;pointer-events:auto;";
+    popup.innerHTML = `
+        <h3 style="margin-top:0;display:flex;align-items:center;gap:10px;">⚠️ ONGOING NOW</h3>
+        <p style="margin-bottom:15px;font-size:14px;"><strong>${escHtml(title)}</strong> has moved to Ongoing! Verify pending payments immediately before the match starts.</p>
+        <button style="width:100%;padding:10px;background:#fff;color:#c62828;border:none;border-radius:5px;font-weight:bold;cursor:pointer;" onclick="this.parentElement.remove();document.body.removeChild(document.body.lastChild);">Acknowledge</button>
+    `;
+
+    if (!document.getElementById("flashAnim")) {
+        const style = document.createElement("style");
+        style.id = "flashAnim";
+        style.innerHTML = `@keyframes flashBg { 0% { opacity: 0; } 50% { opacity: 1; } 100% { opacity: 0; } }`;
+        document.head.appendChild(style);
+    }
+    document.body.appendChild(popup);
+    try { new Audio('/alert.mp3').play(); } catch (e) { }
+}
+
+function triggerAdminPhase2Alert(title, minsRemaining) {
+    const popup = document.createElement("div");
+    popup.style = "position:fixed;top:50%;left:50%;transform:translate(-50%, -50%);background:#111;color:white;padding:30px;border-radius:15px;z-index:100000;box-shadow:0 0 50px rgba(255,152,0,0.8);border:3px solid #ff9800;text-align:center;";
+    popup.innerHTML = `
+        <h2 style="margin-top:0;color:#ff9800;">🚨 URGENT: MATCH STARTING SOON</h2>
+        <p style="font-size:16px;"><strong>${escHtml(title)}</strong> starts in <strong>${minsRemaining} minutes!</strong></p>
+        <p style="color:#aaa;font-size:14px;margin-bottom:20px;">Finalize all verifications. Kick any unpaid teams to finalize the slot list.</p>
+        <button style="padding:10px 20px;background:#ff9800;color:#000;border:none;border-radius:5px;font-weight:bold;cursor:pointer;font-size:16px;" onclick="this.parentElement.remove();">Got It</button>
+    `;
+    document.body.appendChild(popup);
+    try { new Audio('/alert.mp3').play(); } catch (e) { }
+}
+
+// ============================================================================
+//  15. CALENDAR
+// ============================================================================
+window.selectColor = function (type, element) {
+    document.querySelectorAll(".color-option").forEach(el => el.classList.remove("selected"));
+    element.classList.add("selected");
+    document.getElementById("eventType").value = type;
+};
+
+window.addCalendarEvent = async function () {
+    const date = document.getElementById("eventDate").value;
+    const title = document.getElementById("eventTitle").value.trim();
+    const type = document.getElementById("eventType").value;
+    const prize = Number(document.getElementById("eventPrize").value) || 0;
+    const desc = document.getElementById("eventDesc").value.trim() || title;
+    if (!date || !title) { showToast("Date and title are required.", "warning"); return; }
+    try {
+        const existing = await getDocs(query(calendarRef, where("date", "==", date)));
+        if (!existing.empty) {
+            await updateDoc(doc(db, "calendarEvents", existing.docs[0].id), {
+                title, type, prize, description: desc, updatedAt: serverTimestamp(),
+            });
+        } else {
+            await addDoc(calendarRef, { date, title, type, prize, description: desc, createdAt: serverTimestamp() });
+        }
+        ["eventDate", "eventTitle", "eventPrize", "eventDesc"].forEach(id => document.getElementById(id).value = "");
+        showToast("Calendar event saved!", "success");
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
+};
+
+window.deleteCalendarEvent = async function (id) {
+    if (!confirm("Delete this calendar event?")) return;
+    try {
+        await deleteDoc(doc(db, "calendarEvents", id));
+        showToast("Event deleted.", "success");
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
+};
+
+window.editCalendarEvent = async function (id) {
+    const snap = await getDoc(doc(db, "calendarEvents", id));
+    if (!snap.exists()) { showToast("Event not found.", "error"); return; }
+    const e = snap.data();
+    document.getElementById("eventDate").value = e.date ?? "";
+    document.getElementById("eventTitle").value = e.title ?? "";
+    document.getElementById("eventPrize").value = e.prize ?? "";
+    document.getElementById("eventDesc").value = e.description ?? "";
+    const colorEl = document.querySelector(`[onclick="selectColor('${e.type ?? "upcoming"}',this)"]`);
+    if (colorEl) window.selectColor(e.type ?? "upcoming", colorEl);
+    const btn = document.querySelector(".calendar-form .btn-submit");
+    btn.textContent = "✓ Update Event";
+    btn.onclick = () => window.updateCalendarEvent(id);
+    document.querySelector(".calendar-form").scrollIntoView({ behavior: "smooth" });
+};
+
+window.updateCalendarEvent = async function (id) {
+    const date = document.getElementById("eventDate").value;
+    const title = document.getElementById("eventTitle").value.trim();
+    const type = document.getElementById("eventType").value;
+    const prize = Number(document.getElementById("eventPrize").value) || 0;
+    const desc = document.getElementById("eventDesc").value.trim() || title;
+    if (!date || !title) { showToast("Date and title are required.", "warning"); return; }
+    try {
+        await updateDoc(doc(db, "calendarEvents", id), { date, title, type, prize, description: desc, updatedAt: serverTimestamp() });
+        ["eventDate", "eventTitle", "eventPrize", "eventDesc"].forEach(id => document.getElementById(id).value = "");
+        const btn = document.querySelector(".calendar-form .btn-submit");
+        btn.textContent = "+ Add Calendar Event";
+        btn.onclick = window.addCalendarEvent;
+        showToast("Event updated!", "success");
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
+};
+
+function loadCalendarEvents() {
+    if (_listeners.calendar) return;
+    const COLORS = { upcoming: "#4a90e2", special: "#ffd700", completed: "#666", today: "#00ff88" };
+    const q = query(calendarRef, orderBy("date", "desc"));
+    _listeners.calendar = onSnapshot(q, (snapshot) => {
+        const box = document.getElementById("calendarEventsList");
+        if (!box) return;
+        box.innerHTML = "";
+        snapshot.forEach(d => {
+            const e = d.data();
+            const color = COLORS[e.type] ?? "#888";
+            const div = document.createElement("div");
+            div.className = "event-card";
+            div.style.borderLeftColor = color;
+            div.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:start;">
+          <div>
+            <strong style="color:${color};">${escHtml(e.date)}</strong><br>
+            <strong>${escHtml(e.title)}</strong><br>
+            <small style="color:var(--muted);">${escHtml(e.description ?? "")}</small><br>
+            ${e.prize ? `<small style="color:var(--green);">Prize: ₹${e.prize}</small>` : ""}
+            ${e.source === "auto" ? `<small style="color:#555;"> · auto</small>` : ""}
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button onclick="editCalendarEvent('${d.id}')"   style="background:var(--blue);color:#fff;border:none;padding:5px 10px;cursor:pointer;border-radius:6px;font-size:12px;">Edit</button>
+            <button onclick="deleteCalendarEvent('${d.id}')" style="background:var(--red);color:#fff;border:none;padding:5px 10px;cursor:pointer;border-radius:6px;font-size:12px;">×</button>
+          </div>
+        </div>`;
+            box.appendChild(div);
+        });
+    });
+}
+
+// ============================================================================
+//  16. SOUND ALERT
+//  Fix: Pre-unlock audio context on first interaction to allow sounds
+//  to play reliably even when the admin panel is idling.
+// ============================================================================
+const _alertedDocIds = new Set(); // tracks doc IDs already alerted this session
+let _adminAudioContext = null;
+let _adminAudioUnlocked = false;
+let _adminSharedAudio = new Audio('/alert.mp3');
+_adminSharedAudio.volume = 0.8;
+
+function _unlockAdminAudio() {
+    if (_adminAudioUnlocked) return;
+    _adminAudioUnlocked = true;
+
+    // Pre-unlock HTML5 Audio
+    _adminSharedAudio.play().then(() => {
+        _adminSharedAudio.pause();
+        _adminSharedAudio.currentTime = 0;
+    }).catch(() => { });
+
+    // Pre-unlock Web Audio API
+    try {
+        if (!_adminAudioContext) _adminAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+        if (_adminAudioContext.state === 'suspended') _adminAudioContext.resume().catch(() => { });
+    } catch (e) { }
+
+    document.removeEventListener('click', _unlockAdminAudio);
+    document.removeEventListener('keydown', _unlockAdminAudio);
+    document.removeEventListener('touchstart', _unlockAdminAudio);
+}
+
+document.addEventListener('click', _unlockAdminAudio);
+document.addEventListener('keydown', _unlockAdminAudio);
+document.addEventListener('touchstart', _unlockAdminAudio);
+
+function playAdminAlert(docId) {
+    // If a docId is given, only play once per unique doc per session
+    if (docId) {
+        if (_alertedDocIds.has(docId)) return;
+        _alertedDocIds.add(docId);
+    }
+    try {
+        // Try MP3 first
+        _adminSharedAudio.currentTime = 0;
+        _adminSharedAudio.play().catch(() => {
+            // Fallback to AudioContext beep if .mp3 is blocked
+            try {
+                if (!_adminAudioContext) _adminAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (_adminAudioContext.state === 'suspended') _adminAudioContext.resume();
+                const osc = _adminAudioContext.createOscillator();
+                const gain = _adminAudioContext.createGain();
+                osc.connect(gain);
+                gain.connect(_adminAudioContext.destination);
+                osc.frequency.setValueAtTime(1200, _adminAudioContext.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(600, _adminAudioContext.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.5, _adminAudioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, _adminAudioContext.currentTime + 0.5);
+                osc.start(_adminAudioContext.currentTime);
+                osc.stop(_adminAudioContext.currentTime + 0.5);
+            } catch (_) { }
+        });
+    } catch (_) { }
+}
+
+// ============================================================================
+//  UTILITIES
+// ============================================================================
+function escHtml(str) {
+    return String(str)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function showToast(message, type = "success") {
+    const bg = { success: "#2e7d32", error: "#c62828", warning: "#f57f17" }[type] ?? "#333";
+    const color = type === "warning" ? "#000" : "#fff";
+    const toast = document.createElement("div");
+    toast.style.cssText = `
+    position:fixed;bottom:24px;right:24px;
+    background:${bg};color:${color};
+    padding:12px 20px;border-radius:10px;
+    font-size:14px;z-index:99999;max-width:340px;
+    animation:fadeInUp .2s ease;box-shadow:0 4px 12px rgba(0,0,0,.4);
+    font-family:'Rajdhani',sans-serif;font-weight:600;
+  `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3500);
+}
+// =============================================================================
+// UPGRADED GLOBAL SEARCH FUNCTION (Finds Team Codes, Tournaments, UIDs, & Nicknames)
+// =============================================================================
+window.executeGlobalSearch = async function () {
+    const queryStr = document.getElementById("globalSearch").value.trim();
+    if (!queryStr) return;
+
+    try {
+        // 1. Try to search by Team Code (Checks global teams collection)
+        const teamsQuery = query(collection(db, "teams"), where("code", "==", queryStr.toUpperCase()));
+        const teamSnap = await getDocs(teamsQuery);
+        if (!teamSnap.empty) {
+            const teamDoc = teamSnap.docs[0];
+            const t = teamDoc.data();
+            alert(`👥 TEAM FOUND!\n\n` +
+                `• Team Name: ${t.teamName || "—"}\n` +
+                `• Team Code: ${t.code || "—"}\n` +
+                `• Team ID: ${teamDoc.id}\n` +
+                `• Leader Name: ${t.leaderName || "—"}\n` +
+                `• Leader ID: ${t.leaderId || "—"}\n` +
+                `• Roster Size: ${t.members?.length || 0} / ${t.maxMembers || 5}\n` +
+                `• Member UIDs: ${t.members ? t.members.join(", ") : "None"}`);
+            return;
+        }
+
+        // 2. Try to search by Tournament Document ID
+        const tSnap = await getDoc(doc(db, "tournaments", queryStr));
+        if (tSnap.exists()) {
+            const t = tSnap.data();
+
+            // Fetch participant counts
+            let upcomingCount = 0;
+            let ongoingCount = 0;
+            try {
+                const upcomingSnap = await getDocs(collection(db, "tournaments", queryStr, "upcomingRegistrations"));
+                upcomingCount = upcomingSnap.size;
+                const ongoingSnap = await getDocs(collection(db, "tournaments", queryStr, "verifications"));
+                ongoingCount = ongoingSnap.size;
+            } catch (e) { console.warn("Could not fetch registration counts", e); }
+
+            let createdDate = "Unknown";
+            if (t.createdAt) {
+                const d = t.createdAt.toDate ? t.createdAt.toDate() : new Date(t.createdAt);
+                createdDate = d.toLocaleString();
+            }
+
+            let transitionInfo = "None";
+            if (t.transitionTime) {
+                transitionInfo = new Date(t.transitionTime).toLocaleString();
+            }
+
+            alert(`🏆 TOURNAMENT FOUND!\n\n` +
+                `• Tournament ID: ${tSnap.id}\n` +
+                `• Title: ${t.title || "—"}\n` +
+                `• Created On: ${createdDate}\n` +
+                `• Registered Teams: ${upcomingCount + ongoingCount} (Upcoming: ${upcomingCount}, Verified: ${ongoingCount})\n` +
+                `• Category: ${t.category || "—"}\n` +
+                `• Mode: ${t.mode || "Solo"}\n` +
+                `• Entry Fee: ₹${t.entryFee !== undefined ? t.entryFee : 0}\n` +
+                `• Status: ${t.status || "open"}\n` +
+                `• Event Details: ${t.eventDate || "No Date"} @ ${t.eventTime || "No Time"}`);
+            return;
+        }
+
+        // 3. Try to search by exact Player Unique ID (UID)
+        const uSnap = await getDoc(doc(db, "users", queryStr));
+        if (uSnap.exists()) {
+            const u = uSnap.data();
+            alert(`👤 PLAYER FOUND BY UID!\n\n` +
+                `• User UID: ${uSnap.id}\n` +
+                `• In-Game Nickname: ${u.nickname || "Unnamed User"}\n` +
+                `• Registered Email: ${u.email || "—"}\n` +
+                `• System Role: ${u.role || "viewer"}\n` +
+                `• Is Admin Account: ${u.isAdmin === true ? "YES 🛡️" : "No"}\n` +
+                `• Assigned Team: ${u.teamName || "No Assigned Team (Solo)"}\n` +
+                `• Assigned Team Code: ${u.teamCode || "N/A"}\n` +
+                `• Assigned Team ID: ${u.teamId || "N/A"}\n` +
+                `• Player Age: ${u.age || "—"}`);
+            return;
+        }
+
+        // 4. Try to search by Player Nickname (Fallback case)
+        const nicknameQuery = query(collection(db, "users"), where("nickname", "==", queryStr));
+        const nickSnap = await getDocs(nicknameQuery);
+        if (!nickSnap.empty) {
+            const userDoc = nickSnap.docs[0];
+            const u = userDoc.data();
+            alert(`👤 PLAYER FOUND BY NICKNAME!\n\n` +
+                `• User UID: ${userDoc.id}\n` +
+                `• In-Game Nickname: ${u.nickname || "—"}\n` +
+                `• Registered Email: ${u.email || "—"}\n` +
+                `• System Role: ${u.role || "viewer"}\n` +
+                `• Assigned Team: ${u.teamName || "No Assigned Team (Solo)"}\n` +
+                `• Assigned Team Code: ${u.teamCode || "N/A"}\n` +
+                `• Player Age: ${u.age || "—"}`);
+            return;
+        }
+
+        // If the query completes execution through all loops without finding matching records
+        showToast("🔍 No matching Team Code, Tournament ID, or Player UID found.", "error");
+
+    } catch (err) {
+        console.error("Global search execution error:", err);
+        showToast("⚠️ Search failed: Permission Denied.", "error");
+    }
+};
+
+// NEW FEATURE: Global Team Code Search
+window.searchTeamByCode = async function () {
+    const teamCodeInput = document.getElementById("globalTeamCodeSearchInput");
+    const teamCode = teamCodeInput?.value.trim().toUpperCase();
+
+    if (!teamCode) {
+        showToast("Please enter a team code.", "warning");
+        return;
+    }
+
+    try {
+        const teamsQuery = query(collection(db, "teams"), where("code", "==", teamCode));
+        const teamSnap = await getDocs(teamsQuery);
+
+        if (teamSnap.empty) {
+            showToast(`Team with code "${teamCode}" not found.`, "error");
+            return;
+        }
+
+        const teamData = teamSnap.docs[0].data();
+        openTeamDetailsModal(teamData.teamId);
+
+    } catch (e) {
+        console.error("Error searching team by code:", e);
+        showToast("Error searching team: Permission Denied.", "error");
+    }
+};
+
+// NEW FUNCTION: openTeamDetailsModal - Displays comprehensive team details
+window.openTeamDetailsModal = async function (teamId) {
+    document.getElementById("teamDetailsModalOverlay")?.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "teamDetailsModalOverlay";
+    overlay.className = "status-modal-overlay"; // Reuse existing modal overlay styles
+
+    overlay.innerHTML = `
+        <div class="status-modal" style="max-width:600px;width:100%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <h3 style="color:var(--blue); margin:0;">👥 Team Details</h3>
+                <button onclick="document.getElementById('teamDetailsModalOverlay').remove()" style="background:transparent;border:none;color:#888;font-size:20px;cursor:pointer;">✖</button>
+            </div>
+            <div id="teamDetailsContent" style="max-height:70vh; overflow-y:auto; padding-right:10px;">
+                <p style="color:#888; text-align:center; padding:20px;">Loading team data…</p>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    try {
+        const teamDoc = await getDoc(doc(db, "teams", teamId));
+        if (!teamDoc.exists()) {
+            document.getElementById("teamDetailsContent").innerHTML = `<p style="color:var(--red); text-align:center;">Team data not found.</p>`;
+            return;
+        }
+        const teamData = teamDoc.data();
+
+        let membersHtml = `<p style="color:#888;">No members found.</p>`;
+        if (Array.isArray(teamData.members) && teamData.members.length > 0) {
+            const memberPromises = teamData.members.map(uid => getDoc(doc(db, "users", uid)));
+            const memberSnaps = await Promise.all(memberPromises);
+            membersHtml = memberSnaps.map(snap => {
+                if (!snap.exists()) return `<div style="color:#888;">Unknown User (UID: ${snap.id})</div>`;
+                const u = snap.data();
+                const isLeader = u.uid === teamData.leaderId;
+                return `
+                    <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;margin-bottom:5px;border-left:3px solid ${isLeader ? 'var(--gold)' : '#333'};">
+                        <span style="color:#fff;font-weight:bold;">${escHtml(u.nickname || u.email?.split('@')[0] || 'N/A')}</span>
+                        ${isLeader ? '<span style="color:var(--gold);font-size:11px;margin-left:8px;">👑 Leader</span>' : ''}
+                        <br><small style="color:#888;">Email: ${escHtml(u.email || 'N/A')}</small>
+                        <br><small style="color:#888;">UID: ${escHtml(u.uid || 'N/A')}</small>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        document.getElementById("teamDetailsContent").innerHTML = `
+            <div style="display:grid;gap:10px;margin-bottom:20px;">
+                <div class="status-row"><span class="s-label">Team Name</span><span class="s-value">${escHtml(teamData.teamName || 'N/A')}</span></div>
+                <div class="status-row"><span class="s-label">Team Code</span><span class="s-value" style="color:var(--gold);font-weight:bold;">${escHtml(teamData.code || 'N/A')}</span></div>
+                <div class="status-row"><span class="s-label">Leader ID</span><span class="s-value">${escHtml(teamData.leaderId || 'N/A')}</span></div>
+                <div class="status-row"><span class="s-label">Members</span><span class="s-value">${teamData.members?.length || 0}/${teamData.maxMembers || 0}</span></div>
+                <div class="status-row"><span class="s-label">Created At</span><span class="s-value">${teamData.createdAt?.toDate?.()?.toLocaleString("en-IN") || 'N/A'}</span></div>
+            </div>
+            <h4 style="color:#fff;margin-top:20px;margin-bottom:10px;border-bottom:1px solid #222;padding-bottom:5px;">Team Roster</h4>
+            ${membersHtml}
+        `;
+
+    } catch (e) {
+        console.error("Error loading team details:", e);
+        document.getElementById("teamDetailsContent").innerHTML = `<p style="color:var(--red); text-align:center;">Error loading team details: Permission Denied or Invalid Data</p>`;
+    }
+};
+
+// Add this to your existing admin.js file, perhaps near other global search functions
+// or at the end of the file.
+// You'll also need to add an input field and button to your admin/index.html
+// For example:
+// <input type="text" id="globalTeamCodeSearchInput" placeholder="Search Team Code">
+// <button onclick="searchTeamByCode()">Search Team</button>
+
+// ==========================================
+// SLOT & WAITLIST MANAGEMENT
+// ==========================================
+window.manageTournamentSlots = async function (tournamentId) {
+    console.info("[ACTION] Triggered 'Manage Tournament' button - Opening slots view...");
+    document.getElementById("statusModalOverlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "statusModalOverlay";
+    overlay.className = "status-modal-overlay";
+
+    overlay.innerHTML = `
+        <div class="status-modal" style="max-width:900px; width:100%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
+                <h3 style="color:var(--gold); margin:0;">🎯 Ranking Teams</h3>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                    <input type="text" id="slotSearch" placeholder="🔍 Search team or code…"
+                           style="padding:8px 12px; border-radius:6px; border:1px solid #444; background:#1a1a1a; color:#fff; width:180px;"
+                           onkeyup="filterSlots()">
+                    <button onclick="openGlobalMessageModal('${tournamentId}')"
+                        style="padding:8px 14px;background:#3b82f6;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;font-family:inherit;">
+                        📢 Global Message
+                    </button>
+                    <button onclick="openGlobalRoomBlast('${tournamentId}')"
+                        style="padding:8px 14px;background:var(--green);color:#000;border:none;border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;font-family:inherit;">
+                        🔑 Send Room ID
+                    </button>
+                </div>
+            </div>
+            
+            <div style="display:flex; gap:10px; margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:10px;">
+                <button onclick="document.getElementById('tab-slots').style.display='block'; document.getElementById('tab-ranks').style.display='none'; this.style.color='var(--gold)'; this.nextElementSibling.style.color='#888';" style="background:none; border:none; color:var(--gold); font-size:15px; font-weight:bold; cursor:pointer;">1. Slots & Waitlist</button>
+                <button onclick="document.getElementById('tab-slots').style.display='none'; document.getElementById('tab-ranks').style.display='block'; this.style.color='var(--gold)'; this.previousElementSibling.style.color='#888';" style="background:none; border:none; color:#888; font-size:15px; font-weight:bold; cursor:pointer;">2. Rank the Teams</button>
+            </div>
+            
+            <div id="tab-slots">
+                <div id="rg-tiebreaker-area"></div>
+                <div id="rg-waitlist-bar-area"></div>
+                
+                <div id="table-container" style="overflow-x:auto; overflow-y:auto; max-height:75vh; margin-bottom:15px; border-radius:8px; border:1px solid #333;">
+                    <p style="color:#888; padding:15px; text-align:center;">Loading slots…</p>
+                </div>
+
+                <div id="waitlistPanel" style="background:#111; padding:12px; border:1px solid #333; border-radius:8px;">
+                    <h4 style="color:var(--blue); margin-bottom:10px;">📋 Waitlist Queue</h4>
+                    <div id="waitlistGrid"><p style="color:#666; font-size:13px;">No teams in waitlist.</p></div>
+                </div>
+            </div>
+            
+            <div id="tab-ranks" style="display:none;">
+                <div id="ranks-container" style="overflow-x:auto; overflow-y:auto; max-height:75vh; margin-bottom:15px; border-radius:8px; border:1px solid #333;">
+                    <p style="color:#888; padding:15px; text-align:center;">Loading teams for ranking...</p>
+                </div>
+                <button onclick="saveAllTeamRankings('${tournamentId}')" style="width:100%; padding:12px; background:var(--gold); color:#000; border:none; border-radius:8px; font-weight:bold; cursor:pointer; margin-bottom:10px;">
+                    💾 Save Rankings & Kills
+                </button>
+            </div>
+            
+            <button onclick="document.getElementById('statusModalOverlay').remove(); console.info('[UI] Closed management popup modal.');"
+                    style="width:100%; margin-top:14px; padding:10px; background:#333; color:#fff; border:none; border-radius:8px; cursor:pointer; font-family:inherit;">
+                Close
+            </button>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+
+    try {
+        console.info("[DATA IN] Fetching slot management data...");
+        // Fetch all contextual tournament sub-collections simultaneously to capture exact user form input states
+        const [tSnap, slotsSnap, participantsSnap, verificationsSnap, upcomingSnap, leaderboardSnap] = await Promise.all([
+            getDoc(doc(db, "tournaments", tournamentId)),
+            getDocs(collection(db, "tournaments", tournamentId, "slots")),
+            getDocs(collection(db, "tournaments", tournamentId, "participants")),
+            getDocs(collection(db, "tournaments", tournamentId, "verifications")),
+            getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations")),
+            getDocs(collection(db, "tournaments", tournamentId, "leaderboard"))
+        ]);
+        console.info(`[DATA IN] Successfully loaded ${slotsSnap.size} slot items.`);
+
+        const lbData = {};
+        leaderboardSnap.forEach(d => { lbData[d.id] = d.data(); });
+
+        const tournament = tSnap.exists() ? tSnap.data() : {};
+
+        // Map manual inputs submitted via the joining / registration interface FIRST
+        const registrationDataMap = new Map();
+        const userToTeamMap = new Map();
+
+        const processReg = (d, source) => {
+            const data = d.data();
+            if (!data.teamId || data.status === "rejected") return;
+            registrationDataMap.set(data.teamId, data);
+            registrationDataMap.set(d.id, data);
+            userToTeamMap.set(d.id, data.teamId);
+        };
+
+        verificationsSnap.forEach(d => processReg(d, "verifications"));
+        upcomingSnap.forEach(d => processReg(d, "upcomingRegistrations"));
+
+        const teamMap = new Map();
+
+        // 1. Initialize teamMap from Registration Data (so all registered teams get a base slot)
+        for (const [tId, data] of registrationDataMap.entries()) {
+            if (tId === data.teamId && !teamMap.has(tId)) {
+                let pStatus = data.status === "approved" ? "Pending Payment" : "Not Verified";
+                teamMap.set(tId, {
+                    id: tId,
+                    teamId: tId,
+                    userId: data.userId || null,
+                    _source: "registration",
+                    ...data,
+                    paymentStatus: pStatus,
+                    assignedAt: data.registeredAt || data.timestamp || 0
+                });
+            }
+        }
+
+        // 2. Merge Participants (keyed by userId -> teamId) to mark as verified
+        participantsSnap.forEach(d => {
+            const pData = d.data();
+            let tId = userToTeamMap.get(d.id) || d.id; // Fallback to id if teamId unknown
+            if (teamMap.has(tId)) {
+                teamMap.get(tId).paymentStatus = pData.paymentStatus || 'verified';
+            } else {
+                teamMap.set(tId, { id: tId, _source: "participants", ...pData });
+            }
+        });
+
+        // 3. Merge explicit Slots (keyed by teamId)
+        slotsSnap.forEach(d => {
+            if (teamMap.has(d.id)) {
+                const existing = teamMap.get(d.id);
+                teamMap.set(d.id, { ...existing, ...d.data(), paymentStatus: d.data().paymentStatus || existing.paymentStatus });
+            } else {
+                teamMap.set(d.id, { id: d.id, _source: "slots", ...d.data() });
+            }
+        });
+
+        let allTeams = Array.from(teamMap.values());
+
+        const mode = tournament.mode?.toLowerCase() || "squad";
+        const rowsPerTeam = mode === "squad" ? 4 : mode === "duo" ? 2 : 1;
+
+        // Process teams and inject exact user manual registration details over global profiles
+        for (let i = 0; i < allTeams.length; i++) {
+            let t = allTeams[i];
+            const regData = registrationDataMap.get(t.teamId) || registrationDataMap.get(t.id);
+
+            if (regData) {
+                t.teamName = regData.teamName || t.teamName;
+                t.teamCode = regData.teamCode || t.teamCode;
+
+                // Prioritize the manual array data if available from the form submission
+                if (regData.playersData && regData.playersData.length > 0) {
+                    t.playersData = regData.playersData;
+                } else if (regData.uids && regData.uids.length > 0) {
+                    t.uids = regData.uids;
+                    for (let pi = 1; pi <= 4; pi++) {
+                        t[`nickPlayer${pi}`] = regData[`nickPlayer${pi}`] || regData[`player${pi}Nickname`] || t[`nickPlayer${pi}`];
+                    }
+                }
+            }
+
+            // Normalization: Reconstruct playersData array from direct manual registration fields if it doesn't exist
+            if (!t.playersData || t.playersData.length === 0) {
+                t.playersData = [];
+                const sourceUids = t.uids || [];
+                for (let pi = 0; pi < rowsPerTeam; pi++) {
+                    if (sourceUids[pi]) {
+                        const nick = t[`nickPlayer${pi + 1}`] || t[`player${pi + 1}Nickname`] || "—";
+                        t.playersData.push({ uid: sourceUids[pi], nickname: nick });
+                    }
+                }
+            }
+
+            // Tertiary Fallback: Look up global team profile ONLY if no registration form data could be traced
+            if (t.playersData.length === 0 && (!t.teamName || t.teamName === "Unnamed Team" || t.teamName === "Unknown Team")) {
+                try {
+                    let teamIdToFetch = t.teamId;
+                    if (!teamIdToFetch) {
+                        const userSnap = await getDoc(doc(db, "users", t.id));
+                        if (userSnap.exists()) teamIdToFetch = userSnap.data().teamId;
+                    }
+                    if (teamIdToFetch) {
+                        const teamSnap = await getDoc(doc(db, "teams", teamIdToFetch));
+                        if (teamSnap.exists()) {
+                            const teamData = teamSnap.data();
+                            t.teamName = (t.teamName && t.teamName !== "Unnamed Team" && t.teamName !== "Unknown Team") ? t.teamName : teamData.teamName;
+                            t.teamCode = t.teamCode || teamData.code;
+
+                            for (let memberUid of (teamData.members || [])) {
+                                const mSnap = await getDoc(doc(db, "users", memberUid));
+                                if (mSnap.exists()) {
+                                    t.playersData.push({
+                                        uid: mSnap.data().uid || mSnap.data().inGameUid || memberUid,
+                                        nickname: mSnap.data().nickname || mSnap.data().inGameName || mSnap.data().email?.split('@')[0] || "Unknown"
+                                    });
+                                } else {
+                                    t.playersData.push({ uid: memberUid, nickname: "Unknown" });
+                                }
+                            }
+                        }
+                    }
+                } catch (e) { console.warn("Tertiary backup sync failed for team:", t.id, e); }
+            }
+        }
+
+        allTeams.sort((a, b) => {
+            const tA = a.assignedAt || a.joinedAt || a.createdAt || 0;
+            const tB = b.assignedAt || b.joinedAt || b.createdAt || 0;
+            return tA - tB;
+        });
+
+        const totalSlots = tournament.totalSlots || 12;
+        const confirmed = allTeams.filter(t => t.paymentStatus !== "Waitlist").slice(0, totalSlots);
+        const waitlisted = allTeams.filter(t => t.paymentStatus === "Waitlist" || allTeams.indexOf(t) >= totalSlots);
+
+        // ✅ X-AXIS SCROLL FIX: min-width 1200px to stop columns from crushing together
+        let html = `
+            <table class="admin-table" style="width:100%; min-width: 1200px; border-collapse:collapse; text-align:left; font-size:13px;">
+                <thead style="background:#1a1a1a; position:sticky; top:0; z-index:1;">
+                    <tr>
+                        <th style="padding:10px; border-bottom:2px solid #333; white-space:nowrap;">Slot</th>
+                        <th style="padding:10px; border-bottom:2px solid #333;">Team</th>
+                        <th style="padding:10px; border-bottom:2px solid #333;">Player UID</th>
+                        <th style="padding:10px; border-bottom:2px solid #333;">Nickname</th>
+                        <th style="padding:10px; border-bottom:2px solid #333; text-align:center;">Payment</th>
+                        <th style="padding:10px; border-bottom:2px solid #333; text-align:center;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="slotTableBody">`;
+
+        for (let slot = 1; slot <= totalSlots; slot++) {
+            const team = confirmed[slot - 1] || null;
+
+            for (let pi = 0; pi < rowsPerTeam; pi++) {
+                const isFirst = pi === 0;
+                const isLast = pi === rowsPerTeam - 1;
+
+                let uidStr = "—";
+                let nickStr = "—";
+
+                if (team) {
+                    if (Array.isArray(team.playersData) && team.playersData[pi]) {
+                        uidStr = team.playersData[pi].uid || "—";
+                        nickStr = team.playersData[pi].nickname || "—";
+                    } else if (Array.isArray(team.uids) && team.uids[pi]) {
+                        uidStr = team.uids[pi];
+                        nickStr = team[`nickPlayer${pi + 1}`] || team[`player${pi + 1}Nickname`] || "—";
+                    } else if (Array.isArray(team.members) && team.members[pi]) {
+                        uidStr = team.members[pi];
+                    }
+                }
+
+                const rowBorder = isLast ? "border-bottom:2px solid #3b82f6;" : "border-bottom:1px solid #222;";
+                html += `<tr class="slot-row" style="${rowBorder}">`;
+
+                if (isFirst) {
+                    const teamDisplay = team
+                        ? escHtml(team.teamName || team.name || "Unnamed Team")
+                        : '<i>Empty Slot</i>';
+                    const codeDisplay = team && team.teamCode && team.teamCode !== "N/A"
+                        ? `<span style="color:#555; font-size:10px;">(${escHtml(team.teamCode)})</span>`
+                        : "";
+
+                    const pStatus = team?.paymentStatus || "Empty";
+                    const pColor = pStatus === "Paid" || pStatus === "verified" ? "#22c55e" : pStatus === "Pending Payment" ? "#fbbf24" : "#555";
+                    const pBg = pStatus === "Paid" || pStatus === "verified" ? "rgba(34,197,94,0.15)" : pStatus === "Pending Payment" ? "rgba(251,191,36,0.15)" : "transparent";
+
+                    const isPaid = (team?.paymentStatus === 'Payment Verified' || team?.paymentStatus === 'verified' || team?.paymentStatus === 'Paid');
+                    const actionBtns = team ? `
+                        <div style="display:flex; gap:4px; flex-wrap:wrap; justify-content:center;">
+                            <button onclick="moveToWaitlist('${tournamentId}','${team.id}','${team.userId || team.id}')"
+                                style="background:#f59e0b;color:#000;border:none;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
+                                ⏳ Waitlist
+                            </button>
+                            <button onclick="kickTeamFromSlot('${tournamentId}','${team.id}','${team.userId || team.id}')"
+                                style="background:#ef4444;color:#fff;border:none;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
+                                🚫 Kick
+                            </button>
+                            <button onclick="openPayoutModal('${tournamentId}','${team.id}','${team.userId || team.id}')"
+                                style="background:#3b82f6;color:#fff;border:none;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
+                                💸 Payout
+                            </button>
+                            ${isPaid
+                            ? `<span title="Payment verified — cannot delete" style="background:transparent;color:#555;border:1px solid #333;padding:4px 7px;border-radius:4px;font-size:10px;white-space:nowrap;cursor:not-allowed;opacity:0.5;">🔒 Delete</span>`
+                            : `<button onclick="deleteSlot('${tournamentId}','${team.id}','${team.userId || team.id}')"
+                                style="background:transparent;color:#ef4444;border:1px solid #ef4444;padding:4px 7px;border-radius:4px;cursor:pointer;font-size:10px;white-space:nowrap;">
+                                🗑 Delete
+                              </button>`
+                        }
+                        </div>
+                    ` : `<span style="color:#444; font-size:11px;">—</span>`;
+
+
+                    html += `
+                        <td rowspan="${rowsPerTeam}" style="border-right:1px solid #222; text-align:center; padding:8px; font-weight:bold; color:${team ? "#aaa" : "#333"};">#${slot}</td>
+                        <td rowspan="${rowsPerTeam}" style="border-right:1px solid #222; padding:8px; font-weight:bold; color:${team ? "#fff" : "#333"};">
+                            ${teamDisplay} ${codeDisplay}
+                        </td>`;
+
+                    html += `<td style="padding:8px; color:${team ? "#9ca3af" : "#444"};">${escHtml(uidStr)}</td>`;
+                    html += `<td style="padding:8px; color:${team ? "#fff" : "#444"};">${escHtml(nickStr)}</td>`;
+
+                    html += `
+                        <td rowspan="${rowsPerTeam}" style="border-left:1px solid #222; text-align:center; padding:8px;">
+                            <span style="background:${pBg}; color:${pColor}; padding:3px 8px; border-radius:12px; font-size:10px; font-weight:bold; display:inline-block;">
+                                ${escHtml(pStatus)}
+                            </span>
+                        </td>
+                        <td rowspan="${rowsPerTeam}" style="border-left:1px solid #222; text-align:center; padding:8px;">
+                            ${actionBtns}
+                        </td>`;
+                } else {
+                    html += `<td style="padding:8px; color:#9ca3af;">${escHtml(uidStr)}</td>`;
+                    html += `<td style="padding:8px; color:#fff;">${escHtml(nickStr)}</td>`;
+                }
+
+                html += `</tr>`;
+            }
+        }
+
+        html += `</tbody></table>`;
+        document.getElementById("table-container").innerHTML = html;
+
+        // --- POPULATE RANKS TAB ---
+        let ranksHtml = `
+            <table class="slot-table" style="width:100%; border-collapse:collapse; background:#111; font-size:13px;">
+                <thead style="background:#222; text-align:left;">
+                    <tr>
+                        <th style="padding:10px; color:#aaa; width:50px;">Slot</th>
+                        <th style="padding:10px; color:#aaa;">Team Name</th>
+                        <th style="padding:10px; color:#aaa; width:80px;">Rank</th>
+                        <th style="padding:10px; color:#aaa; width:80px;">Total Kills</th>
+                        <th style="padding:10px; color:#aaa; width:100px; text-align:center;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+        let hasTeamsToRank = false;
+        for (let slot = 1; slot <= totalSlots; slot++) {
+            const team = confirmed[slot - 1] || null;
+            if (team) {
+                hasTeamsToRank = true;
+                const existingData = lbData[team.id] || {};
+                const currentRank = existingData.rank !== undefined ? existingData.rank : '';
+                const currentKills = existingData.totalKills !== undefined ? existingData.totalKills : '';
+
+                ranksHtml += `
+                    <tr style="border-bottom:1px solid #222;" data-team-id="${team.id}" class="rank-row">
+                        <td style="padding:10px; color:#888;">#${slot}</td>
+                        <td style="padding:10px; color:#fff; font-weight:bold;">${escHtml(team.teamName || team.name || "Unnamed Team")}</td>
+                        <td style="padding:10px;">
+                            <input type="number" class="rank-input" min="1" placeholder="e.g. 1" value="${currentRank}" data-team-id="${team.id}" oninput="window.checkDuplicateRanks()" style="width:100%; padding:6px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px;">
+                        </td>
+                        <td style="padding:10px;">
+                            <input type="number" class="kills-input" min="0" placeholder="e.g. 15" value="${currentKills}" data-team-id="${team.id}" style="width:100%; padding:6px; background:#1a1a1a; border:1px solid #333; color:#fff; border-radius:4px;">
+                        </td>
+                        <td style="padding:10px; text-align:center;">
+                            <button onclick="openRewardModal('${tournamentId}', '${team.teamId || team.id}', '${escHtml(team.teamName || team.name || "Unnamed Team").replace(/'/g, "\\'")}')" style="background:#00ff88;color:#000;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:bold;">💰 Reward</button>
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        if (!hasTeamsToRank) {
+            ranksHtml += `<tr><td colspan="4" style="text-align:center; padding:20px; color:#888;">No teams have confirmed slots yet.</td></tr>`;
+        }
+
+        ranksHtml += `</tbody></table>`;
+        document.getElementById("ranks-container").innerHTML = ranksHtml;
+
+        // Initial duplicate check for pre-filled data
+        if (typeof window.checkDuplicateRanks === 'function') {
+            window.checkDuplicateRanks();
+        }
+
+        const wlGrid = document.getElementById("waitlistGrid");
+        if (waitlisted.length === 0) {
+            wlGrid.innerHTML = `<p style="color:#666; font-size:13px;">Queue is empty.</p>`;
+        } else {
+            wlGrid.innerHTML = waitlisted.map((t, idx) => `
+                <div class="wl-row" style="display:flex; justify-content:space-between; align-items:center; background:#1a1a1a; padding:10px 14px; border-radius:6px; margin-bottom:5px; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <span style="color:#555; margin-right:8px; font-size:11px;">#${idx + 1}</span>
+                        <span style="color:#fff; font-weight:bold;">${escHtml(t.teamName || "Unnamed Team")}</span>
+                        <span style="color:#555; font-size:11px; margin-left:6px;">${escHtml(t.teamCode || "")}</span>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button onclick="promoteFromWaitlist('${tournamentId}','${t.id}')"
+                            style="background:var(--blue);color:#fff;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;">
+                            ⬆ Promote
+                        </button>
+                        <button onclick="openPayoutModal('${tournamentId}','${t.id}','${t.userId || t.id}')"
+                            style="background:#3b82f6;color:#fff;border:none;padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;">
+                            💸 Payout
+                        </button>
+                        <button onclick="deleteSlot('${tournamentId}','${t.id}','${t.userId || t.id}')"
+                            style="background:transparent;color:var(--red);border:1px solid var(--red);padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;">
+                            Remove
+                        </button>
+                    </div>
+                </div>
+            `).join("");
+        }
+
+    } catch (e) {
+        console.error("[ERROR] Failed to execute slot fetch:", e.message || e);
+        console.error("[SLOTS]", e);
+        document.getElementById("table-container").innerHTML = `
+            <p style="color:var(--red); padding:15px; text-align:center;">Error loading slots: Permission Denied or Invalid Data</p>
+        `;
+    }
+};
+
+// ============================================================================
+//  GLOBAL MESSAGE BLAST — sends announcement to all confirmed + waitlist members
+// ============================================================================
+window.openGlobalMessageModal = async function (tournamentId) {
+    document.getElementById("globalMsgModal")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "globalMsgModal";
+    overlay.className = "status-modal-overlay";
+    overlay.innerHTML = `
+        <div class="status-modal" style="max-width:480px;width:100%;">
+            <h3>📢 Global Message — All Tournament Members</h3>
+            <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">This message will be sent to all confirmed AND waitlist teams in this tournament.</p>
+            <textarea id="globalMsgText" placeholder="Type your announcement here…"
+                style="width:100%;min-height:100px;background:#1a1a1a;border:1px solid #333;color:#fff;padding:10px;border-radius:8px;font-family:inherit;font-size:14px;resize:vertical;box-sizing:border-box;"></textarea>
+            <button onclick="sendGlobalTournamentMessage('${tournamentId}')"
+                style="width:100%;margin-top:12px;padding:12px;background:#3b82f6;color:#fff;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;font-size:14px;">
+                📤 Send to All Members
+            </button>
+            <button onclick="document.getElementById('globalMsgModal').remove()"
+                style="width:100%;margin-top:8px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">Cancel</button>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+};
+
+window.sendGlobalTournamentMessage = async function (tournamentId) {
+    const msg = document.getElementById("globalMsgText")?.value.trim();
+    if (!msg) { showToast("Please type a message.", "warning"); return; }
+    try {
+        const [slotsSnap] = await Promise.all([
+            getDocs(collection(db, "tournaments", tournamentId, "slots")),
+        ]);
+        const allIds = new Set();
+        slotsSnap.forEach(d => {
+            (d.data().members || [d.id]).forEach(uid => allIds.add(uid));
+        });
+        if (allIds.size === 0) { showToast("No members found in this tournament.", "warning"); return; }
+        await Promise.all([...allIds].map(uid => sendDualNotification(uid, {
+            type: "tournament_announcement",
+            title: "📢 Tournament Announcement",
+            message: msg,
+            extra: { tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        })));
+        document.getElementById("globalMsgModal")?.remove();
+        showToast(`✅ Announcement sent to ${allIds.size} member(s)!`, "success");
+    } catch (e) {
+        showToast("Failed: Permission Denied.", "error");
+    }
+};
+
+// ============================================================================
+//  GLOBAL ROOM ID & PASSWORD BLAST
+//  Sends to ALL members. Unpaid users see a blurred/locked version on their end.
+// ============================================================================
+window.openGlobalRoomBlast = async function (tournamentId) {
+    document.getElementById("globalRoomModal")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "globalRoomModal";
+    overlay.className = "status-modal-overlay";
+    overlay.innerHTML = `
+        <div class="status-modal" style="max-width:480px;width:100%;">
+            <h3>🔑 Send Room ID & Password — All Members</h3>
+            <p style="color:var(--muted);font-size:13px;margin-bottom:16px;">
+                Paid members will see the room details clearly.
+                Unpaid/waitlist members will see a locked screen with a Pay Now button.
+            </p>
+            <div style="display:flex;gap:10px;margin-bottom:12px;">
+                <div style="flex:1;">
+                    <label style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Room ID</label>
+                    <input id="blastRoomId" placeholder="e.g. 1234567" style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;box-sizing:border-box;">
+                </div>
+                <div style="flex:1;">
+                    <label style="color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:6px;">Password</label>
+                    <input id="blastRoomPass" placeholder="e.g. abc123" style="width:100%;padding:10px;background:#1a1a1a;border:1px solid #333;color:#fff;border-radius:6px;font-family:inherit;box-sizing:border-box;">
+                </div>
+            </div>
+            <button onclick="sendGlobalRoomBlast('${tournamentId}')"
+                style="width:100%;padding:12px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;font-size:14px;">
+                📤 Send to All Members
+            </button>
+            <button onclick="document.getElementById('globalRoomModal').remove()"
+                style="width:100%;margin-top:8px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">Cancel</button>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+};
+
+window.sendGlobalRoomBlast = async function (tournamentId) {
+    const roomId = document.getElementById("blastRoomId")?.value.trim();
+    const roomPass = document.getElementById("blastRoomPass")?.value.trim();
+    if (!roomId || !roomPass) { showToast("Enter both Room ID and Password.", "warning"); return; }
+    try {
+        const slotsSnap = await getDocs(collection(db, "tournaments", tournamentId, "slots"));
+        const allIds = new Set();
+        slotsSnap.forEach(d => {
+            (d.data().members || [d.id]).forEach(uid => allIds.add(uid));
+        });
+        if (allIds.size === 0) { showToast("No members found.", "warning"); return; }
+        await Promise.all([...allIds].map(uid => sendDualNotification(uid, {
+            type: "room_blast",
+            title: "🔑 Room Details Available!",
+            message: "The Room ID and Password for your tournament have been shared. Tap to view.",
+            extra: { roomId, roomPassword: roomPass, tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        })));
+        document.getElementById("globalRoomModal")?.remove();
+        showToast(`✅ Room details sent to ${allIds.size} member(s)!`, "success");
+    } catch (e) {
+        showToast("Failed: Permission Denied.", "error");
+    }
+};
+
+// ============================================================================
+//  CHANGE REQUEST REVIEW (Admin sees user’s requested edits)
+// ============================================================================
+window.openChangeRequestReview = async function (tournamentId, userId, stage) {
+    document.getElementById("changeReqModal")?.remove();
+    try {
+        const crSnap = await getDoc(doc(db, "tournaments", tournamentId, "changeRequests", userId));
+        if (!crSnap.exists()) { showToast("No change request found.", "warning"); return; }
+        const cr = crSnap.data();
+        const changesHtml = Object.entries(cr.requestedChanges || {}).map(([field, change]) => `
+            <div style="background:#0f0f0f;padding:10px 14px;border-radius:8px;">
+                <div style="color:var(--muted);font-size:11px;text-transform:uppercase;margin-bottom:4px;">${escHtml(field)}</div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <span style="color:#ef4444;text-decoration:line-through;font-size:13px;">${escHtml(String(change.from || '—'))}</span>
+                    <span style="color:#888;">→</span>
+                    <span style="color:#22c55e;font-weight:bold;font-size:13px;">${escHtml(String(change.to || ''))}</span>
+                </div>
+            </div>`).join("");
+        const overlay = document.createElement("div");
+        overlay.id = "changeReqModal";
+        overlay.className = "status-modal-overlay";
+        overlay.innerHTML = `
+            <div class="status-modal" style="max-width:500px;width:100%;">
+                <h3 style="color:#ffd700;">✏️ Change Request — ${escHtml(cr.teamName || userId)}</h3>
+                <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">User wants to change the following details:</p>
+                <div style="display:grid;gap:8px;margin-bottom:16px;">${changesHtml}</div>
+                ${cr.reason ? `<div style="background:#1a1a1a;padding:10px;border-radius:8px;margin-bottom:16px;"><span style="color:var(--muted);font-size:12px;">Reason:</span><p style="color:#fff;margin:4px 0 0;font-size:13px;">${escHtml(cr.reason)}</p></div>` : ''}
+                <div style="display:flex;gap:10px;">
+                    <button onclick="allowChangeRequest('${tournamentId}','${userId}','${stage}')"
+                        style="flex:1;padding:12px;background:var(--green);color:#000;border:none;border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;">
+                        ✅ Allow Changes
+                    </button>
+                    <button onclick="rejectChangeRequest('${tournamentId}','${userId}')"
+                        style="flex:1;padding:12px;background:#111;color:var(--red);border:1px solid var(--red);border-radius:8px;cursor:pointer;font-weight:700;font-family:inherit;">
+                        ❌ Reject Request
+                    </button>
+                </div>
+                <button onclick="document.getElementById('changeReqModal').remove()"
+                    style="width:100%;margin-top:8px;background:transparent;color:var(--muted);border:none;cursor:pointer;font-family:inherit;padding:8px;">Cancel</button>
+            </div>`;
+        document.body.appendChild(overlay);
+        overlay.addEventListener("click", e => { if (e.target === overlay) overlay.remove(); });
+    } catch (e) {
+        showToast("Failed to load change request.", "error");
+    }
+};
+
+window.allowChangeRequest = async function (tournamentId, userId, stage) {
+    try {
+        const crRef = doc(db, "tournaments", tournamentId, "changeRequests", userId);
+        const crSnap = await getDoc(crRef);
+        if (!crSnap.exists()) { showToast("Change request not found.", "error"); return; }
+        const cr = crSnap.data();
+
+        // Build the field updates from requestedChanges
+        const updates = {};
+        Object.entries(cr.requestedChanges || {}).forEach(([field, change]) => {
+            updates[field] = change.to;
+        });
+
+        // Apply to the correct Firestore document
+        const regCollectionName = stage === "upcoming" ? "upcomingRegistrations" : "verifications";
+        await updateDoc(doc(db, "tournaments", tournamentId, regCollectionName, userId), updates);
+
+        // Mark change request as approved
+        await updateDoc(crRef, { status: "approved", processedAt: serverTimestamp() });
+
+        // Notify the user
+        await sendDualNotification(userId, {
+            type: "change_request_approved",
+            title: "✅ Change Request Approved!",
+            message: "Your requested changes have been applied. Please review your updated details and confirm they are correct.",
+            extra: { tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        });
+
+        document.getElementById("changeReqModal")?.remove();
+        showToast("✅ Changes applied & user notified.", "success");
+    } catch (e) {
+        showToast("Failed: Permission Denied.", "error");
+    }
+};
+
+window.rejectChangeRequest = async function (tournamentId, userId) {
+    const reason = prompt("Optional: Enter a reason for rejecting the change request:") || "";
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId, "changeRequests", userId), {
+            status: "rejected",
+            rejectionReason: reason,
+            processedAt: serverTimestamp()
+        });
+        await sendDualNotification(userId, {
+            type: "change_request_rejected",
+            title: "❌ Change Request Rejected",
+            message: reason
+                ? `Your change request was rejected. Reason: ${reason}. If you need to correct your details, you may re-register.`
+                : "Your change request was rejected by the admin. If you need to correct your details, you may re-register for this tournament.",
+            extra: { tournamentId },
+            actionLink: `resubmit&tournament=${tournamentId}`,
+        });
+        document.getElementById("changeReqModal")?.remove();
+        showToast("❌ Request rejected & user notified.", "error");
+    } catch (e) {
+        showToast("Failed: Permission Denied.", "error");
+    }
+};
+
+
+window.kickTeamFromSlot = async function (tournamentId, teamId, userId) {
+    if (!confirm("Kick this team? This will remove all their data and notify every team member.")) return;
+    try {
+        const uid = userId || teamId;
+        // 1. Delete from all tournament subcollections
+        await Promise.allSettled([
+            deleteDoc(doc(db, "tournaments", tournamentId, "slots", teamId)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "participants", uid)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "verifications", uid)),
+            deleteDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", uid)),
+        ]);
+
+        // 2. Look up team members and notify ALL of them
+        const notifyPayload = {
+            type: "admin_notice",
+            title: "❌ Removed from Tournament",
+            message: "Your team has been removed from the tournament slot. Please contact admin for details.",
+            actionLink: `tournament=${tournamentId}`
+        };
+
+        try {
+            const teamSnap = await getDoc(doc(db, "teams", teamId));
+            if (teamSnap.exists()) {
+                const members = teamSnap.data().members || [teamId];
+                await Promise.all(members.map(uid => sendDualNotification(uid, notifyPayload)));
+            } else {
+                // Fallback: notify whoever the teamId maps to (leader)
+                await sendDualNotification(teamId, notifyPayload);
+            }
+        } catch (notifyErr) {
+            // Notification failure should not block the kick
+            console.warn("[KICK] Notification partial failure:", notifyErr);
+            await sendDualNotification(teamId, notifyPayload).catch(() => { });
+        }
+
+        showToast("Team kicked, all data removed & all members notified.", "success");
+        manageTournamentSlots(tournamentId);
+    } catch (e) {
+        console.error("[KICK]", e);
+        showToast("Error kicking team: " + (e.message || "Unknown error"), "error");
+    }
+};
+
+
+window.promoteFromWaitlist = async function (tournamentId, teamId) {
+    const slotNumberStr = prompt("Enter the slot number (1-12) to assign this team:");
+    if (!slotNumberStr) return;
+
+    const slotNumber = parseInt(slotNumberStr);
+    if (isNaN(slotNumber) || slotNumber < 1) {
+        showToast("Invalid slot number.", "warning");
+        return;
+    }
+
+    if (!confirm(`Promote this team to Slot #${slotNumber}? This will notify them to pay.`)) return;
+
+    try {
+        const slotRef = doc(db, "tournaments", tournamentId, "slots", teamId);
+
+        await updateDoc(slotRef, {
+            paymentStatus: "Pending Payment",
+            assignedSlot: slotNumber,
+            promotedAt: serverTimestamp()
+        });
+
+        await sendDualNotification(teamId, {
+            type: "admin_notice",
+            title: `🎉 Slot #${slotNumber} Opened!`,
+            message: `Your team has been promoted from the waitlist to Slot #${slotNumber}. Please pay your entry fee now to secure your spot.,`,
+            actionLink: `tournament=${tournamentId}`
+        });
+
+        showToast(`Team promoted to Slot #${slotNumber} & notified!`, "success");
+        manageTournamentSlots(tournamentId);
+    } catch (e) {
+        showToast("Error promoting team: Permission Denied.", "error");
+    }
+};
+
+window.filterSlots = function () {
+    const input = document.getElementById('slotSearch').value.toLowerCase();
+    const rows = document.querySelectorAll('.slot-row');
+
+    let currentBlockMatches = false;
+    let blockRows = [];
+
+    rows.forEach(row => {
+        if (row.querySelector('td[rowspan]')) {
+            if (blockRows.length > 0) {
+                blockRows.forEach(r => r.style.display = currentBlockMatches ? '' : 'none');
+            }
+            blockRows = [row];
+            currentBlockMatches = row.innerText.toLowerCase().includes(input);
+        } else {
+            blockRows.push(row);
+            if (row.innerText.toLowerCase().includes(input)) currentBlockMatches = true;
+        }
+    });
+    if (blockRows.length > 0) {
+        blockRows.forEach(r => r.style.display = currentBlockMatches ? '' : 'none');
+    }
+};
+// ============================================================================
+// ULTIMATE REVIEW MODAL (Handles both Ongoing and Upcoming safely)
+// ============================================================================
+
+// ============================================================================
+// ULTIMATE REVIEW MODAL (Handles both Ongoing and Upcoming safely)
+// ============================================================================
+
+window.openAdminReviewModal = async function (tournamentId, userId, dataString, stage = 'ongoing') {
+    const app = JSON.parse(decodeURIComponent(dataString));
+    console.error("🛑 APP DATA RECEIVED IN MODAL:", app);
+    document.getElementById("reviewAppModal")?.remove();
+
+    // ✅ FIX: Fetch the actual Tournament Title
+    let tournamentTitle = tournamentId;
+    try {
+        const tSnap = await getDoc(doc(db, "tournaments", tournamentId));
+        if (tSnap.exists()) {
+            tournamentTitle = tSnap.data().title || tournamentId;
+        }
+    } catch (e) { console.warn("Could not fetch tournament title"); }
+
+    // ✅ FIX: Generate Player UIDs with NPC Verified Badges (Player 1 shows Leader + NPC/Friend)
+    const playersHtml = app.playersData && app.playersData.length > 0 ? app.playersData.map((p, i) => {
+        // ✅ FIX: Player 1 always shows "Team Leader" label, plus their NPC/Friend badge
+        const isLeader = i === 0;
+        const leaderBadge = isLeader
+            ? `<span style="background:#ffd700;color:#000;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">👑 Leader</span>`
+            : '';
+        // ✅ FIX: Show NPC User or Friend badge for ALL players including Player 1
+        let typeBadge = (p.type === 'npc_verified' || p.type === 'NPC User' || p.type === 'npc')
+            ? `<span style="background:var(--green);color:#000;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;font-weight:bold;">NPC User</span>`
+            : (p.type === 'leader' ? '' : `<span style="background:#444;color:#aaa;padding:2px 6px;border-radius:4px;font-size:10px;margin-left:6px;">Friend</span>`);
+
+        return `
+            <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #222;padding-bottom:8px;">
+                <span style="color:#888;">Player ${i + 1} ${leaderBadge}${typeBadge}</span>
+                <span style="color:#fff;font-weight:bold;">${p.uid} <span style="color:var(--blue);font-weight:normal;font-size:12px;margin-left:6px;">${p.nickname}</span></span>
+            </div>
+        `;
+    }).join('') : `<div style="color:#fff;">${app.uids?.join(', ')}</div>`;
+
+    document.body.insertAdjacentHTML("beforeend", `
+        <div id="reviewAppModal" style="position:fixed;inset:0;background:rgba(0,0,0,0.9);display:flex;align-items:center;justify-content:center;z-index:9999;padding:15px;">
+            <div style="background:#111;width:100%;max-width:520px;border-radius:12px;border:1px solid #333;display:flex;flex-direction:column;max-height:90vh;">
+                
+                <div style="padding:20px;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center;">
+                    <h3 style="color:var(--green);margin:0;">🔍 Review Team: ${app.teamName}</h3>
+                    <button onclick="document.getElementById('reviewAppModal').remove()" style="background:transparent;border:none;color:#888;font-size:20px;cursor:pointer;">✖</button>
+                </div>
+
+                <div style="padding:20px;overflow-y:auto;flex:1;">
+                    
+                    <div style="margin-bottom:20px; background:rgba(59,130,246,0.1); border:1px solid #3b82f6; padding:12px; border-radius:8px;">
+                        <label style="color:#3b82f6;font-size:11px;text-transform:uppercase;letter-spacing:1px;">Tournament Details</label>
+                        <div style="color:#fff;font-size:16px;font-weight:bold;margin-top:4px;">${tournamentTitle}</div>
+                        <div style="color:#888;font-size:12px;margin-top:2px;font-family:monospace;">ID: ${tournamentId}</div>
+                    </div>
+
+                    <div style="margin-bottom:20px;">
+                        <label style="color:#666;font-size:12px;">Leader Email</label>
+                        <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.leaderEmail}</div>
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <label style="color:#666;font-size:12px;">Phone Number</label>
+                        <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.phone}</div>
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <label style="color:#666;font-size:12px;">Backup Gmail 📩</label>
+                        <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.backupEmail || '—'}</div>
+                    </div>
+                    <div style="margin-bottom:20px;">
+                        <label style="color:#666;font-size:12px;">Payout UPI ID 💳</label>
+                        <div style="color:#fff;background:#1a1a1a;padding:10px;border-radius:6px;">${app.payoutUpiId || '—'}</div>
+                    </div>
+                    <div style="margin-bottom:10px;">
+                        <label style="color:#666;font-size:12px;">Squad Members</label>
+                        <div style="background:#1a1a1a;padding:15px 10px 5px 10px;border-radius:6px;display:grid;gap:12px;">
+                            ${playersHtml}
+                        </div>
+                    </div>
+
+                    <div style="margin-top:30px; padding-top:20px; border-top:1px dashed #444;">
+                        <label style="color:var(--red);font-size:12px;letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:8px;">
+                            Rejection Reason (Required if Rejecting)
+                        </label>
+                        <select id="reasonSelect" style="width:100%;padding:12px;background:#000;color:#fff;border:1px solid #444;border-radius:8px;margin-bottom:10px;font-family:inherit;font-size:14px;">
+                            <option value="">-- Select Reason --</option>
+                            <option value="Member 1 Information Wrong">❌ Member 1 Information Wrong</option>
+                            <option value="Member 2 Information Wrong">❌ Member 2 Information Wrong</option>
+                            <option value="Member 3 Information Wrong">❌ Member 3 Information Wrong</option>
+                            <option value="Member 4 Information Wrong">❌ Member 4 Information Wrong</option>
+                            <option value="Invalid Player UID / Not Verified">❌ Invalid Player UID / Not Verified</option>
+                            <option value="Incorrect Phone">❌ Phone Number Wrong</option>
+                            <option value="Blacklisted Team">🚫 Team is Blacklisted</option>
+                            <option value="custom">✍️ Other (write below)</option>
+                        </select>
+                        <textarea id="adminNote" placeholder="Optional notes for the team..."
+                            style="width:100%;height:60px;background:#000;color:#fff;border:1px solid #444;padding:10px;border-radius:8px;font-family:inherit;resize:vertical;"></textarea>
+                    </div>
+                </div>
+
+                <div style="padding:20px;border-top:1px solid #222;background:#0a0a0a;border-radius:0 0 12px 12px;">
+                    <div style="display:flex;gap:15px;flex-direction:row;">
+                        <button onclick="handleReviewDecision('${tournamentId}', '${userId}', 'approved', '${stage}')" 
+                            style="flex:1;padding:14px;background:var(--green);color:#000;border:none;border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;">
+                            ✅ Approve
+                        </button>
+                        <button onclick="handleReviewDecision('${tournamentId}', '${userId}', 'rejected', '${stage}')" 
+                            style="flex:1;padding:14px;background:#111;color:var(--red);border:1px solid var(--red);border-radius:8px;font-weight:bold;cursor:pointer;font-size:15px;">
+                            ❌ Reject
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `);
+};
+
+// ============================================================================
+// THE DECISION HANDLER (Fixes the "Not Defined" errors & verifies reasons)
+// ============================================================================
+window.handleReviewDecision = async function (tournamentId, userId, status, stage) {
+    // 1. Force the admin to select a reason if rejecting
+    if (status === 'rejected') {
+        const reason = document.getElementById("reasonSelect")?.value;
+        if (!reason) {
+            showToast("⚠️ Please select a Rejection Reason first.", "warning");
+            return;
+        }
+    }
+
+    try {
+        if (stage === 'upcoming') {
+            // Handle Upcoming Approvals/Rejections
+            if (status === 'approved') {
+                await approveUpcoming(tournamentId, userId);
+            } else {
+                const select = document.getElementById("reasonSelect").value;
+                const custom = document.getElementById("adminNote")?.value.trim() ?? "";
+                const finalReason = select === "custom" ? custom : select;
+
+                // Use imported updateDoc to mark rejected in Firestore
+                await updateDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", userId), {
+                    status: "rejected",
+                    rejectionReason: finalReason,
+                    processedAt: serverTimestamp(),
+                });
+
+                // Send notification
+                await sendDualNotification(userId, {
+                    type: "rejected",
+                    title: "Registration Rejected",
+                    message: `Your registration was rejected. Reason: ${finalReason}`,
+                    extra: { tournamentId },
+                    actionLink: `tournament=${tournamentId}`,
+                });
+                showToast("❌ Upcoming registration rejected.", "error");
+            }
+        } else {
+            // Handle Ongoing Approvals/Rejections using your existing processDecision function
+            await processDecision(tournamentId, userId, status);
+        }
+
+        // Remove the modal upon success
+        document.getElementById('reviewAppModal')?.remove();
+
+    } catch (e) {
+        showToast("Error processing decision: Permission Denied.", "error");
+    }
+};
+
+window.sendGlobalNotification = async function () {
+    const title = document.getElementById("globalNotifTitle").value.trim();
+    const msg = document.getElementById("globalNotifMsg").value.trim();
+
+    if (!title || !msg) { alert("Please enter a title and message."); return; }
+    if (!confirm("Are you sure? This will send to EVERY registered user.")) return;
+
+    try {
+        const usersSnap = await getDocs(collection(db, "users"));
+        const batch = writeBatch(db);
+        let count = 0;
+
+        usersSnap.forEach(userDoc => {
+            const notifRef = doc(collection(db, "users", userDoc.id, "notifications"));
+            batch.set(notifRef, {
+                type: "global_alert",
+                title: title,
+                message: msg,
+                read: false,
+                createdAt: serverTimestamp()
+            });
+            count++;
+        });
+
+        await batch.commit();
+        alert(`✅ Global notification sent successfully to ${count} users!`);
+        document.getElementById("globalNotifTitle").value = "";
+        document.getElementById("globalNotifMsg").value = "";
+    } catch (err) {
+        console.error("Global notif error:", err);
+        alert("Failed to send global notification.");
+    }
+};
+
+// =============================================================================
+// PART 3.3b — NEW SLOT ACTION FUNCTIONS (Kick, Waitlist, Delete)
+// APPEND TO BOTTOM of admin.js
+// =============================================================================
+
+window.moveToWaitlist = async function (tournamentId, teamId) {
+    if (!confirm("Move this team to the Waitlist? They will be notified.")) return;
+    try {
+        const slotRef = doc(db, "tournaments", tournamentId, "slots", teamId);
+        await updateDoc(slotRef, { paymentStatus: "Waitlist", waitlistedAt: serverTimestamp() });
+
+        // Notify the team
+        await sendDualNotification(teamId, {
+            type: "admin_notice",
+            title: "⏳ Moved to Waitlist",
+            message: "Your slot has been moved to the waitlist. You will be notified if a slot opens up.",
+            actionLink: `tournament=${tournamentId}`
+        });
+
+        showToast("Team moved to waitlist & notified.", "success");
+        manageTournamentSlots(tournamentId); // Refresh
+
+    } catch (e) {
+        showToast("Action failed: Permission Denied.", "error");
+    }
+};
+
+window.deleteSlot = async function (tournamentId, teamId, userId) {
+    if (!confirm("Permanently delete this slot entry? This cannot be undone.")) return;
+    try {
+        const uid = userId || teamId;
+        // Try deleting from both /slots and /participants for backward compat
+        const promises = [
+            deleteDoc(doc(db, "tournaments", tournamentId, "slots", teamId)).catch(() => { }),
+            deleteDoc(doc(db, "tournaments", tournamentId, "participants", uid)).catch(() => { }),
+            deleteDoc(doc(db, "tournaments", tournamentId, "verifications", uid)).catch(() => { }),
+            deleteDoc(doc(db, "tournaments", tournamentId, "upcomingRegistrations", uid)).catch(() => { })
+        ];
+        await Promise.all(promises);
+
+        showToast("Slot deleted.", "success");
+        manageTournamentSlots(tournamentId); // Refresh
+
+    } catch (e) {
+        showToast("Error deleting: Permission Denied.", "error");
+    }
+};
+
+// =============================================================================
+// PAYOUT MODAL
+// =============================================================================
+
+window.openPayoutModal = async function (tournamentId, teamId, userId) {
+    const uid = userId || teamId;
+    document.getElementById("payoutModalOverlay")?.remove();
+
+    // Fetch data from verifications or participants
+    let tData = null;
+    try {
+        let snap = await getDoc(doc(db, "tournaments", tournamentId, "participants", uid));
+        if (snap.exists()) tData = snap.data();
+        else {
+            snap = await getDoc(doc(db, "tournaments", tournamentId, "verifications", uid));
+            if (snap.exists()) tData = snap.data();
+        }
+    } catch (e) { console.error(e); }
+
+    tData = tData || {};
+    const teamName = tData.teamName || "Unnamed Team";
+    const phone = tData.phone || "—";
+    const leaderEmail = tData.leaderEmail || "—";
+    const backupEmail = tData.backupEmail || "—";
+    const upiId = tData.payoutUpiId || tData.upiId || "—";
+
+    const overlay = document.createElement("div");
+    overlay.id = "payoutModalOverlay";
+    overlay.className = "status-modal-overlay";
+    overlay.innerHTML = `
+        <div class="status-modal" style="max-width:500px; width:100%; padding:24px; background:#111; border:1px solid #333; border-radius:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #222; padding-bottom:12px;">
+                <h3 style="color:var(--blue); margin:0;">💸 Payout / Refund</h3>
+                <button onclick="document.getElementById('payoutModalOverlay').remove()" style="background:none; border:none; color:#888; font-size:20px; cursor:pointer;">✖</button>
+            </div>
+            
+            <div style="background:#1a1a1a; padding:15px; border-radius:8px; margin-bottom:20px;">
+                <p style="color:#888; font-size:11px; text-transform:uppercase; margin-bottom:10px;">Team Information</p>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="color:#888; font-size:13px;">Team Name:</span>
+                    <span style="color:#fff; font-weight:bold; font-size:13px;">${escHtml(teamName)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="color:#888; font-size:13px;">Leader Email:</span>
+                    <span style="color:#fff; font-size:13px;">${escHtml(leaderEmail)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="color:#888; font-size:13px;">Backup Email:</span>
+                    <span style="color:#fff; font-size:13px;">${escHtml(backupEmail)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+                    <span style="color:#888; font-size:13px;">Phone:</span>
+                    <span style="color:#fff; font-size:13px;">${escHtml(phone)}</span>
+                </div>
+                <div style="display:flex; justify-content:space-between; margin-top:12px; padding-top:12px; border-top:1px dashed #333;">
+                    <span style="color:var(--green); font-size:13px; font-weight:bold;">Provided UPI ID:</span>
+                    <span style="color:var(--green); font-size:13px; font-weight:bold; font-family:monospace;">${escHtml(upiId)}</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom:15px;">
+                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:8px;">Transaction Type *</label>
+                <select id="payoutTypeSelect" style="width:100%; padding:12px; background:#000; border:1px solid #444; color:#fff; border-radius:8px; font-size:14px; margin-bottom:10px;">
+                    <option value="prize">🏆 Prize Winnings (Congratulations)</option>
+                    <option value="refund">↩️ Entry Fee Refund (Apology)</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:8px;">Enter UTR / Transaction ID *</label>
+                <input type="text" id="payoutUtrInput" placeholder="e.g. 123456789012" style="width:100%; padding:12px; background:#000; border:1px solid #444; color:#fff; border-radius:8px; font-size:14px; font-family:monospace;">
+            </div>
+
+            <button onclick="processPayout('${tournamentId}', '${uid}', '${escHtml(teamName.replace(/'/g, "\\'"))}')" 
+                style="width:100%; padding:14px; background:var(--blue); color:#fff; border:none; border-radius:8px; font-weight:bold; font-size:15px; cursor:pointer;">
+                Send Notification
+            </button>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+};
+
+window.processPayout = async function (tournamentId, uid, teamName) {
+    const utr = document.getElementById("payoutUtrInput")?.value.trim();
+    const type = document.getElementById("payoutTypeSelect")?.value || "refund";
+
+    if (!utr) {
+        showToast("Please enter the UTR / Transaction ID.", "warning");
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to send this ${type} notification to ${teamName} with UTR: ${utr}?`)) return;
+
+    try {
+        let message = "";
+        let title = "";
+        let finalStatus = "";
+
+        if (type === "prize") {
+            title = "🏆 Prize Winnings Sent!";
+            message = `Congratulations! Your tournament prize winnings have been transferred to your registered UPI ID. Please check your bank. UTR: ${utr}`;
+            finalStatus = "Paid Out";
+        } else {
+            title = "💸 Tournament Refund";
+            message = `Sorry for the inconvenience. We have refunded your entry fee to your registered UPI ID. Please check and verify. UTR: ${utr}`;
+            finalStatus = "Refunded";
+        }
+
+        // Notify the team
+        await sendDualNotification(uid, {
+            type: "admin_notice",
+            title: title,
+            message: message,
+            actionLink: `tournament=${tournamentId}`
+        });
+
+        // Update their payment status 
+        try {
+            const participantRef = doc(db, "tournaments", tournamentId, "participants", uid);
+            await updateDoc(participantRef, { paymentStatus: finalStatus });
+        } catch (e) { } // Ignore if document doesn't exist
+
+        try {
+            const slotRef = doc(db, "tournaments", tournamentId, "slots", uid);
+            await updateDoc(slotRef, { paymentStatus: finalStatus });
+        } catch (e) { }
+
+        showToast("Notification sent successfully!", "success");
+        document.getElementById("payoutModalOverlay")?.remove();
+        manageTournamentSlots(tournamentId); // Refresh
+
+    } catch (e) {
+        console.error(e);
+        showToast("Error sending notification.", "error");
+    }
+};
+
+// =============================================================================
+// PART 3.4 — 12-SLOT MANUAL LEADERBOARD GRID (Admin Side)
+// APPEND TO BOTTOM of admin.js
+// Call: window.renderAdminLeaderboardGrid(tournamentId)
+// =============================================================================
+
+window.renderAdminLeaderboardGrid = async function (tournamentId) {
+    let container = document.getElementById("adminLeaderboardGrid");
+
+    // If container doesn't exist, create a modal overlay for it!
+    if (!container) {
+        let overlay = document.getElementById("leaderboardModalOverlay");
+        if (!overlay) {
+            overlay = document.createElement("div");
+            overlay.id = "leaderboardModalOverlay";
+            overlay.className = "status-modal-overlay";
+            overlay.innerHTML = `
+                <div class="status-modal" style="max-width:800px; width:100%; max-height:90vh; overflow-y:auto; padding:25px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:15px;">
+                        <h2 style="margin:0; color:var(--green);">🏆 Edit Tournament Leaderboard</h2>
+                        <button onclick="document.getElementById('leaderboardModalOverlay').remove()" style="background:transparent; color:#888; border:none; font-size:24px; cursor:pointer;">&times;</button>
+                    </div>
+                    <div id="adminLeaderboardGrid"></div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        }
+        container = document.getElementById("adminLeaderboardGrid");
+    }
+
+    container.innerHTML = `
+        <div style="text-align:center; padding:20px; color:var(--green);">
+            ⏳ Loading leaderboard slots…
+        </div>
+    `;
+
+    try {
+        const [lbSnap, pSnap, vSnap, uSnap] = await Promise.all([
+            getDocs(query(collection(db, "tournaments", tournamentId, "leaderboard"), orderBy("rank", "asc"))),
+            getDocs(collection(db, "tournaments", tournamentId, "participants")),
+            getDocs(collection(db, "tournaments", tournamentId, "verifications")),
+            getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
+        ]);
+
+        const existing = {};
+        lbSnap.forEach(d => {
+            const data = d.data();
+            if (!existing[data.rank] || d.id.startsWith("rank_")) {
+                existing[data.rank] = data;
+            }
+        });
+
+        // Build Team Players Map for the dropdowns
+        const teamPlayersMap = {};
+        const allSnaps = [...pSnap.docs, ...vSnap.docs, ...uSnap.docs];
+        allSnaps.forEach(docSnap => {
+            const data = docSnap.data();
+            if (data.teamName && data.playersData) {
+                const names = data.playersData.map(p => p.nickname).filter(n => n);
+                if (names.length > 0) {
+                    teamPlayersMap[data.teamName.trim().toLowerCase()] = names;
+                }
+            }
+        });
+        window.currentTeamPlayersMap = teamPlayersMap;
+
+        const rankStyles = {
+            1: { color: "gold", bg: "rgba(255,215,0,0.08)", border: "gold" },
+            2: { color: "silver", bg: "rgba(192,192,192,0.06)", border: "silver" },
+            3: { color: "#cd7f32", bg: "rgba(205,127,50,0.06)", border: "#cd7f32" },
+        };
+
+        let gridHtml = `
+            <div style="display:grid; grid-template-columns:1fr; gap:10px; max-width:880px; margin:0 auto;">
+                <div style="display:grid; grid-template-columns:50px 1fr 1fr 90px 90px 80px; gap:8px; padding:0 12px; margin-bottom:2px;">
+                    <span style="color:#444; font-size:11px; text-transform:uppercase;">Rank</span>
+                    <span style="color:#444; font-size:11px; text-transform:uppercase;">Team Name</span>
+                    <span style="color:#444; font-size:11px; text-transform:uppercase;">Top Player</span>
+                    <span style="color:#444; font-size:11px; text-transform:uppercase;">Score</span>
+                    <span style="color:#444; font-size:11px; text-transform:uppercase;">Kills</span>
+                    <span style="color:#444; font-size:11px; text-transform:uppercase;"></span>
+                </div>
+        `;
+
+        // o. FIX: Force exactly 12 rows ?" even if database has 0 entries
+        for (let rank = 1; rank <= 12; rank++) {
+            const data = existing[rank] || {};
+            const style = rankStyles[rank] || { color: "#aaa", bg: "rgba(255,255,255,0.02)", border: "#2a2a2a" };
+            const teamNameSafe = escHtml(data.teamName || "");
+            const highestKillSafe = escHtml(data.highestKill || "");
+
+            // Build options for select if team exists
+            const teamLower = (data.teamName || "").trim().toLowerCase();
+            const players = teamPlayersMap[teamLower] || [];
+            let optionsHtml = `<option value="">-- Select Player --</option>`;
+            if (highestKillSafe && !players.includes(data.highestKill)) {
+                // If there's an existing player not in the current list, preserve it
+                optionsHtml += `<option value="${highestKillSafe}" selected>${highestKillSafe}</option>`;
+            }
+            players.forEach(p => {
+                const sel = (p === data.highestKill) ? "selected" : "";
+                optionsHtml += `<option value="${escHtml(p)}" ${sel}>${escHtml(p)}</option>`;
+            });
+
+            gridHtml += `
+                <div style="
+                    display:grid;
+                    grid-template-columns:50px 1fr 1fr 90px 90px 80px;
+                    gap:8px;
+                    align-items:center;
+                    background:${style.bg};
+                    border:1px solid ${style.border};
+                    border-left:4px solid ${style.color};
+                    border-radius:8px;
+                    padding:10px 12px;
+                ">
+                    <div style="font-weight:bold; font-size:17px; color:${style.color}; text-align:center;">#${rank}</div>
+                    
+                    <input type="text"
+                           id="lb_name_${rank}"
+                           value="${teamNameSafe}"
+                           placeholder="Team Name"
+                           oninput="window.updateLeaderboardPlayerSelect(${rank})"
+                           style="padding:9px 10px; background:#0f0f0f; border:1px solid #333; color:#fff; border-radius:6px; font-family:inherit; font-size:13px; width:100%; box-sizing:border-box;"
+                    >
+
+                    <select id="lb_top_player_${rank}" style="padding:9px 10px; background:#0f0f0f; border:1px solid #333; color:#fff; border-radius:6px; font-family:inherit; font-size:13px; width:100%; box-sizing:border-box;">
+                        ${optionsHtml}
+                    </select>
+                    
+                    <input type="number"
+                           id="lb_score_${rank}"
+                           value="${data.score !== undefined ? data.score : ""}"
+                           placeholder="Score"
+                           style="padding:9px 10px; background:#0f0f0f; border:1px solid #333; color:#fff; border-radius:6px; font-family:inherit; font-size:13px; width:100%; box-sizing:border-box;"
+                    >
+                    
+                    <input type="number"
+                           id="lb_kills_${rank}"
+                           value="${data.kills !== undefined ? data.kills : ""}"
+                           placeholder="Kills"
+                           style="padding:9px 10px; background:#0f0f0f; border:1px solid #333; color:#fff; border-radius:6px; font-family:inherit; font-size:13px; width:100%; box-sizing:border-box;"
+                    >
+                    
+                    <button onclick="window.saveLeaderboardRow('${tournamentId}', ${rank})"
+                            style="padding:9px 12px; background:var(--blue); color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-family:inherit; font-size:13px; white-space:nowrap; transition:0.15s;"
+                            onmouseover="this.style.background='#60a5fa'"
+                            onmouseout="this.style.background='var(--blue)'">
+                        Save
+                    </button>
+                </div>
+            `;
+        }
+
+        gridHtml += `
+            </div>
+            <div style="margin-top:16px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+                <button onclick="window.saveAllLeaderboardRows('${tournamentId}')"
+                        style="background:var(--green); color:#000; border:none; padding:11px 24px; border-radius:8px; cursor:pointer; font-weight:bold; font-family:inherit; font-size:14px;">
+                    💾 Save All Rows
+                </button>
+                <button onclick="window.clearLeaderboard('${tournamentId}')"
+                        style="background:transparent; color:var(--red); border:1px solid var(--red); padding:11px 24px; border-radius:8px; cursor:pointer; font-family:inherit; font-size:14px;">
+                    🗑 Clear Leaderboard
+                </button>
+            </div>
+        `;
+
+        container.innerHTML = gridHtml;
+
+    } catch (err) {
+        console.error("[LEADERBOARD]", err);
+        container.innerHTML = `
+            <div style="color:var(--red); text-align:center; padding:20px;">
+                ⚠️ Failed to load grid: Permission Denied or Invalid Data
+            </div>
+        `;
+    }
+};
+
+window.updateLeaderboardPlayerSelect = function (rank) {
+    const teamNameInput = document.getElementById(`lb_name_${rank}`);
+    const selectEl = document.getElementById(`lb_top_player_${rank}`);
+    if (!teamNameInput || !selectEl || !window.currentTeamPlayersMap) return;
+
+    const teamName = teamNameInput.value.trim().toLowerCase();
+    const players = window.currentTeamPlayersMap[teamName] || [];
+
+    const currentValue = selectEl.value;
+    let optionsHtml = `<option value="">-- Select Player --</option>`;
+    if (currentValue && !players.includes(currentValue)) {
+        optionsHtml += `<option value="${escHtml(currentValue)}" selected>${escHtml(currentValue)}</option>`;
+    }
+    players.forEach(p => {
+        const sel = (p === currentValue) ? "selected" : "";
+        optionsHtml += `<option value="${escHtml(p)}" ${sel}>${escHtml(p)}</option>`;
+    });
+
+    selectEl.innerHTML = optionsHtml;
+};
+
+window.saveLeaderboardRow = async function (tournamentId, rank) {
+    const tName = (document.getElementById(`lb_name_${rank}`)?.value || "").trim();
+    const tTopPlayer = (document.getElementById(`lb_top_player_${rank}`)?.value || "").trim();
+    const tScore = parseInt(document.getElementById(`lb_score_${rank}`)?.value) || 0;
+    const tKills = parseInt(document.getElementById(`lb_kills_${rank}`)?.value) || 0;
+
+    if (!tName) {
+        showToast(`Enter a team name for Rank #${rank}`, "warning");
+        return;
+    }
+
+    try {
+        await setDoc(
+            doc(db, "tournaments", tournamentId, "leaderboard", `rank_${rank}`),
+            {
+                rank: rank,
+                teamName: tName,
+                highestKill: tTopPlayer,
+                score: tScore,
+                kills: tKills,
+                updatedAt: serverTimestamp()
+            }
+        );
+        showToast(`? Rank #${rank} saved!`, "success");
+    } catch (err) {
+        showToast("Error saving: Permission Denied.", "error");
+    }
+};
+
+window.saveAllLeaderboardRows = async function (tournamentId) {
+    const batch = writeBatch(db);
+    let count = 0;
+
+    for (let rank = 1; rank <= 12; rank++) {
+        const tName = (document.getElementById(`lb_name_${rank}`)?.value || "").trim();
+        const tTopPlayer = (document.getElementById(`lb_top_player_${rank}`)?.value || "").trim();
+        const tScore = parseInt(document.getElementById(`lb_score_${rank}`)?.value) || 0;
+        const tKills = parseInt(document.getElementById(`lb_kills_${rank}`)?.value) || 0;
+
+        if (!tName) continue;
+        count++;
+
+        batch.set(
+            doc(db, "tournaments", tournamentId, "leaderboard", `rank_${rank}`),
+            { rank, teamName: tName, highestKill: tTopPlayer, score: tScore, kills: tKills, updatedAt: serverTimestamp() }
+        );
+    }
+
+    if (count === 0) {
+        showToast("No valid rows to save.", "warning");
+        return;
+    }
+
+    try {
+        await batch.commit();
+        showToast(`? ${count} leaderboard rows saved!`, "success");
+    } catch (err) {
+        showToast("Error saving batch: Permission Denied.", "error");
+    }
+};
+
+window.clearLeaderboard = async function (tournamentId) {
+    if (!confirm("Clear entire leaderboard? This cannot be undone.")) return;
+    try {
+        const snap = await getDocs(collection(db, "tournaments", tournamentId, "leaderboard"));
+        const batch = writeBatch(db);
+        snap.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        showToast("Leaderboard cleared.", "success");
+        // Re-render empty grid
+        window.renderAdminLeaderboardGrid(tournamentId);
+    } catch (err) {
+        showToast("Error clearing: Permission Denied.", "error");
+    }
+};
+
+// =============================================================================
+//  NPC Esports — USER METRICS & ROSTER ANALYTICS DASHBOARD (NEW FEATURE)
+// =============================================================================
+
+window.showUserAnalyticsDashboard = async function () {
+    // 1. Setup UI Modal Elements
+    document.getElementById("analyticsModalOverlay")?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "analyticsModalOverlay";
+    overlay.className = "status-modal-overlay";
+
+    overlay.innerHTML = `
+        <div class="status-modal" style="max-width:1000px; width:100%; max-height:90vh; overflow-y:auto; padding:25px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #333; padding-bottom:15px; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <h2 style="color:var(--gold); margin:0; font-size:22px; display:inline-flex; align-items:center; gap:8px;">📊 User Database & Roster Analytics</h2>
+                    <p style="color:#888; font-size:12px; margin:4px 0 0 0;">Complete organizational breakdown of registered platform users.</p>
+                </div>
+                <button onclick="document.getElementById('analyticsModalOverlay').remove()" 
+                        style="background:transparent; color:#666; border:none; font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            
+            <div id="analyticsStatsGrid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:15px; margin-bottom:25px;">
+                <div style="background:#111; border:1px solid #222; border-radius:10px; padding:15px; text-align:center;">
+                    <p style="color:#888; margin:0; font-size:12px; text-transform:uppercase;">Total Users</p>
+                    <h3 id="statTotalUsers" style="color:#fff; font-size:28px; margin:8px 0 0 0;">...</h3>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-left:4px solid #ffd700; border-radius:10px; padding:15px; text-align:center;">
+                    <p style="color:#ffd700; margin:0; font-size:12px; text-transform:uppercase;">Team Leaders 👑</p>
+                    <h3 id="statLeaders" style="color:#fff; font-size:28px; margin:8px 0 0 0;">...</h3>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-left:4px solid #3b82f6; border-radius:10px; padding:15px; text-align:center;">
+                    <p style="color:#3b82f6; margin:0; font-size:12px; text-transform:uppercase;">Team Members 🔑</p>
+                    <h3 id="statMembers" style="color:#fff; font-size:28px; margin:8px 0 0 0;">...</h3>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-left:4px solid #888; border-radius:10px; padding:15px; text-align:center;">
+                    <p style="color:#aaa; margin:0; font-size:12px; text-transform:uppercase;">Viewers 👁️</p>
+                    <h3 id="statViewers" style="color:#fff; font-size:28px; margin:8px 0 0 0;">...</h3>
+                </div>
+                <div style="background:#111; border:1px solid #222; border-left:4px solid #ff4444; border-radius:10px; padding:15px; text-align:center;">
+                    <p style="color:#ff4444; margin:0; font-size:12px; text-transform:uppercase;">Admins 🛡️</p>
+                    <h3 id="statAdmins" style="color:#fff; font-size:28px; margin:8px 0 0 0;">...</h3>
+                </div>
+            </div>
+
+            <div style="display:flex; gap:15px; margin-bottom:25px; background:rgba(255,215,0,0.03); border:1px solid #222; padding:12px 18px; border-radius:8px; flex-wrap:wrap;">
+                <span style="color:#888; font-size:13px;">Team Alignment Status:</span>
+                <span style="color:#00ff88; font-size:13px; font-weight:bold;">🟢 Organized (In a Team): <span id="statWithTeam">0</span></span>
+                <span style="color:#ff9f43; font-size:13px; font-weight:bold;">🟡 Free Agents (No Team): <span id="statNoTeam">0</span></span>
+            </div>
+
+            <div style="margin-bottom:15px;">
+                <input type="text" id="analyticsUserSearch" placeholder="🔍 Search by Nickname, Email, Role, or Team Name…"
+                       style="width:100%; padding:12px; border-radius:8px; border:1px solid #333; background:#161616; color:#fff; font-family:inherit; font-size:14px;"
+                       onkeyup="filterAnalyticsUserTable()">
+            </div>
+
+            <div style="overflow-x:auto; border:1px solid #222; border-radius:8px; max-height:400px; overflow-y:auto;">
+                <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
+                    <thead style="background:#161616; position:sticky; top:0; z-index:2; border-bottom:2px solid #333;">
+                        <tr>
+                            <th style="padding:12px; color:#888;">Nickname</th>
+                            <th style="padding:12px; color:#888;">Email</th>
+                            <th style="padding:12px; color:#888;">System Role</th>
+                            <th style="padding:12px; color:#888;">Assigned Team</th>
+                            <th style="padding:12px; color:#888; text-align:center;">Age</th>
+                        </tr>
+                    </thead>
+                    <tbody id="analyticsUserTableBody">
+                        <tr>
+                            <td colspan="5" style="text-align:center; padding:30px; color:#666;">Querying Firestore user database…</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <button onclick="document.getElementById('analyticsModalOverlay').remove()"
+                    style="width:100%; margin-top:20px; padding:12px; background:#222; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:bold; font-family:inherit; transition:background 0.2s;">
+                Dismiss Dashboard
+            </button>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    try {
+        // 2. Fetch all user records from Firestore
+        const usersSnap = await getDocs(collection(db, "users"));
+
+        let total = 0;
+        let leaders = 0;
+        let members = 0;
+        let viewers = 0;
+        let admins = 0;
+        let withTeam = 0;
+        let noTeam = 0;
+
+        let tableRowsHtml = "";
+
+        usersSnap.forEach(docSnap => {
+            const u = docSnap.data();
+            total++;
+
+            // Extract role properties safely
+            const userRole = (u.role || "viewer").toLowerCase();
+            const isAdminUser = u.isAdmin === true;
+            const hasTeam = !!u.teamId;
+
+            // Increment specific categories
+            if (isAdminUser) admins++;
+
+            if (userRole === "leader") leaders++;
+            else if (userRole === "member" || userRole === "player") members++;
+            else if (userRole === "viewer") viewers++;
+
+            if (hasTeam) withTeam++;
+            else noTeam++;
+
+            // Handle styling badges
+            let roleBadge = `<span style="background:rgba(136,136,136,0.1); color:#aaa; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold;">Viewer 👁️</span>`;
+            if (isAdminUser) {
+                roleBadge = `<span style="background:rgba(239,68,68,0.15); color:#ff4444; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold; border:1px solid rgba(239,68,68,0.3);">Admin 🛡️</span>`;
+            } else if (userRole === "leader") {
+                roleBadge = `<span style="background:rgba(255,215,0,0.15); color:#ffd700; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold; border:1px solid rgba(255,215,0,0.3);">Leader 👑</span>`;
+            } else if (userRole === "member" || userRole === "player") {
+                roleBadge = `<span style="background:rgba(59,130,246,0.15); color:#3b82f6; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:bold;">Member 🔑</span>`;
+            }
+
+            const teamDisplay = hasTeam
+                ? `<b style="color:#fff;">${escHtml(u.teamName)}</b> <span style="color:#555; font-size:11px;">(${escHtml(u.teamCode || "")})</span>`
+                : `<i style="color:#555;">No Assigned Team (Solo)</i>`;
+
+            tableRowsHtml += `
+                <tr class="analytics-user-row" style="border-bottom:1px solid #1f1f1f; background:#0d0d0d;">
+                    <td style="padding:12px; font-weight:bold; color:#fff;">${escHtml(u.nickname || "Unnamed User")}</td>
+                    <td style="padding:12px; color:#aaa;">${escHtml(u.email || "—")}</td>
+                    <td style="padding:12px;">${roleBadge}</td>
+                    <td style="padding:12px;">${teamDisplay}</td>
+                    <td style="padding:12px; text-align:center; color:#888;">${u.age || "—"}</td>
+                </tr>
+            `;
+        });
+
+        // 3. Inject calculated stats dynamically into counters
+        document.getElementById("statTotalUsers").innerText = total;
+        document.getElementById("statLeaders").innerText = leaders;
+        document.getElementById("statMembers").innerText = members;
+        document.getElementById("statViewers").innerText = viewers;
+        document.getElementById("statAdmins").innerText = admins;
+        document.getElementById("statWithTeam").innerText = withTeam;
+        document.getElementById("statNoTeam").innerText = noTeam;
+
+        document.getElementById("analyticsUserTableBody").innerHTML = tableRowsHtml || `<tr><td colspan="5" style="text-align:center; padding:20px; color:#666;">No users found in database.</td></tr>`;
+
+    } catch (err) {
+        console.error("[ANALYTICS]", err);
+        document.getElementById("analyticsUserTableBody").innerHTML = `
+            <tr><td colspan="5" style="text-align:center; padding:20px; color:var(--red);">Error reading users: Permission Denied or Invalid Data</td></tr>
+        `;
+    }
+};
+
+// 🔍 LIVE FILTER LOGIC FUNCTION
+window.filterAnalyticsUserTable = function () {
+    const q = document.getElementById("analyticsUserSearch").value.toLowerCase().trim();
+    const rows = document.querySelectorAll(".analytics-user-row");
+
+    rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        if (text.includes(q)) {
+            row.style.display = "";
+        } else {
+            row.style.display = "none";
+        }
+    });
+};
+
+// ==========================================
+// RANKING TEAMS SAVING LOGIC
+// ==========================================
+window.checkDuplicateRanks = function () {
+    const inputs = document.querySelectorAll(".rank-input");
+    const valMap = {};
+
+    // Reset borders
+    inputs.forEach(input => {
+        input.style.border = "1px solid #333";
+        input.style.boxShadow = "none";
+
+        const val = input.value;
+        if (val) {
+            if (!valMap[val]) valMap[val] = [];
+            valMap[val].push(input);
+        }
+    });
+
+    // Highlight duplicates
+    Object.keys(valMap).forEach(val => {
+        if (valMap[val].length > 1) {
+            valMap[val].forEach(input => {
+                input.style.border = "2px solid #ff4444";
+                input.style.boxShadow = "0 0 8px rgba(255, 68, 68, 0.5)";
+            });
+        }
+    });
+};
+
+window.saveAllTeamRankings = async function (tournamentId) {
+    if (!confirm("Save these rankings? This will update the Leaderboard and Team History.")) return;
+
+    try {
+        let tournamentNameCache = tournamentId;
+        if (window._adminActiveTournaments) {
+            const tDoc = window._adminActiveTournaments.find(d => d.id === tournamentId);
+            if (tDoc && tDoc.data().title) tournamentNameCache = tDoc.data().title;
+        }
+
+        const rows = document.querySelectorAll(".rank-row");
+        const rankSet = new Set();
+        let hasDuplicates = false;
+
+        // Reset borders
+        for (let row of rows) {
+            row.querySelector(".rank-input").style.border = "1px solid #333";
+        }
+
+        // Check for duplicates
+        for (let row of rows) {
+            const rankInput = row.querySelector(".rank-input");
+            const rankVal = rankInput.value;
+            if (rankVal) {
+                if (rankSet.has(rankVal)) {
+                    hasDuplicates = true;
+                    rankInput.style.border = "2px solid #ff4444";
+                    // Also find the other one and highlight it
+                    for (let innerRow of rows) {
+                        const innerInput = innerRow.querySelector(".rank-input");
+                        if (innerInput.value === rankVal) innerInput.style.border = "2px solid #ff4444";
+                    }
+                }
+                rankSet.add(rankVal);
+            }
+        }
+
+        if (hasDuplicates) {
+            showToast("Duplicate ranks found! Please ensure all assigned ranks are unique.", "error");
+            return;
+        }
+
+        const batch = writeBatch(db);
+        let validUpdates = 0;
+
+        for (let row of rows) {
+            const teamId = row.getAttribute("data-team-id");
+            const rankInput = row.querySelector(".rank-input").value;
+            const killsInput = row.querySelector(".kills-input").value;
+
+            if (rankInput && teamId) {
+                const rankNum = parseInt(rankInput) || 0;
+                const killsNum = parseInt(killsInput) || 0;
+
+                // Fetch team name/details from the row (very basic)
+                const teamName = row.children[1].innerText;
+
+                // 1. Write to Leaderboard
+                const lbRef = doc(db, "tournaments", tournamentId, "leaderboard", teamId);
+                batch.set(lbRef, {
+                    teamId: teamId,
+                    teamName: teamName,
+                    rank: rankNum,
+                    totalKills: killsNum,
+                    updatedAt: serverTimestamp()
+                }, { merge: true });
+
+                // 2. Write to Team's Tournament History
+                const thRef = doc(db, "teams", teamId, "tournamentHistory", tournamentId);
+                batch.set(thRef, {
+                    tournamentId: tournamentId,
+                    tournamentName: tournamentNameCache || "Tournament", // Or fetch
+                    rank: rankNum,
+                    totalKills: killsNum,
+                    isWin: rankNum === 1,
+                    date: serverTimestamp()
+                }, { merge: true });
+
+                // 3. Update overall team stats
+                // Need to do this properly with transactions or increment
+                // For safety in batch, we can use increment
+                const teamRef = doc(db, "teams", teamId);
+                batch.update(teamRef, {
+                    totalKills: increment(killsNum),
+                    totalEarnings: increment(rankNum === 1 ? 500 : 0), // Simple logic, can be customized based on tournament prize
+                    lastUpdateAt: serverTimestamp()
+                });
+
+                validUpdates++;
+            } else if (!rankInput && teamId) {
+                // Clear existing rank if admin removes the value
+                const lbRef = doc(db, "tournaments", tournamentId, "leaderboard", teamId);
+                batch.delete(lbRef);
+
+                // We could also delete tournamentHistory, but we'll leave it as a design choice.
+                // Just removing from leaderboard is what the user asked.
+                validUpdates++;
+            }
+        }
+
+        if (validUpdates > 0) {
+            await batch.commit();
+            showToast(`✅ Successfully saved rankings for ${validUpdates} team(s)!`, "success");
+            // Trigger leaderboard silent update
+            await addDoc(collection(db, "systemEvents"), { type: "leaderboard_updated", tournamentId: tournamentId, timestamp: serverTimestamp() });
+        } else {
+            showToast("No valid ranks entered. Please input ranks for teams.", "warning");
+        }
+    } catch (e) {
+        console.error("Error saving rankings:", e);
+        showToast("Error saving rankings: Permission Denied or Invalid Data.", "error");
+    }
+};
+
+// ============================================================================
+//  18. FINANCIAL HUB PAYOUT SYSTEM
+// ============================================================================
+
+window.openRewardModal = async function (tournamentId, teamId, teamName) {
+    if (!teamId) {
+        showToast("Error: Missing Team ID", "error");
+        return;
+    }
+
+    // Fetch Team Data to get UPI ID
+    let upiId = "Not Set by User";
+    try {
+        // Query verifications to get the tournament-specific payout UPI ID
+        const vQuery = query(collection(db, "tournaments", tournamentId, "verifications"), where("teamId", "==", teamId), limit(1));
+        const vSnap = await getDocs(vQuery);
+
+        if (!vSnap.empty && vSnap.docs[0].data().payoutUpiId) {
+            upiId = vSnap.docs[0].data().payoutUpiId;
+        } else {
+            // Check upcomingRegistrations as fallback
+            const uQuery = query(collection(db, "tournaments", tournamentId, "upcomingRegistrations"), where("teamId", "==", teamId), limit(1));
+            const uSnap = await getDocs(uQuery);
+            if (!uSnap.empty && uSnap.docs[0].data().payoutUpiId) {
+                upiId = uSnap.docs[0].data().payoutUpiId;
+            } else {
+                // Fallback to global team profile
+                const teamSnap = await getDoc(doc(db, "teams", teamId));
+                if (teamSnap.exists() && teamSnap.data().upiId) {
+                    upiId = teamSnap.data().upiId;
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Error fetching team data for UPI", e);
+    }
+
+    const overlay = document.createElement("div");
+    overlay.id = "rewardModalOverlay";
+    overlay.style = "position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:99999;display:flex;align-items:center;justify-content:center;";
+
+    overlay.innerHTML = `
+        <div style="background:#111; border:2px solid #00ff88; border-radius:12px; padding:25px; width:90%; max-width:400px; color:#fff; font-family:'Rajdhani', sans-serif;">
+            <h2 style="margin-top:0; color:#00ff88;">💰 Reward Team</h2>
+            <p style="font-size:18px; margin-bottom:5px;"><strong>${escHtml(teamName)}</strong></p>
+            <div style="background:#1a1a1a; padding:10px; border-radius:6px; margin-bottom:20px; border-left:4px solid #ffd700;">
+                <p style="margin:0; font-size:12px; color:#888;">Tournament Payout UPI ID / Bank:</p>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:5px;">
+                    <p style="margin:0; font-size:16px; font-weight:bold; color:#00ff88; word-break:break-all;">${escHtml(upiId)}</p>
+                    <button onclick="navigator.clipboard.writeText('${escHtml(upiId)}'); showToast('UPI ID copied!', 'success');" style="background:transparent;border:1px solid #00ff88;color:#00ff88;cursor:pointer;border-radius:4px;padding:2px 8px;font-size:12px;">Copy</button>
+                </div>
+            </div>
+            
+            <p style="font-size:12px; color:#aaa; margin-bottom:15px;"><em>Please transfer the funds to the above account before confirming below.</em></p>
+            
+            <label style="display:block; margin-bottom:5px; font-size:13px; color:#888;">Amount Paid (₹)</label>
+            <input type="number" id="rewardAmount" placeholder="e.g. 500" style="width:100%; padding:10px; background:#222; border:1px solid #444; color:#fff; border-radius:6px; margin-bottom:15px;" required>
+            
+            <label style="display:block; margin-bottom:5px; font-size:13px; color:#888;">Transaction Reference / Proof ID</label>
+            <input type="text" id="rewardRef" placeholder="e.g. UTR123456789" style="width:100%; padding:10px; background:#222; border:1px solid #444; color:#fff; border-radius:6px; margin-bottom:20px;" required>
+            
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('rewardModalOverlay').remove()" style="flex:1; padding:10px; background:transparent; border:1px solid #555; color:#aaa; border-radius:6px; cursor:pointer;">Cancel</button>
+                <button onclick="submitReward('${teamId}', '${tournamentId}')" style="flex:1; padding:10px; background:#00ff88; border:none; color:#000; font-weight:bold; border-radius:6px; cursor:pointer;">Confirm Payout</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+};
+
+window.submitReward = async function (teamId, tournamentId) {
+    const amountVal = document.getElementById("rewardAmount").value;
+    const refVal = document.getElementById("rewardRef").value.trim();
+
+    if (!amountVal || amountVal <= 0) {
+        showToast("Enter a valid amount.", "error");
+        return;
+    }
+    if (!refVal) {
+        showToast("Enter the transaction reference ID.", "error");
+        return;
+    }
+
+    const amount = Number(amountVal);
+
+    try {
+        const btn = event.target;
+        btn.textContent = "Processing...";
+        btn.disabled = true;
+
+        await addDoc(collection(db, "teams", teamId, "transactions"), {
+            type: 'credit',
+            amount: amount,
+            referenceId: refVal,
+            description: `Tournament Winnings (Ref: ${tournamentId.substring(0, 6)})`,
+            tournamentId: tournamentId,
+            createdAt: serverTimestamp()
+        });
+
+        await updateDoc(doc(db, "teams", teamId), {
+            lifetimeEarnings: increment(amount)
+        });
+
+        const teamSnap = await getDoc(doc(db, "teams", teamId));
+        if (teamSnap.exists() && teamSnap.data().leaderUid) {
+            await addDoc(collection(db, "users", teamSnap.data().leaderUid, "notifications"), {
+                type: "payout_received",
+                title: "💰 Winnings Received!",
+                message: `You have received ₹${amount} for your tournament victory. Check your Financial Hub for the receipt.`,
+                read: false,
+                createdAt: serverTimestamp()
+            });
+        }
+
+        showToast("Payout Logged Successfully!", "success");
+        document.getElementById("rewardModalOverlay").remove();
+
+    } catch (e) {
+        console.error("Error logging reward:", e);
+        showToast("Failed to log payout. Permission denied?", "error");
+    }
+};
+// ==========================================
+// DATA MIGRATION SCRIPT (V1 to V2)
+// ==========================================
+import { deleteField } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+window.runV2DataMigration = async function () {
+    console.log("Starting Data Migration...");
+    const usersSnap = await getDocs(collection(db, "users"));
+    let migratedCount = 0;
+    let batch = writeBatch(db);
+    let operationCount = 0;
+
+    for (const userDoc of usersSnap.docs) {
+        const data = userDoc.data();
+        const uid = userDoc.id;
+
+        if (data.email !== undefined || data.wallet !== undefined) {
+            const publicRef = doc(db, "users", uid);
+            const privateRef = doc(db, "users", uid, "private", "data");
+            const walletRef = doc(db, "users", uid, "wallet", "main");
+
+            batch.set(privateRef, {
+                email: data.email || null,
+                age: data.age || null,
+                phone: data.phone || null,
+                migratedAt: serverTimestamp()
+            }, { merge: true });
+
+            let currentBalance = 0;
+            if (typeof data.wallet === "object" && data.wallet !== null) {
+                currentBalance = data.wallet.balance || 0;
+            } else if (typeof data.wallet === "number") {
+                currentBalance = data.wallet;
+            }
+
+            batch.set(walletRef, {
+                balance: currentBalance,
+                updatedAt: serverTimestamp()
+            }, { merge: true });
+
+            batch.update(publicRef, {
+                email: deleteField(),
+                age: deleteField(),
+                phone: deleteField(),
+                wallet: deleteField()
+            });
+
+            operationCount += 3;
+            migratedCount++;
+
+            if (operationCount >= 450) {
+                await batch.commit();
+                console.log("Committed batch... (" + migratedCount + " users migrated)");
+                batch = writeBatch(db);
+                operationCount = 0;
+            }
+        }
+    }
+    if (operationCount > 0) await batch.commit();
+    console.log("' Migration Complete! Successfully migrated " + migratedCount + " users.");
+    alert("Migration complete! " + migratedCount + " users processed.");
+};
+
+
+window.deleteUserDoc = async function (uid) {
+    if (!confirm("Are you sure you want to delete this Firestore document? This is usually for deleting Ghost accounts.")) return;
+    try {
+        await deleteDoc(doc(db, "users", uid));
+        alert("Document deleted!");
+        loadAnalyticsData(); // Refresh the table
+    } catch (e) {
+        console.error(e);
+        alert("Failed: " + e.message);
+    }
+};
+
+
+window.openPostponeModal = function (tournamentId, title, currentEventDate, currentTransitionTime) {
+    const overlay = document.createElement("div");
+    overlay.id = "postponeModalOverlay";
+    overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); display:flex; justify-content:center; align-items:center; z-index:10000; padding:20px;";
+
+    const formatForInput = (isoStr) => {
+        if (!isoStr) return "";
+        const d = new Date(isoStr);
+        if (isNaN(d)) return "";
+        return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    };
+
+    overlay.innerHTML = `
+        <div style="background:#1a1a1a; padding:25px; border-radius:12px; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.5); border:1px solid #333;">
+            <h3 style="margin-top:0; color:#f97316;">🗓️ Postpone Tournament</h3>
+            <p style="color:#aaa; font-size:13px; margin-bottom:20px;">
+                <strong>${title}</strong><br>
+                This will move the tournament back to "Upcoming" status until the new timer triggers.
+            </p>
+
+            <div style="margin-bottom:15px;">
+                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:5px;">New Event Date & Time:</label>
+                <input type="datetime-local" id="postponeEventDate" value="${formatForInput(currentEventDate)}" style="width:100%; padding:10px; background:#111; color:#fff; border:1px solid #444; border-radius:6px; font-family:inherit;">
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <label style="display:block; color:#ccc; font-size:13px; margin-bottom:5px;">New Auto-Ongoing Timer:</label>
+                <input type="datetime-local" id="postponeTransitionTime" value="${formatForInput(currentTransitionTime)}" style="width:100%; padding:10px; background:#111; color:#fff; border:1px solid #444; border-radius:6px; font-family:inherit;">
+                <small style="color:#888; font-size:11px; display:block; margin-top:5px;">When should it move back to the "Ongoing" section?</small>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('postponeModalOverlay').remove()" style="flex:1; padding:10px; background:#333; color:#fff; border:none; border-radius:6px; cursor:pointer;">Cancel</button>
+                <button onclick="submitPostpone('${tournamentId}')" style="flex:1; padding:10px; background:#f97316; color:#fff; border:none; border-radius:6px; cursor:pointer; font-weight:bold;">Postpone</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(overlay);
+};
+
+window.submitPostpone = async function (tournamentId) {
+    const eventDateInput = document.getElementById("postponeEventDate").value;
+    const transitionTimeInput = document.getElementById("postponeTransitionTime").value;
+
+    if (!eventDateInput || !transitionTimeInput) {
+        showToast("Both Date and Timer are required.", "error");
+        return;
+    }
+
+    try {
+        await updateDoc(doc(db, "tournaments", tournamentId), {
+            category: "upcoming",
+            status: "upcoming",
+            eventDate: new Date(eventDateInput).toISOString(),
+            transitionTime: new Date(transitionTimeInput).toISOString(),
+            endTime: new Date(eventDateInput).getTime(),
+            promotionNotified: false
+        });
+
+        // NOTIFY ALL REGISTERED USERS
+        const [verifSnap, upcomSnap] = await Promise.all([
+            getDocs(collection(db, "tournaments", tournamentId, "verifications")),
+            getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
+        ]);
+
+        const allIds = new Set();
+        verifSnap.forEach(d => { if (d.data().status !== "rejected") allIds.add(d.id); });
+        upcomSnap.forEach(d => { if (d.data().status !== "rejected") allIds.add(d.id); });
+
+        const formattedDate = new Date(eventDateInput).toLocaleString(undefined, {
+            weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+
+        const notifPromises = [...allIds].map(uid => sendDualNotification(uid, {
+            type: "tournament_announcement",
+            title: "🗓️ Tournament Postponed",
+            message: `The tournament has been postponed to ${formattedDate}. Your registration and verified slots are completely saved!`,
+            extra: { tournamentId },
+            actionLink: `tournament=${tournamentId}`,
+        }));
+
+        await Promise.all(notifPromises);
+
+        document.getElementById('postponeModalOverlay').remove();
+        showToast(`Tournament postponed! Notified ${allIds.size} teams.`, "success");
+    } catch (err) {
+        console.error("Postpone Error:", err);
+        showToast("Failed to postpone: " + err.message, "error");
+    }
+};
+
+window.openEditTimingModal = async function (tournamentId, optTitle, optEventDate, optTransitionTime) {
+    document.getElementById('editTimingModalOverlay')?.remove();
+
+    // Show initial loading modal while fetching latest doc
+    const overlay = document.createElement("div");
+    overlay.id = "editTimingModalOverlay";
+    overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); display:flex; justify-content:center; align-items:center; z-index:10000; padding:20px; backdrop-filter:blur(4px);";
+
+    overlay.innerHTML = `
+        <div style="background:#16161c; padding:30px; border-radius:14px; width:100%; max-width:490px; box-shadow:0 20px 50px rgba(0,0,0,0.7); border:1px solid #2a2a35; color:#fff; text-align:center;">
+            <div style="font-size:28px; margin-bottom:12px;">⏳</div>
+            <div style="color:#aaa; font-size:14px;">Loading tournament details...</div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    let t = null;
+    try {
+        const snap = await getDoc(doc(db, "tournaments", tournamentId));
+        if (snap.exists()) {
+            t = snap.data();
+        }
+    } catch (e) {
+        console.warn("Could not fetch fresh tournament doc:", e);
+    }
+
+    if (!t) {
+        // Fallback from active tournaments cache
+        const cached = window._adminActiveTournaments?.find(d => d.id === tournamentId);
+        t = cached ? cached.data() : { title: optTitle || "Tournament", eventDate: optEventDate, transitionTime: optTransitionTime };
+    }
+
+    const title = t.title || optTitle || "Tournament";
+    const category = t.category || "ongoing";
+    const isOngoing = category === "ongoing" || t.status === "live";
+
+    // Extract existing timing
+    let dateObj = null;
+    let initialDate = "";
+    let initialTime = "";
+
+    if (t.endTime && typeof t.endTime === 'number') {
+        dateObj = new Date(t.endTime);
+    } else if (t.eventDate) {
+        if (typeof t.eventDate === 'string' && t.eventDate.includes('T')) {
+            dateObj = new Date(t.eventDate);
+        } else if (t.eventTime) {
+            const timePart = t.eventTime.length === 5 ? t.eventTime + ':00' : t.eventTime;
+            dateObj = new Date(`${t.eventDate}T${timePart}`);
+        } else {
+            dateObj = new Date(t.eventDate);
+        }
+    }
+
+    const now = new Date();
+    if (!dateObj || isNaN(dateObj.getTime())) {
+        dateObj = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour in future by default
+    }
+
+    const pad = n => String(n).padStart(2, '0');
+    initialDate = `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}`;
+    initialTime = `${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
+
+    // Format current timing for display
+    const currentFormattedDate = dateObj.toLocaleDateString('en-IN', {
+        weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
+    });
+    const currentFormattedTime = dateObj.toLocaleTimeString('en-IN', {
+        hour: '2-digit', minute: '2-digit', hour12: true
+    });
+
+    const isCurrentInFuture = dateObj.getTime() > now.getTime();
+    let currentStatusBadge = "";
+    if (isOngoing) {
+        if (isCurrentInFuture) {
+            const diffMins = Math.round((dateObj.getTime() - now.getTime()) / 60000);
+            const hrs = Math.floor(diffMins / 60);
+            const mins = diffMins % 60;
+            const leftStr = hrs > 0 ? `${hrs}h ${mins}m left` : `${mins}m left`;
+            currentStatusBadge = `<span style="background:#059669; color:#fff; font-size:11px; padding:3px 8px; border-radius:12px; font-weight:700;">🟢 REGISTRATION ACTIVE (${leftStr})</span>`;
+        } else {
+            const agoMins = Math.round((now.getTime() - dateObj.getTime()) / 60000);
+            const hrs = Math.floor(agoMins / 60);
+            const mins = agoMins % 60;
+            const agoStr = hrs > 0 ? `${hrs}h ${mins}m ago` : `${mins}m ago`;
+            currentStatusBadge = `<span style="background:#dc2626; color:#fff; font-size:11px; padding:3px 8px; border-radius:12px; font-weight:700;">⚠️ REGISTRATION ENDED (${agoStr})</span>`;
+        }
+    } else {
+        currentStatusBadge = `<span style="background:#3b82f6; color:#fff; font-size:11px; padding:3px 8px; border-radius:12px; font-weight:700;">📅 UPCOMING EVENT</span>`;
+    }
+
+    // Format transition time if any
+    let transitionInputVal = "";
+    if (t.transitionTime) {
+        const transDate = new Date(t.transitionTime);
+        if (!isNaN(transDate.getTime())) {
+            transitionInputVal = `${transDate.getFullYear()}-${pad(transDate.getMonth() + 1)}-${pad(transDate.getDate())}T${pad(transDate.getHours())}:${pad(transDate.getMinutes())}`;
+        }
+    }
+
+    overlay.innerHTML = `
+        <div style="background:#16161c; padding:26px; border-radius:14px; width:100%; max-width:490px; box-shadow:0 20px 60px rgba(0,0,0,0.8); border:1px solid #2a2a35; color:#fff; max-height:90vh; overflow-y:auto; font-family:inherit;">
+            
+            <!-- Header -->
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <h3 style="margin:0; color:#3b82f6; font-size:18px;">✏️ Edit Tournament Timing</h3>
+                        <span style="background:#222; color:#aaa; font-size:10px; padding:2px 6px; border-radius:4px; text-transform:uppercase; border:1px solid #333;">${category}</span>
+                    </div>
+                    <div style="color:#eee; font-size:14px; font-weight:700; margin-top:4px;">${escHtml(title)}</div>
+                </div>
+                <button onclick="document.getElementById('editTimingModalOverlay').remove()" style="background:transparent; border:none; color:#888; font-size:20px; cursor:pointer; padding:0 4px;" title="Close">✕</button>
+            </div>
+
+            <!-- Current Specific Timing Display Panel -->
+            <div style="background:#0e0e12; border:1px solid #262630; border-radius:10px; padding:14px; margin-bottom:18px;">
+                <div style="color:#888; font-size:11px; text-transform:uppercase; letter-spacing:0.5px; font-weight:600; margin-bottom:6px;">Current Configured Timing</div>
+                <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <div style="font-size:15px; font-weight:700; color:#00ff88; font-family:'Share Tech Mono', monospace;">
+                            📅 ${currentFormattedDate}
+                        </div>
+                        <div style="font-size:14px; font-weight:700; color:#fff; font-family:'Share Tech Mono', monospace; margin-top:2px;">
+                            ⏰ ${currentFormattedTime}
+                        </div>
+                    </div>
+                    <div>
+                        ${currentStatusBadge}
+                    </div>
+                </div>
+                ${isOngoing && !isCurrentInFuture ? `
+                    <div style="background:rgba(239,68,68,0.1); border-left:3px solid #ef4444; padding:6px 10px; border-radius:4px; margin-top:10px; font-size:11px; color:#fca5a5;">
+                        Registration is currently closed because the scheduled time passed. Provide a new future time below to <b>re-open and extend registration</b>!
+                    </div>
+                ` : ''}
+            </div>
+
+            <!-- Input Fields: Date and Real Time -->
+            <div style="margin-bottom:14px;">
+                <label style="display:block; color:#ddd; font-size:13px; font-weight:600; margin-bottom:6px;">
+                    🗓️ Select Real-Time Date & Time
+                </label>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+                    <div>
+                        <span style="display:block; color:#888; font-size:11px; margin-bottom:4px;">Event Date</span>
+                        <input type="date" id="editTourneyDate" value="${initialDate}" style="width:100%; box-sizing:border-box; padding:10px; background:#0b0b0e; color:#fff; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:13px;">
+                    </div>
+                    <div>
+                        <span style="display:block; color:#888; font-size:11px; margin-bottom:4px;">Clock Time (Real-Time)</span>
+                        <input type="time" id="editTourneyTime" value="${initialTime}" style="width:100%; box-sizing:border-box; padding:10px; background:#0b0b0e; color:#fff; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:13px;">
+                    </div>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; padding:0 2px;">
+                    <span style="color:#aaa; font-size:12px;">Real-Time Clock Readout:</span>
+                    <span id="editTourneyRealTimeDisplay" style="color:#00ff88; font-weight:700; font-size:13px; font-family:'Share Tech Mono', monospace;">--:--</span>
+                </div>
+            </div>
+
+            <!-- Quick Extend Presets -->
+            <div style="margin-bottom:16px;">
+                <span style="display:block; color:#888; font-size:11px; margin-bottom:6px;">⚡ Quick Presets (Extends from Now)</span>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <button type="button" class="preset-btn" onclick="window.applyTimingPreset(15)" style="background:#222; border:1px solid #333; color:#ccc; padding:5px 9px; border-radius:6px; font-size:11px; cursor:pointer;">+15 Mins</button>
+                    <button type="button" class="preset-btn" onclick="window.applyTimingPreset(30)" style="background:#222; border:1px solid #333; color:#ccc; padding:5px 9px; border-radius:6px; font-size:11px; cursor:pointer;">+30 Mins</button>
+                    <button type="button" class="preset-btn" onclick="window.applyTimingPreset(60)" style="background:#222; border:1px solid #333; color:#ccc; padding:5px 9px; border-radius:6px; font-size:11px; cursor:pointer;">+1 Hour</button>
+                    <button type="button" class="preset-btn" onclick="window.applyTimingPreset(120)" style="background:#222; border:1px solid #333; color:#ccc; padding:5px 9px; border-radius:6px; font-size:11px; cursor:pointer;">+2 Hours</button>
+                    <button type="button" class="preset-btn" onclick="window.applyTimingPreset('tonight_10pm')" style="background:#222; border:1px solid #333; color:#ccc; padding:5px 9px; border-radius:6px; font-size:11px; cursor:pointer;">Tonight 10:00 PM</button>
+                    <button type="button" class="preset-btn" onclick="window.applyTimingPreset('tomorrow_11am')" style="background:#222; border:1px solid #333; color:#ccc; padding:5px 9px; border-radius:6px; font-size:11px; cursor:pointer;">Tomorrow 11:00 AM</button>
+                </div>
+            </div>
+
+            <!-- Live Registration Impact Preview -->
+            <div id="editTimingLivePreview" style="margin-bottom:16px;">
+                <!-- Updated dynamically by updateTimingPreview -->
+            </div>
+
+            <!-- Optional Upcoming Transition Time (Only if upcoming or transition already exists) -->
+            ${category === 'upcoming' || t.transitionTime ? `
+                <div style="background:#0e0e12; border:1px dashed #3b82f6; border-radius:8px; padding:12px; margin-bottom:16px;">
+                    <label style="display:block; color:#93c5fd; font-size:12px; font-weight:600; margin-bottom:4px;">
+                        🤖 Auto-Move to Ongoing (Date & Time)
+                    </label>
+                    <input type="datetime-local" id="editTourneyTransition" value="${transitionInputVal}" style="width:100%; box-sizing:border-box; padding:8px; background:#111; color:#fff; border:1px solid #444; border-radius:6px; font-family:inherit; font-size:12px;">
+                    <small style="color:#888; font-size:10px; display:block; margin-top:4px;">When this timer hits, tournament automatically switches to Ongoing & prompts payments.</small>
+                </div>
+            ` : ''}
+
+            <!-- Notification Option Checkbox -->
+            <div style="margin-bottom:18px;">
+                <label style="display:flex; align-items:center; gap:8px; color:#bbb; font-size:12px; cursor:pointer; user-select:none;">
+                    <input type="checkbox" id="editTourneyNotify" checked style="accent-color:#3b82f6; width:16px; height:16px;">
+                    <span>🔔 Notify registered teams about the extended registration deadline</span>
+                </label>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('editTimingModalOverlay').remove()" style="flex:1; padding:11px; background:#222; color:#ccc; border:1px solid #333; border-radius:8px; cursor:pointer; font-weight:600;">
+                    Cancel
+                </button>
+                <button id="editTimingSaveBtn" onclick="window.submitEditTiming('${tournamentId}')" style="flex:2; padding:11px; background:#3b82f6; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px;">
+                    💾 Save & Extend Time
+                </button>
+            </div>
+        </div>
+    `;
+
+    // Attach listeners and preset handlers
+    window.applyTimingPreset = function (preset) {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        let target = new Date(now.getTime());
+
+        if (typeof preset === 'number') {
+            target = new Date(now.getTime() + preset * 60000);
+        } else if (preset === 'tonight_10pm') {
+            target.setHours(22, 0, 0, 0);
+            if (target.getTime() <= now.getTime()) {
+                target.setDate(target.getDate() + 1);
+            }
+        } else if (preset === 'tomorrow_11am') {
+            target.setDate(target.getDate() + 1);
+            target.setHours(11, 0, 0, 0);
+        }
+
+        const dateInput = document.getElementById("editTourneyDate");
+        const timeInput = document.getElementById("editTourneyTime");
+        if (dateInput && timeInput) {
+            dateInput.value = `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`;
+            timeInput.value = `${pad(target.getHours())}:${pad(target.getMinutes())}`;
+            window.updateTimingPreview();
+        }
+    };
+
+    window.updateTimingPreview = function () {
+        const dateInput = document.getElementById("editTourneyDate");
+        const timeInput = document.getElementById("editTourneyTime");
+        const previewEl = document.getElementById("editTimingLivePreview");
+        const realTimeEl = document.getElementById("editTourneyRealTimeDisplay");
+        if (!previewEl || !dateInput || !timeInput) return;
+
+        const dVal = dateInput.value;
+        const tVal = timeInput.value;
+
+        if (realTimeEl && tVal) {
+            const [h, m] = tVal.split(':').map(Number);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const h12 = h % 12 || 12;
+            realTimeEl.textContent = `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+        }
+
+        if (!dVal || !tVal) {
+            previewEl.innerHTML = `<span style="color:#888; font-size:12px;">Please select date and time</span>`;
+            return;
+        }
+
+        const [y, m, d] = dVal.split('-').map(Number);
+        const [hh, mm] = tVal.split(':').map(Number);
+        const target = new Date(y, m - 1, d, hh, mm, 0, 0);
+        const nowMs = Date.now();
+        const diffMs = target.getTime() - nowMs;
+
+        const formattedTarget = target.toLocaleString('en-IN', {
+            day: 'numeric', month: 'short', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true
+        });
+
+        if (diffMs > 0) {
+            const totalMins = Math.floor(diffMs / 60000);
+            const hrs = Math.floor(totalMins / 60);
+            const mins = totalMins % 60;
+            const timeFromNow = hrs > 0 ? `${hrs}h ${mins}m from now` : `${mins}m from now`;
+
+            previewEl.innerHTML = `
+                <div style="background:rgba(0,255,136,0.08); border:1px solid #00ff88; padding:12px; border-radius:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <span style="font-size:14px;">🟢</span>
+                        <strong style="color:#00ff88; font-size:12px;">Registration will be ALIVE & OPEN</strong>
+                    </div>
+                    <div style="color:#fff; font-size:14px; font-weight:700;">
+                        New Deadline: ${formattedTarget}
+                    </div>
+                    <div style="color:#aaa; font-size:11px; margin-top:2px;">
+                        ⏳ (${timeFromNow}) · Teams can join, submit UPI, and verify slots until this exact time.
+                    </div>
+                </div>
+            `;
+        } else {
+            const totalMinsAgo = Math.floor(-diffMs / 60000);
+            const hrsAgo = Math.floor(totalMinsAgo / 60);
+            const minsAgo = totalMinsAgo % 60;
+            const timeAgo = hrsAgo > 0 ? `${hrsAgo}h ${minsAgo}m ago` : `${minsAgo}m ago`;
+
+            previewEl.innerHTML = `
+                <div style="background:rgba(239,68,68,0.1); border:1px solid #ef4444; padding:12px; border-radius:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                        <span style="font-size:14px;">⚠️</span>
+                        <strong style="color:#ef4444; font-size:12px;">Selected time is in the PAST</strong>
+                    </div>
+                    <div style="color:#fff; font-size:13px;">
+                        Time: ${formattedTarget} (${timeAgo})
+                    </div>
+                    <div style="color:#fca5a5; font-size:11px; margin-top:2px;">
+                        Registration will immediately be marked as ENDED / Match Started. Pick a future time to extend registration!
+                    </div>
+                </div>
+            `;
+        }
+    };
+
+    document.getElementById("editTourneyDate")?.addEventListener("input", window.updateTimingPreview);
+    document.getElementById("editTourneyTime")?.addEventListener("input", window.updateTimingPreview);
+    window.updateTimingPreview();
+};
+
+window.submitEditTiming = async function (tournamentId) {
+    const dateInput = document.getElementById("editTourneyDate");
+    const timeInput = document.getElementById("editTourneyTime");
+    const notifyInput = document.getElementById("editTourneyNotify");
+    const transitionInput = document.getElementById("editTourneyTransition");
+    const saveBtn = document.getElementById("editTimingSaveBtn");
+
+    const dateVal = dateInput?.value;
+    const timeVal = timeInput?.value;
+    const notifyTeams = notifyInput?.checked;
+    const transitionVal = transitionInput?.value;
+
+    if (!dateVal || !timeVal) {
+        showToast("Please provide both Date and Time.", "error");
+        return;
+    }
+
+    const [y, m, d] = dateVal.split('-').map(Number);
+    const [hh, mm] = timeVal.split(':').map(Number);
+    const targetDate = new Date(y, m - 1, d, hh, mm, 0, 0);
+
+    if (isNaN(targetDate.getTime())) {
+        showToast("Invalid Date or Time entered.", "error");
+        return;
+    }
+
+    const targetTimeMs = targetDate.getTime();
+    const isFuture = targetTimeMs > Date.now();
+
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = `⏳ Updating...`;
+    }
+
+    try {
+        const tRef = doc(db, "tournaments", tournamentId);
+        const tSnap = await getDoc(tRef);
+        const tData = tSnap.exists() ? tSnap.data() : {};
+
+        const updates = {
+            eventDate: dateVal,
+            eventTime: timeVal,
+            endTime: targetTimeMs,
+            updatedAt: serverTimestamp()
+        };
+
+        // If tournament was ongoing or we are extending an ongoing tournament into the future
+        if (tData.category === 'ongoing' || tData.status === 'live' || (isFuture && tData.category !== 'limited')) {
+            // Keep registration alive
+            if (tData.category === 'ongoing') {
+                updates.status = 'live';
+            }
+            // Reset phase 2 alert so it alerts 30-40 mins before the NEW start time
+            updates.adminPhase2Notified = false;
+        }
+
+        // Handle upcoming transition time if provided
+        if (transitionVal) {
+            const transDate = new Date(transitionVal);
+            if (!isNaN(transDate.getTime())) {
+                updates.transitionTime = transDate.toISOString();
+                if (transDate.getTime() > Date.now()) {
+                    updates.promotionNotified = false;
+                }
+            }
+        }
+
+        await updateDoc(tRef, updates);
+
+        // Update linked calendar event if exists
+        try {
+            const titleQuery = tData.title ? query(calendarRef, where("title", "in", [`🏆 ${tData.title}`, `⚡ [Limited] ${tData.title}`, tData.title])) : null;
+            if (titleQuery) {
+                const calSnap = await getDocs(titleQuery);
+                if (!calSnap.empty) {
+                    await updateDoc(doc(db, "calendarEvents", calSnap.docs[0].id), {
+                        date: dateVal,
+                        updatedAt: serverTimestamp()
+                    });
+                }
+            }
+        } catch (calErr) {
+            console.warn("[EDIT TIMING] Calendar sync notice:", calErr);
+        }
+
+        // Send notifications to registered teams if requested
+        if (notifyTeams) {
+            try {
+                const [verifSnap, upcomSnap] = await Promise.all([
+                    getDocs(collection(db, "tournaments", tournamentId, "verifications")),
+                    getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
+                ]);
+                const allUids = new Set();
+                verifSnap.forEach(d => { if (d.data().status !== 'rejected') allUids.add(d.id); });
+                upcomSnap.forEach(d => { if (d.data().status !== 'rejected') allUids.add(d.id); });
+
+                const timeStr = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                const dateStr = targetDate.toLocaleDateString([], { day: 'numeric', month: 'short' });
+
+                const notifPromises = [...allUids].map(uid => sendDualNotification(uid, {
+                    type: "tournament_announcement",
+                    title: "⏰ Tournament Registration Extended",
+                    message: `Registration & match time for "${tData.title || 'Tournament'}" has been updated to ${dateStr} at ${timeStr}. Registration is currently OPEN!`,
+                    extra: { tournamentId },
+                    actionLink: `tournament=${tournamentId}`
+                }));
+                await Promise.all(notifPromises);
+            } catch (notifErr) {
+                console.warn("[EDIT TIMING] Notification dispatch:", notifErr);
+            }
+        }
+
+        document.getElementById('editTimingModalOverlay')?.remove();
+        const timeFormatted = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+        showToast(`✅ Tournament timing updated! Registration extended to ${timeFormatted}`, "success");
+
+    } catch (err) {
+        console.error("Edit Timing Error:", err);
+        showToast("Failed to update timing: " + err.message, "error");
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = `💾 Save & Extend Time`;
+        }
+    }
+};
+
+// ==========================================
+// ✏️ COMPREHENSIVE TOURNAMENT EDITING MODAL
+// Allows full editing of: Title, Category, Mode, Entry Fee, Slot Size (Lobby Capacity),
+// Prize Pool (1st, 2nd, 3rd with Null/None options for half lobbies), Timing, and Details
+// ==========================================
+
+window.openEditTournamentModal = async function (tournamentId) {
+    document.getElementById('editTournamentModalOverlay')?.remove();
+
+    // Loading overlay
+    const overlay = document.createElement("div");
+    overlay.id = "editTournamentModalOverlay";
+    overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); display:flex; justify-content:center; align-items:center; z-index:10000; padding:16px; backdrop-filter:blur(5px);";
+    overlay.innerHTML = `
+        <div style="background:#16161c; padding:28px; border-radius:14px; width:100%; max-width:440px; box-shadow:0 20px 50px rgba(0,0,0,0.7); border:1px solid #2a2a35; color:#fff; text-align:center;">
+            <div style="font-size:32px; margin-bottom:10px;">⏳</div>
+            <div style="color:#aaa; font-size:14px; font-weight:600;">Fetching tournament data...</div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+
+    let t = null;
+    try {
+        const snap = await getDoc(doc(db, "tournaments", tournamentId));
+        if (snap.exists()) {
+            t = snap.data();
+        }
+    } catch (e) {
+        console.warn("[EDIT TOURNAMENT] Could not fetch fresh doc:", e);
+    }
+
+    if (!t) {
+        const cached = window._adminActiveTournaments?.find(d => d.id === tournamentId);
+        t = cached ? cached.data() : null;
+    }
+
+    if (!t) {
+        overlay.innerHTML = `
+            <div style="background:#16161c; padding:24px; border-radius:14px; width:100%; max-width:400px; border:1px solid #ff4444; color:#fff; text-align:center;">
+                <p style="color:#ff6b6b; font-size:16px; margin:0 0 15px 0;">Tournament not found.</p>
+                <button onclick="document.getElementById('editTournamentModalOverlay').remove()" style="padding:8px 18px; background:#333; color:#fff; border:none; border-radius:6px; cursor:pointer;">Close</button>
+            </div>
+        `;
+        return;
+    }
+
+    const title = t.title || "";
+    const category = t.category || "ongoing";
+    const mode = t.mode || "Solo";
+    const entryFee = Number(t.entryFee) || 0;
+    const totalSlots = Math.max(2, Number(t.totalSlots) || 12);
+    const duration = Number(t.duration) || 60;
+    const infoParagraph = t.infoParagraph || "";
+
+    const p1 = (t.prize?.first !== undefined && t.prize?.first !== null) ? Number(t.prize.first) : 0;
+    const isP2Null = (t.prize?.second === null || t.prize?.second === undefined || (typeof t.prize?.second === 'number' && t.prize?.second === 0 && t.prize?.secondNull));
+    const p2 = isP2Null ? 0 : (Number(t.prize?.second) || 0);
+
+    const isP3Null = (t.prize?.third === null || t.prize?.third === undefined || (typeof t.prize?.third === 'number' && t.prize?.third === 0 && t.prize?.thirdNull));
+    const p3 = isP3Null ? 0 : (Number(t.prize?.third) || 0);
+
+    // Timing extraction
+    let dateObj = null;
+    let initialDate = t.eventDate || "";
+    let initialTime = t.eventTime || "";
+
+    if (t.endTime && typeof t.endTime === 'number') {
+        dateObj = new Date(t.endTime);
+    } else if (t.eventDate) {
+        if (typeof t.eventDate === 'string' && t.eventDate.includes('T')) {
+            dateObj = new Date(t.eventDate);
+        } else if (t.eventTime) {
+            const timePart = t.eventTime.length === 5 ? t.eventTime + ':00' : t.eventTime;
+            dateObj = new Date(`${t.eventDate}T${timePart}`);
+        } else {
+            dateObj = new Date(t.eventDate);
+        }
+    }
+
+    const pad = n => String(n).padStart(2, '0');
+    if (dateObj && !isNaN(dateObj.getTime())) {
+        if (!initialDate) initialDate = `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}`;
+        if (!initialTime) initialTime = `${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
+    }
+
+    let transitionVal = "";
+    if (t.transitionTime) {
+        const transDate = new Date(t.transitionTime);
+        if (!isNaN(transDate.getTime())) {
+            transitionVal = `${transDate.getFullYear()}-${pad(transDate.getMonth() + 1)}-${pad(transDate.getDate())}T${pad(transDate.getHours())}:${pad(transDate.getMinutes())}`;
+        }
+    }
+
+    overlay.innerHTML = `
+        <div style="background:#16161c; padding:26px; border-radius:14px; width:100%; max-width:580px; box-shadow:0 20px 60px rgba(0,0,0,0.85); border:1px solid #2a2a35; color:#fff; max-height:90vh; overflow-y:auto; font-family:inherit;">
+            
+            <!-- Header -->
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; border-bottom:1px solid #262632; padding-bottom:12px;">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <h3 style="margin:0; color:#ff6b35; font-size:18px; font-weight:700;">✏️ Edit Tournament Details</h3>
+                        <span style="background:#222; color:#00ff88; font-size:10px; padding:2px 8px; border-radius:4px; text-transform:uppercase; border:1px solid #333; font-weight:700;">${category}</span>
+                    </div>
+                    <div style="color:#aaa; font-size:12px; margin-top:3px;">UID: <span style="font-family:monospace; color:#888;">${tournamentId}</span></div>
+                </div>
+                <button onclick="document.getElementById('editTournamentModalOverlay').remove()" style="background:transparent; border:none; color:#888; font-size:22px; cursor:pointer; padding:0 6px;" title="Close">✕</button>
+            </div>
+
+            <!-- Title Field -->
+            <div style="margin-bottom:14px;">
+                <label style="display:block; color:#ddd; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px;">
+                    Tournament Title / Name ✱
+                </label>
+                <input type="text" id="editTourneyTitle" value="${escHtml(title)}" placeholder="e.g. Free Fire Champions Cup" style="width:100%; box-sizing:border-box; padding:10px 12px; background:#0e0e12; color:#fff; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:14px;">
+            </div>
+
+            <!-- Category & Mode -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+                <div>
+                    <label style="display:block; color:#ddd; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px;">Category</label>
+                    <select id="editTourneyCategory" style="width:100%; box-sizing:border-box; padding:10px 12px; background:#0e0e12; color:#fff; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:13px;">
+                        <option value="ongoing" ${category === 'ongoing' ? 'selected' : ''}>Ongoing / Live</option>
+                        <option value="upcoming" ${category === 'upcoming' ? 'selected' : ''}>Upcoming</option>
+                        <option value="limited" ${category === 'limited' ? 'selected' : ''}>Limited / Special</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block; color:#ddd; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px;">Mode</label>
+                    <select id="editTourneyMode" style="width:100%; box-sizing:border-box; padding:10px 12px; background:#0e0e12; color:#fff; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:13px;">
+                        <option value="Solo" ${mode === 'Solo' ? 'selected' : ''}>Solo</option>
+                        <option value="Duo" ${mode === 'Duo' ? 'selected' : ''}>Duo</option>
+                        <option value="Squad" ${mode === 'Squad' ? 'selected' : ''}>Squad</option>
+                        <option value="Any" ${mode === 'Any' ? 'selected' : ''}>Any</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Entry Fee & Slot Size (Lobby Capacity) -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+                <div>
+                    <label style="display:block; color:#ddd; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px;">
+                        Entry Fee (₹)
+                    </label>
+                    <input type="number" id="editTourneyFee" min="0" value="${entryFee}" placeholder="0" style="width:100%; box-sizing:border-box; padding:10px 12px; background:#0e0e12; color:#00ff88; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:14px; font-weight:700;">
+                </div>
+                <div>
+                    <label style="display:block; color:#ddd; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px;">
+                        Slot Size / Max Teams
+                    </label>
+                    <input type="number" id="editTourneySlots" min="2" max="100" value="${totalSlots}" placeholder="12" style="width:100%; box-sizing:border-box; padding:10px 12px; background:#0e0e12; color:#ffc107; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:14px; font-weight:700;">
+                </div>
+            </div>
+            <div style="background:rgba(255, 193, 7, 0.08); border-left:3px solid #ffc107; padding:7px 10px; border-radius:4px; margin-bottom:16px; font-size:11px; color:#ffe082; line-height:1.4;">
+                💡 <b>Lobby Resizing:</b> If the tournament was planned for 12 teams but only 6 joined, reduce slot size here (e.g., 6) so slot management and room sync adapt immediately.
+            </div>
+
+            <!-- Prize Pool Distribution -->
+            <div style="background:#0e0e12; border:1px solid #282834; border-radius:10px; padding:14px; margin-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <label style="color:#ffd700; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">
+                        🏆 Prize Pool Distribution
+                    </label>
+                    <span id="editTourneyTotalPrizeBadge" style="background:#1f2937; color:#10b981; font-size:12px; font-weight:700; padding:2px 8px; border-radius:6px; font-family:monospace; border:1px solid #374151;">
+                        Total: ₹0
+                    </span>
+                </div>
+                <p style="color:#888; font-size:11px; margin:0 0 10px 0;">
+                    Reduce prizes or set 3rd/2nd position to <b>Null / None</b> if the lobby was half-full or not awarded:
+                </p>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:8px;">
+                    <div>
+                        <span style="color:#ffd700; font-size:11px; font-weight:700; display:block; margin-bottom:3px;">🥇 1st Place (₹)</span>
+                        <input type="number" id="editTourneyP1" min="0" value="${p1}" placeholder="0" style="width:100%; box-sizing:border-box; padding:9px; background:#16161c; color:#ffd700; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:13px; font-weight:700;">
+                    </div>
+                    <div>
+                        <span style="color:#c0c0c0; font-size:11px; font-weight:700; display:block; margin-bottom:3px;">🥈 2nd Place (₹)</span>
+                        <input type="number" id="editTourneyP2" min="0" value="${p2}" placeholder="0" style="width:100%; box-sizing:border-box; padding:9px; background:#16161c; color:#c0c0c0; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:13px; font-weight:700;">
+                        <label style="display:flex; align-items:center; gap:5px; margin-top:5px; color:#aaa; font-size:10px; cursor:pointer; user-select:none;">
+                            <input type="checkbox" id="editTourneyNoP2" ${isP2Null ? 'checked' : ''} style="accent-color:#ff6b35; width:13px; height:13px;">
+                            <span>No 2nd Prize (Null)</span>
+                        </label>
+                    </div>
+                    <div>
+                        <span style="color:#cd7f32; font-size:11px; font-weight:700; display:block; margin-bottom:3px;">🥉 3rd Place (₹)</span>
+                        <input type="number" id="editTourneyP3" min="0" value="${p3}" placeholder="0" style="width:100%; box-sizing:border-box; padding:9px; background:#16161c; color:#cd7f32; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:13px; font-weight:700;">
+                        <label style="display:flex; align-items:center; gap:5px; margin-top:5px; color:#aaa; font-size:10px; cursor:pointer; user-select:none;">
+                            <input type="checkbox" id="editTourneyNoP3" ${isP3Null ? 'checked' : ''} style="accent-color:#ff6b35; width:13px; height:13px;">
+                            <span>No 3rd Prize (Null)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Timing & Schedule -->
+            <div style="background:#0e0e12; border:1px solid #282834; border-radius:10px; padding:14px; margin-bottom:16px;">
+                <label style="display:block; color:#60a5fa; font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:10px;">
+                    ⏰ Timing & Duration
+                </label>
+                
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:10px;">
+                    <div>
+                        <span style="color:#888; font-size:11px; display:block; margin-bottom:3px;">Event Date</span>
+                        <input type="date" id="editTourneyDate" value="${initialDate}" style="width:100%; box-sizing:border-box; padding:9px; background:#16161c; color:#fff; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:12px;">
+                    </div>
+                    <div>
+                        <span style="color:#888; font-size:11px; display:block; margin-bottom:3px;">Event Clock Time</span>
+                        <input type="time" id="editTourneyTime" value="${initialTime}" style="width:100%; box-sizing:border-box; padding:9px; background:#16161c; color:#fff; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:12px;">
+                    </div>
+                    <div>
+                        <span style="color:#888; font-size:11px; display:block; margin-bottom:3px;">Duration (Mins)</span>
+                        <input type="number" id="editTourneyDuration" min="10" value="${duration}" style="width:100%; box-sizing:border-box; padding:9px; background:#16161c; color:#fff; border:1px solid #333; border-radius:6px; font-family:inherit; font-size:12px;">
+                    </div>
+                </div>
+
+                <!-- Quick Presets -->
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+                    <span style="color:#777; font-size:10px; align-self:center; margin-right:2px;">Quick Extends:</span>
+                    <button type="button" onclick="window.applyEditTourneyTimingPreset(15)" style="background:#222; border:1px solid #333; color:#ccc; padding:4px 8px; border-radius:5px; font-size:10px; cursor:pointer;">+15m</button>
+                    <button type="button" onclick="window.applyEditTourneyTimingPreset(30)" style="background:#222; border:1px solid #333; color:#ccc; padding:4px 8px; border-radius:5px; font-size:10px; cursor:pointer;">+30m</button>
+                    <button type="button" onclick="window.applyEditTourneyTimingPreset(60)" style="background:#222; border:1px solid #333; color:#ccc; padding:4px 8px; border-radius:5px; font-size:10px; cursor:pointer;">+1h</button>
+                    <button type="button" onclick="window.applyEditTourneyTimingPreset(120)" style="background:#222; border:1px solid #333; color:#ccc; padding:4px 8px; border-radius:5px; font-size:10px; cursor:pointer;">+2h</button>
+                    <button type="button" onclick="window.applyEditTourneyTimingPreset('tonight_10pm')" style="background:#222; border:1px solid #333; color:#ccc; padding:4px 8px; border-radius:5px; font-size:10px; cursor:pointer;">Tonight 10PM</button>
+                    <button type="button" onclick="window.applyEditTourneyTimingPreset('tomorrow_11am')" style="background:#222; border:1px solid #333; color:#ccc; padding:4px 8px; border-radius:5px; font-size:10px; cursor:pointer;">Tomorrow 11AM</button>
+                </div>
+
+                <!-- Transition Time for Upcoming -->
+                <div id="editTourneyTransitionContainer" style="${category === 'upcoming' || t.transitionTime ? 'display:block;' : 'display:none;'} margin-top:10px; padding-top:10px; border-top:1px dashed #333;">
+                    <label style="display:block; color:#f87171; font-size:11px; font-weight:700; margin-bottom:3px;">
+                        [HIDDEN] Auto-Move to Ongoing (Date & Time)
+                    </label>
+                    <input type="datetime-local" id="editTourneyTransition" value="${transitionVal}" style="width:100%; box-sizing:border-box; padding:8px; background:#16161c; color:#fff; border:1px solid #444; border-radius:6px; font-family:inherit; font-size:12px;">
+                </div>
+            </div>
+
+            <!-- Custom Info Paragraph / Rules -->
+            <div style="margin-bottom:16px;">
+                <label style="display:block; color:#ddd; font-size:12px; font-weight:700; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.4px;">
+                    Custom Details, Rules & Announcements
+                </label>
+                <textarea id="editTourneyInfo" rows="3" placeholder="Enter custom rules, details, or explanation for why prizes or slots were adjusted..." style="width:100%; box-sizing:border-box; padding:10px 12px; background:#0e0e12; color:#fff; border:1px solid #333; border-radius:8px; font-family:inherit; font-size:13px; resize:vertical;">${escHtml(infoParagraph)}</textarea>
+            </div>
+
+            <!-- Notify Teams Checkbox -->
+            <div style="margin-bottom:18px;">
+                <label style="display:flex; align-items:center; gap:8px; color:#bbb; font-size:12px; cursor:pointer; user-select:none;">
+                    <input type="checkbox" id="editTourneyNotify" checked style="accent-color:#ff6b35; width:16px; height:16px;">
+                    <span>🔔 Notify registered teams about these changes (prizes, slot size, or timing)</span>
+                </label>
+            </div>
+
+            <!-- Action Buttons -->
+            <div style="display:flex; gap:10px;">
+                <button onclick="document.getElementById('editTournamentModalOverlay').remove()" style="flex:1; padding:12px; background:#222; color:#ccc; border:1px solid #333; border-radius:8px; cursor:pointer; font-weight:600; font-size:14px;">
+                    Cancel
+                </button>
+                <button id="editTourneySaveBtn" onclick="window.submitEditTournament('${tournamentId}')" style="flex:2; padding:12px; background:#ff6b35; color:#fff; border:none; border-radius:8px; cursor:pointer; font-weight:700; font-size:14px; display:flex; align-items:center; justify-content:center; gap:6px;">
+                    💾 Save Changes
+                </button>
+            </div>
+        </div>
+    `;
+
+    // Dynamic Prize Handlers
+    window.updateEditTourneyPrizeSummary = function () {
+        const p1El = document.getElementById("editTourneyP1");
+        const p2El = document.getElementById("editTourneyP2");
+        const p3El = document.getElementById("editTourneyP3");
+        const noP2 = document.getElementById("editTourneyNoP2")?.checked;
+        const noP3 = document.getElementById("editTourneyNoP3")?.checked;
+        const badge = document.getElementById("editTourneyTotalPrizeBadge");
+
+        if (p2El) {
+            p2El.disabled = !!noP2;
+            p2El.style.opacity = noP2 ? "0.35" : "1";
+            p2El.style.textDecoration = noP2 ? "line-through" : "none";
+        }
+        if (p3El) {
+            p3El.disabled = !!noP3;
+            p3El.style.opacity = noP3 ? "0.35" : "1";
+            p3El.style.textDecoration = noP3 ? "line-through" : "none";
+        }
+
+        const p1Val = Math.max(0, Number(p1El?.value) || 0);
+        const p2Val = noP2 ? 0 : Math.max(0, Number(p2El?.value) || 0);
+        const p3Val = noP3 ? 0 : Math.max(0, Number(p3El?.value) || 0);
+        const total = p1Val + p2Val + p3Val;
+
+        if (badge) {
+            badge.textContent = `Total: ₹${total.toLocaleString('en-IN')}`;
+        }
+    };
+
+    window.applyEditTourneyTimingPreset = function (preset) {
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        let target = new Date(now.getTime());
+
+        if (typeof preset === 'number') {
+            target = new Date(now.getTime() + preset * 60000);
+        } else if (preset === 'tonight_10pm') {
+            target.setHours(22, 0, 0, 0);
+            if (target.getTime() <= now.getTime()) {
+                target.setDate(target.getDate() + 1);
+            }
+        } else if (preset === 'tomorrow_11am') {
+            target.setDate(target.getDate() + 1);
+            target.setHours(11, 0, 0, 0);
+        }
+
+        const dateInput = document.getElementById("editTourneyDate");
+        const timeInput = document.getElementById("editTourneyTime");
+        if (dateInput && timeInput) {
+            dateInput.value = `${target.getFullYear()}-${pad(target.getMonth() + 1)}-${pad(target.getDate())}`;
+            timeInput.value = `${pad(target.getHours())}:${pad(target.getMinutes())}`;
+        }
+    };
+
+    // Category change handler to show/hide transition time
+    document.getElementById("editTourneyCategory")?.addEventListener("change", function (e) {
+        const transCont = document.getElementById("editTourneyTransitionContainer");
+        if (transCont) {
+            transCont.style.display = (e.target.value === 'upcoming') ? 'block' : 'none';
+        }
+    });
+
+    document.getElementById("editTourneyP1")?.addEventListener("input", window.updateEditTourneyPrizeSummary);
+    document.getElementById("editTourneyP2")?.addEventListener("input", window.updateEditTourneyPrizeSummary);
+    document.getElementById("editTourneyP3")?.addEventListener("input", window.updateEditTourneyPrizeSummary);
+    document.getElementById("editTourneyNoP2")?.addEventListener("change", window.updateEditTourneyPrizeSummary);
+    document.getElementById("editTourneyNoP3")?.addEventListener("change", window.updateEditTourneyPrizeSummary);
+
+    window.updateEditTourneyPrizeSummary();
+};
+
+window.submitEditTournament = async function (tournamentId) {
+    const saveBtn = document.getElementById("editTourneySaveBtn");
+    const titleVal = document.getElementById("editTourneyTitle")?.value.trim();
+    const categoryVal = document.getElementById("editTourneyCategory")?.value || "ongoing";
+    const modeVal = document.getElementById("editTourneyMode")?.value || "Solo";
+    const feeVal = Math.max(0, Number(document.getElementById("editTourneyFee")?.value) || 0);
+    const slotsVal = Math.max(2, Number(document.getElementById("editTourneySlots")?.value) || 12);
+    const durationVal = Math.max(5, Number(document.getElementById("editTourneyDuration")?.value) || 60);
+
+    const p1Val = Math.max(0, Number(document.getElementById("editTourneyP1")?.value) || 0);
+    const noP2 = document.getElementById("editTourneyNoP2")?.checked;
+    const p2Val = noP2 ? null : Math.max(0, Number(document.getElementById("editTourneyP2")?.value) || 0);
+    const noP3 = document.getElementById("editTourneyNoP3")?.checked;
+    const p3Val = noP3 ? null : Math.max(0, Number(document.getElementById("editTourneyP3")?.value) || 0);
+
+    const dateVal = document.getElementById("editTourneyDate")?.value;
+    const timeVal = document.getElementById("editTourneyTime")?.value;
+    const transitionVal = document.getElementById("editTourneyTransition")?.value;
+    const infoVal = document.getElementById("editTourneyInfo")?.value.trim() || "";
+    const notifyTeams = document.getElementById("editTourneyNotify")?.checked;
+
+    if (!titleVal) {
+        showToast("Tournament title is required.", "error");
+        return;
+    }
+
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerHTML = `⏳ Saving...`;
+    }
+
+    try {
+        const tRef = doc(db, "tournaments", tournamentId);
+        const snap = await getDoc(tRef);
+        const tData = snap.exists() ? snap.data() : {};
+
+        const prizeObj = {
+            first: p1Val,
+            second: p2Val,
+            third: p3Val,
+            secondNull: !!noP2,
+            thirdNull: !!noP3
+        };
+
+        const updates = {
+            title: titleVal,
+            category: categoryVal,
+            mode: modeVal,
+            entryFee: feeVal,
+            totalSlots: slotsVal,
+            duration: durationVal,
+            prize: prizeObj,
+            infoParagraph: infoVal,
+            updatedAt: serverTimestamp()
+        };
+
+        let targetTimeMs = null;
+        if (dateVal && timeVal) {
+            const [y, m, d] = dateVal.split('-').map(Number);
+            const [hh, mm] = timeVal.split(':').map(Number);
+            const targetDate = new Date(y, m - 1, d, hh, mm, 0, 0);
+            if (!isNaN(targetDate.getTime())) {
+                targetTimeMs = targetDate.getTime();
+                updates.eventDate = dateVal;
+                updates.eventTime = timeVal;
+                updates.endTime = targetTimeMs;
+
+                const isFuture = targetTimeMs > Date.now();
+                if (categoryVal === 'ongoing' || tData.category === 'ongoing' || tData.status === 'live' || (isFuture && categoryVal !== 'limited')) {
+                    if (categoryVal === 'ongoing') {
+                        updates.status = 'live';
+                    }
+                    updates.adminPhase2Notified = false;
+                }
+            }
+        } else if (dateVal) {
+            updates.eventDate = dateVal;
+        }
+
+        if (transitionVal) {
+            const transDate = new Date(transitionVal);
+            if (!isNaN(transDate.getTime())) {
+                updates.transitionTime = transDate.toISOString();
+                if (transDate.getTime() > Date.now()) {
+                    updates.promotionNotified = false;
+                }
+            }
+        }
+
+        await updateDoc(tRef, updates);
+
+        // Sync with calendarEvents if applicable
+        try {
+            const calTitles = [`🏆 ${tData.title}`, `⚡ [Limited] ${tData.title}`, tData.title, `🏆 ${titleVal}`];
+            const titleQuery = query(calendarRef, where("title", "in", calTitles));
+            const calSnap = await getDocs(titleQuery);
+            if (!calSnap.empty) {
+                const calDoc = calSnap.docs[0];
+                const calUpdates = {
+                    title: categoryVal === 'limited' ? `⚡ [Limited] ${titleVal}` : `🏆 ${titleVal}`,
+                    prize: p1Val || 'Special',
+                    updatedAt: serverTimestamp()
+                };
+                if (dateVal) calUpdates.date = dateVal;
+                await updateDoc(doc(db, "calendarEvents", calDoc.id), calUpdates);
+            }
+        } catch (calErr) {
+            console.warn("[EDIT TOURNAMENT] Calendar sync notice:", calErr);
+        }
+
+        // Notify registered participants if requested
+        if (notifyTeams) {
+            try {
+                const [verifSnap, upcomSnap] = await Promise.all([
+                    getDocs(collection(db, "tournaments", tournamentId, "verifications")),
+                    getDocs(collection(db, "tournaments", tournamentId, "upcomingRegistrations"))
+                ]);
+                const allUids = new Set();
+                verifSnap.forEach(d => { if (d.data().status !== 'rejected') allUids.add(d.id); });
+                upcomSnap.forEach(d => { if (d.data().status !== 'rejected') allUids.add(d.id); });
+
+                const p2Display = noP2 ? "None" : `₹${p2Val}`;
+                const p3Display = noP3 ? "None" : `₹${p3Val}`;
+                const msg = `Tournament "${titleVal}" updated: 1st ₹${p1Val}, 2nd ${p2Display}, 3rd ${p3Display} · Slots: ${slotsVal} teams · Fee: ₹${feeVal}${dateVal ? ` · Event: ${dateVal} ${timeVal || ''}` : ''}. Check tournament details for latest info!`;
+
+                const notifPromises = [...allUids].map(uid => sendDualNotification(uid, {
+                    type: "tournament_announcement",
+                    title: "🏆 Tournament Details Updated",
+                    message: msg,
+                    extra: { tournamentId },
+                    actionLink: `tournament=${tournamentId}`
+                }));
+                await Promise.all(notifPromises);
+            } catch (notifErr) {
+                console.warn("[EDIT TOURNAMENT] Notification dispatch error:", notifErr);
+            }
+        }
+
+        document.getElementById('editTournamentModalOverlay')?.remove();
+        showToast("✅ Tournament details updated successfully!", "success");
+
+    } catch (err) {
+        console.error("[EDIT TOURNAMENT] Save error:", err);
+        showToast("Failed to update tournament: " + err.message, "error");
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerHTML = `💾 Save Changes`;
+        }
+    }
+};
+
+window.sendGlobalNotification = async function () {
+    const title = document.getElementById('globalNotifTitle').value.trim();
+    const body = document.getElementById('globalNotifMsg').value.trim();
+    if (!title || !body) {
+        showToast('Title and message are required!', 'error');
+        return;
+    }
+    const btn = document.querySelector('button[onclick="sendGlobalNotification()"]');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = 'Blasting... 🚀';
+    }
+
+    try {
+        // 1. Write to public broadcastNotifications collection (instant pickup by Service Workers even when tabs are closed)
+        await addDoc(collection(db, "broadcastNotifications"), {
+            title: title,
+            message: body,
+            createdAt: serverTimestamp(),
+            priority: 'high',
+            tag: 'npc-blast-' + Date.now()
+        });
+
+        // 2. Deliver to every user's personal notifications subcollection in batches of 450
+        const usersSnap = await getDocs(collection(db, "users"));
+        const docs = usersSnap.docs;
+        let count = 0;
+
+        for (let i = 0; i < docs.length; i += 450) {
+            const chunk = docs.slice(i, i + 450);
+            const batch = writeBatch(db);
+            chunk.forEach(userDoc => {
+                const notifRef = doc(collection(db, "users", userDoc.id, "notifications"));
+                batch.set(notifRef, {
+                    type: 'global_blast',
+                    title: title,
+                    message: body,
+                    read: false,
+                    popupShown: false,
+                    createdAt: serverTimestamp(),
+                    priority: 'high'
+                });
+                count++;
+            });
+            await batch.commit();
+        }
+
+        showToast(`🚀 Global blast delivered instantly to ${count} users!`, 'success');
+
+        // 3. Fire-and-forget push trigger to backend to wake up closed devices via Google FCM
+        const blastBackendUrl = window.NPC_BACKEND_URL || "https://npc-secure-backend.onrender.com";
+        fetch(`${blastBackendUrl}/send-blast`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, body })
+        }).then(res => res.json()).then(data => {
+            console.log('[PUSH BLAST DISPATCH RESULT]', data);
+        }).catch(err => {
+            console.warn('[PUSH BLAST BACKGROUND WARNING]', err);
+        });
+
+        document.getElementById('globalNotifTitle').value = '';
+        document.getElementById('globalNotifMsg').value = '';
+    } catch (err) {
+        console.error("Error sending broadcast:", err);
+        showToast('Error sending broadcast: ' + err.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = 'Blast to All Users 🚀';
+        }
+    }
+};
+
+// ==========================================
+// 🚀 GLOBAL ADMIN ACTION INTERCEPTOR (LOGGING)
+// Automatically wraps all major UI actions to log them to the Admin Console
+// ==========================================
+(function () {
+    const ACTION_FUNCTIONS = [
+        "walletRefundTransaction", "resolveWithdrawal", "removeApplication",
+        "viewStatusModal", "saveRoomDetails", "openNotifyModal", "sendTeamNotification",
+        "viewApplicationDetails", "viewRejectedDetails", "approveUpcoming",
+        "openRejectUpcomingModal", "confirmRejectUpcoming", "removeUpcoming",
+        "adminLogin", "logout", "addTournament", "deleteTournament",
+        "markTournamentCompleted", "addCalendarEvent", "deleteCalendarEvent",
+        "editCalendarEvent", "updateCalendarEvent", "executeGlobalSearch",
+        "searchTeamByCode", "openTeamDetailsModal", "openGlobalMessageModal",
+        "sendGlobalTournamentMessage", "openGlobalRoomBlast", "sendGlobalRoomBlast",
+        "openChangeRequestReview", "allowChangeRequest", "rejectChangeRequest",
+        "kickTeamFromSlot", "promoteFromWaitlist", "openAdminReviewModal",
+        "handleReviewDecision", "sendGlobalNotification", "moveToWaitlist", "deleteSlot",
+        "openPayoutModal", "processPayout", "saveLeaderboardRow", "saveAllLeaderboardRows",
+        "clearLeaderboard", "showUserAnalyticsDashboard", "saveAllTeamRankings",
+        "openRewardModal", "submitReward", "runV2DataMigration", "deleteUserDoc",
+        "openPostponeModal", "submitPostpone", "openEditTimingModal", "submitEditTiming",
+        "openEditTournamentModal", "submitEditTournament"
+    ];
+
+    const originalFns = {};
+    ACTION_FUNCTIONS.forEach(fn => {
+        if (typeof window[fn] === 'function') {
+            originalFns[fn] = window[fn];
+            window[fn] = async function (...args) {
+                // Determine user-friendly action name
+                const humanName = fn.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+
+                console.info(`[ACTION] Triggered '${humanName}'`);
+                try {
+                    const res = await originalFns[fn].apply(this, args);
+
+                    // Only log success for state-changing operations
+                    if (fn.match(/^(delete|remove|submit|save|approve|reject|send|update|add|mark|process|clear|kick|promote|allow)/)) {
+                        console.info(`[SUCCESS] '${humanName}' completed successfully.`);
+                    }
+                    return res;
+                } catch (err) {
+                    console.error(`[ERROR] '${humanName}' failed:`, err.message || err);
+                    throw err;
+                }
+            };
+        }
+    });
+})();
+
+
+// ============================================================================
+//  HERO BANNER & SHOWCASE MANAGEMENT SYSTEM
+// ============================================================================
+
+window.handleMediaTypeChange = function () {
+    const type = document.getElementById("bannerMediaType")?.value || "image";
+    const fileInput = document.getElementById("bannerFileInput");
+    if (fileInput) {
+        fileInput.accept = type === "video" ? "video/*" : "image/*";
+    }
+    const imgEl = document.getElementById("bannerImgPreview");
+    const vidEl = document.getElementById("bannerVideoPreview");
+    if (type === "video") {
+        if (imgEl) imgEl.style.display = "none";
+        if (vidEl && vidEl.src) vidEl.style.display = "block";
+    } else {
+        if (vidEl) vidEl.style.display = "none";
+        if (imgEl && imgEl.src) imgEl.style.display = "block";
+    }
+};
+
+window.handleBannerFileSelect = function (event) {
+    const file = event.target.files?.[0];
+    const previewContainer = document.getElementById("bannerPreviewContainer");
+    const imgPreview = document.getElementById("bannerImgPreview");
+    const vidPreview = document.getElementById("bannerVideoPreview");
+    const type = document.getElementById("bannerMediaType")?.value || "image";
+
+    if (!file) {
+        if (previewContainer) previewContainer.style.display = "none";
+        return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    if (previewContainer) previewContainer.style.display = "block";
+
+    if (type === "video" || file.type.startsWith("video/")) {
+        if (imgPreview) imgPreview.style.display = "none";
+        if (vidPreview) {
+            vidPreview.src = objectUrl;
+            vidPreview.style.display = "block";
+        }
+    } else {
+        if (vidPreview) vidPreview.style.display = "none";
+        if (imgPreview) {
+            imgPreview.src = objectUrl;
+            imgPreview.style.display = "block";
+        }
+    }
+};
+
+window.resetBannerForm = function () {
+    const editIdEl = document.getElementById("bannerEditId");
+    if (editIdEl) editIdEl.value = "";
+
+    const titleEl = document.getElementById("bannerFormTitle");
+    if (titleEl) titleEl.textContent = "+ Add New Hero Banner";
+
+    const saveBtn = document.getElementById("saveBannerBtn");
+    if (saveBtn) saveBtn.textContent = "💾 Save & Publish Banner";
+
+    document.getElementById("bannerTagInput").value = "FEATURED TOURNAMENT";
+    document.getElementById("bannerMediaType").value = "image";
+    document.getElementById("bannerMediaUrl").value = "";
+    document.getElementById("bannerFileInput").value = "";
+    document.getElementById("bannerHeadingInput").value = "";
+    document.getElementById("bannerSubtextInput").value = "";
+    document.getElementById("bannerBtnTextInput").value = "Explore Our Socials";
+    document.getElementById("bannerOrderInput").value = "1";
+    document.getElementById("bannerActiveInput").checked = true;
+
+    const previewContainer = document.getElementById("bannerPreviewContainer");
+    if (previewContainer) previewContainer.style.display = "none";
+    const imgPreview = document.getElementById("bannerImgPreview");
+    if (imgPreview) { imgPreview.src = ""; imgPreview.style.display = "none"; }
+    const vidPreview = document.getElementById("bannerVideoPreview");
+    if (vidPreview) { vidPreview.src = ""; vidPreview.style.display = "none"; }
+
+    const progressEl = document.getElementById("bannerUploadProgress");
+    if (progressEl) progressEl.style.display = "none";
+};
+
+window.saveHeroBanner = async function () {
+    const editId = document.getElementById("bannerEditId")?.value.trim();
+    const tag = document.getElementById("bannerTagInput")?.value.trim() || "LIVE PLATFORM";
+    const type = document.getElementById("bannerMediaType")?.value || "image";
+    let mediaUrl = document.getElementById("bannerMediaUrl")?.value.trim();
+    const file = document.getElementById("bannerFileInput")?.files?.[0];
+    const heading = document.getElementById("bannerHeadingInput")?.value.trim();
+    const subtext = document.getElementById("bannerSubtextInput")?.value.trim();
+    const btnText = document.getElementById("bannerBtnTextInput")?.value.trim() || "Explore Our Socials";
+    const order = parseInt(document.getElementById("bannerOrderInput")?.value, 10) || 1;
+    const active = document.getElementById("bannerActiveInput")?.checked ?? true;
+
+    if (!heading) {
+        showToast("Please enter a heading/title for this banner.", "warning");
+        return;
+    }
+
+    const progressEl = document.getElementById("bannerUploadProgress");
+    const saveBtn = document.getElementById("saveBannerBtn");
+
+    try {
+        if (saveBtn) saveBtn.disabled = true;
+
+        // If file provided, upload to Firebase Storage
+        if (file) {
+            if (progressEl) {
+                progressEl.style.display = "block";
+                progressEl.textContent = `Uploading ${file.name} to Storage...`;
+            }
+            const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+            const storagePath = `banners/${Date.now()}_${cleanFileName}`;
+            const fileRef = ref(storage, storagePath);
+            await uploadBytes(fileRef, file);
+            mediaUrl = await getDownloadURL(fileRef);
+        }
+
+        if (!mediaUrl) {
+            showToast("Please provide a media URL or upload an image/video file.", "warning");
+            if (saveBtn) saveBtn.disabled = false;
+            if (progressEl) progressEl.style.display = "none";
+            return;
+        }
+
+        const bannerData = {
+            tag: tag.toUpperCase(),
+            type: type,
+            url: mediaUrl,
+            heading: heading,
+            subtext: subtext || "",
+            btnText: btnText,
+            order: Number(order),
+            active: Boolean(active),
+            updatedAt: serverTimestamp()
+        };
+
+        if (editId) {
+            await updateDoc(doc(db, "hero_banners", editId), bannerData);
+            showToast("Hero banner updated successfully!", "success");
+        } else {
+            bannerData.createdAt = serverTimestamp();
+            await addDoc(collection(db, "hero_banners"), bannerData);
+            showToast("Hero banner published to homepage!", "success");
+        }
+
+        window.resetBannerForm();
+        window.loadAdminBanners();
+    } catch (err) {
+        console.error("Error saving banner:", err);
+        showToast("Failed to save banner: " + (err.message || err), "error");
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+        if (progressEl) progressEl.style.display = "none";
+    }
+};
+
+window.loadAdminBanners = async function () {
+    const container = document.getElementById("adminBannersList");
+    if (!container) return;
+
+    try {
+        const q = query(collection(db, "hero_banners"), orderBy("order", "asc"));
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) {
+            container.innerHTML = `
+                <div style="grid-column: 1 / -1; padding: 30px; text-align: center; background: #121824; border-radius: 8px; border: 1px dashed #333;">
+                    <p style="color: #aaa; margin-bottom: 12px; font-size: 14px;">No custom banners found in database. The homepage is currently showing fallback default banners.</p>
+                    <button onclick="window.seedDefaultBanners()" style="background: #00ff88; color: #000; font-weight: bold; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">
+                        ⚡ Populate 4 Starter Banners Now
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        let html = "";
+        snapshot.forEach((docSnap) => {
+            const d = { id: docSnap.id, ...docSnap.data() };
+            const isActive = d.active !== false;
+
+            html += `
+                <div style="background: #141c2b; border: 1px solid ${isActive ? '#1f2d47' : '#3a2020'}; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column;">
+                    <div style="position: relative; height: 160px; background: #000; overflow: hidden;">
+                        ${d.type === 'video' 
+                            ? `<video src="${d.url}" controls muted style="width:100%; height:100%; object-fit:cover;"></video>`
+                            : `<img src="${d.url}" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='https://via.placeholder.com/400x200?text=Invalid+Image+URL'">`
+                        }
+                        <span style="position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.75); color:#00ff88; border:1px solid #00ff88; font-size:10px; font-weight:bold; padding:3px 8px; border-radius:4px; letter-spacing:1px;">
+                            ${d.tag || 'BANNER'}
+                        </span>
+                        <span style="position:absolute; top:10px; right:10px; background:${isActive ? '#00cc66' : '#cc3333'}; color:#fff; font-size:10px; font-weight:bold; padding:3px 8px; border-radius:4px;">
+                            ${isActive ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
+                    </div>
+
+                    <div style="padding: 14px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                                <h4 style="margin:0 0 6px 0; color:#fff; font-size:14px; line-height:1.3;">${d.heading || 'Untitled Banner'}</h4>
+                                <span style="background:#222; color:#aaa; font-size:11px; padding:2px 6px; border-radius:4px; white-space:nowrap;">Priority #${d.order || 1}</span>
+                            </div>
+                            <p style="margin:0 0 10px 0; color:#888; font-size:12px; line-height:1.4;">${d.subtext || 'No description'}</p>
+                            <div style="font-size:11px; color:#555; word-break:break-all; margin-bottom:12px;">Type: <strong style="color:#aaa;">${d.type?.toUpperCase()}</strong></div>
+                        </div>
+
+                        <div style="display:flex; gap:8px; border-top:1px solid #222; padding-top:10px;">
+                            <button onclick="window.editHeroBanner('${d.id}')" style="flex:1; background:#25334d; border:none; color:#3b82f6; padding:8px 0; border-radius:4px; font-weight:bold; font-size:12px; cursor:pointer;">
+                                ✏️ Edit
+                            </button>
+                            <button onclick="window.toggleHeroBannerStatus('${d.id}', ${isActive})" style="flex:1; background:#222; border:1px solid #444; color:${isActive ? '#ffaa00' : '#00ff88'}; padding:8px 0; border-radius:4px; font-size:12px; cursor:pointer;">
+                                ${isActive ? 'Disable' : 'Enable'}
+                            </button>
+                            <button onclick="window.deleteHeroBanner('${d.id}')" style="flex:1; background:rgba(255,68,68,0.15); border:1px solid #ff4444; color:#ff4444; padding:8px 0; border-radius:4px; font-size:12px; cursor:pointer;">
+                                🗑️ Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    } catch (err) {
+        console.error("Error loading banners:", err);
+        container.innerHTML = `<div style="grid-column: 1 / -1; color:#ff4444; padding:20px; text-align:center;">Failed to load banners: ${err.message}</div>`;
+    }
+};
+
+window.editHeroBanner = async function (id) {
+    try {
+        const docRef = doc(db, "hero_banners", id);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) return;
+
+        const d = docSnap.data();
+        document.getElementById("bannerEditId").value = id;
+        document.getElementById("bannerFormTitle").textContent = "✏️ Edit Hero Banner";
+        document.getElementById("saveBannerBtn").textContent = "💾 Update & Save Banner";
+
+        document.getElementById("bannerTagInput").value = d.tag || "";
+        document.getElementById("bannerMediaType").value = d.type || "image";
+        document.getElementById("bannerMediaUrl").value = d.url || "";
+        document.getElementById("bannerHeadingInput").value = d.heading || "";
+        document.getElementById("bannerSubtextInput").value = d.subtext || "";
+        document.getElementById("bannerBtnTextInput").value = d.btnText || "Explore Our Socials";
+        document.getElementById("bannerOrderInput").value = d.order || 1;
+        document.getElementById("bannerActiveInput").checked = d.active !== false;
+
+        // Show preview
+        const previewContainer = document.getElementById("bannerPreviewContainer");
+        const imgPreview = document.getElementById("bannerImgPreview");
+        const vidPreview = document.getElementById("bannerVideoPreview");
+
+        if (previewContainer) previewContainer.style.display = "block";
+        if (d.type === "video") {
+            if (imgPreview) imgPreview.style.display = "none";
+            if (vidPreview) { vidPreview.src = d.url; vidPreview.style.display = "block"; }
+        } else {
+            if (vidPreview) vidPreview.style.display = "none";
+            if (imgPreview) { imgPreview.src = d.url; imgPreview.style.display = "block"; }
+        }
+
+        // Scroll to form
+        document.getElementById("bannersSection")?.scrollIntoView({ behavior: "smooth" });
+    } catch (err) {
+        showToast("Error loading banner for edit: " + err.message, "error");
+    }
+};
+
+window.deleteHeroBanner = async function (id) {
+    if (!confirm("Are you sure you want to delete this banner from the homepage?")) return;
+    try {
+        await deleteDoc(doc(db, "hero_banners", id));
+        showToast("Banner deleted successfully!", "success");
+        window.loadAdminBanners();
+    } catch (err) {
+        showToast("Failed to delete banner: " + err.message, "error");
+    }
+};
+
+window.toggleHeroBannerStatus = async function (id, currentActive) {
+    try {
+        await updateDoc(doc(db, "hero_banners", id), {
+            active: !currentActive,
+            updatedAt: serverTimestamp()
+        });
+        showToast(`Banner ${currentActive ? 'disabled' : 'enabled'}!`, "success");
+        window.loadAdminBanners();
+    } catch (err) {
+        showToast("Failed to update banner status: " + err.message, "error");
+    }
+};
+
+window.seedDefaultBanners = async function () {
+    if (!confirm("Seed or restore the 4 starter esports banners to the database?")) return;
+    const defaults = [
+        {
+            tag: "LIVE PLATFORM",
+            type: "image",
+            url: "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1920&q=80",
+            heading: "Daily Competitive Custom Rooms",
+            subtext: "Join Top BGMI & Free Fire Squads",
+            btnText: "Explore Our Socials",
+            order: 1,
+            active: true
+        },
+        {
+            tag: "MEGA TOURNAMENT",
+            type: "image",
+            url: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1920&q=80",
+            heading: "Grand Championship Arena • ₹50,000 Prize Pool",
+            subtext: "Compete for the Title & Instant Cash Rewards",
+            btnText: "Explore Our Socials",
+            order: 2,
+            active: true
+        },
+        {
+            tag: "INSTANT CASHOUT",
+            type: "image",
+            url: "https://images.unsplash.com/photo-1560253023-3ec5d502959f?auto=format&fit=crop&w=1920&q=80",
+            heading: "Automated Room Verification & Fast Payouts",
+            subtext: "Direct UPI, Paytm & Bank Transfers",
+            btnText: "Explore Our Socials",
+            order: 3,
+            active: true
+        },
+        {
+            tag: "PRO SHOWCASE",
+            type: "video",
+            url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+            heading: "Stream Highlights & Pro Tournaments",
+            subtext: "Watch Live Broadcasts & Tournament Recaps",
+            btnText: "Explore Our Socials",
+            order: 4,
+            active: true
+        }
+    ];
+
+    try {
+        const batch = writeBatch(db);
+        defaults.forEach((b, idx) => {
+            const bRef = doc(db, "hero_banners", `starter_banner_${idx + 1}`);
+            batch.set(bRef, {
+                ...b,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+        });
+        await batch.commit();
+        showToast("Successfully seeded 4 starter banners into Firestore!", "success");
+        window.loadAdminBanners();
+    } catch (err) {
+        showToast("Error seeding banners: " + err.message, "error");
+    }
+};

@@ -46,7 +46,8 @@
 //      confirmationReceived (true)         → stage 5
 // =============================================================================
 
-import { db, auth } from "./firebase.js";
+import { db, auth, storage } from "./firebase.js";
+import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
 
 // ===============================
 // ADMIN CONSOLE LOG SYSTEM
@@ -381,9 +382,13 @@ window.showTab = function (tabName) {
         withdrawals: "withdrawalsSection",
         registrations: "registrationsSection",
         qr: "qrSection",
+        banners: "bannersSection",
     };
     document.getElementById(sectionMap[tabName])?.classList.add("active");
 
+    if (tabName === "banners") {
+        window.loadAdminBanners();
+    }
     if (tabName === "verifications") {
         loadVerifications();
     } else {
@@ -6024,3 +6029,362 @@ window.sendGlobalNotification = async function () {
         }
     });
 })();
+
+
+// ============================================================================
+//  HERO BANNER & SHOWCASE MANAGEMENT SYSTEM
+// ============================================================================
+
+window.handleMediaTypeChange = function () {
+    const type = document.getElementById("bannerMediaType")?.value || "image";
+    const fileInput = document.getElementById("bannerFileInput");
+    if (fileInput) {
+        fileInput.accept = type === "video" ? "video/*" : "image/*";
+    }
+    const imgEl = document.getElementById("bannerImgPreview");
+    const vidEl = document.getElementById("bannerVideoPreview");
+    if (type === "video") {
+        if (imgEl) imgEl.style.display = "none";
+        if (vidEl && vidEl.src) vidEl.style.display = "block";
+    } else {
+        if (vidEl) vidEl.style.display = "none";
+        if (imgEl && imgEl.src) imgEl.style.display = "block";
+    }
+};
+
+window.handleBannerFileSelect = function (event) {
+    const file = event.target.files?.[0];
+    const previewContainer = document.getElementById("bannerPreviewContainer");
+    const imgPreview = document.getElementById("bannerImgPreview");
+    const vidPreview = document.getElementById("bannerVideoPreview");
+    const type = document.getElementById("bannerMediaType")?.value || "image";
+
+    if (!file) {
+        if (previewContainer) previewContainer.style.display = "none";
+        return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    if (previewContainer) previewContainer.style.display = "block";
+
+    if (type === "video" || file.type.startsWith("video/")) {
+        if (imgPreview) imgPreview.style.display = "none";
+        if (vidPreview) {
+            vidPreview.src = objectUrl;
+            vidPreview.style.display = "block";
+        }
+    } else {
+        if (vidPreview) vidPreview.style.display = "none";
+        if (imgPreview) {
+            imgPreview.src = objectUrl;
+            imgPreview.style.display = "block";
+        }
+    }
+};
+
+window.resetBannerForm = function () {
+    const editIdEl = document.getElementById("bannerEditId");
+    if (editIdEl) editIdEl.value = "";
+
+    const titleEl = document.getElementById("bannerFormTitle");
+    if (titleEl) titleEl.textContent = "+ Add New Hero Banner";
+
+    const saveBtn = document.getElementById("saveBannerBtn");
+    if (saveBtn) saveBtn.textContent = "💾 Save & Publish Banner";
+
+    document.getElementById("bannerTagInput").value = "FEATURED TOURNAMENT";
+    document.getElementById("bannerMediaType").value = "image";
+    document.getElementById("bannerMediaUrl").value = "";
+    document.getElementById("bannerFileInput").value = "";
+    document.getElementById("bannerHeadingInput").value = "";
+    document.getElementById("bannerSubtextInput").value = "";
+    document.getElementById("bannerBtnTextInput").value = "Explore Our Socials";
+    document.getElementById("bannerOrderInput").value = "1";
+    document.getElementById("bannerActiveInput").checked = true;
+
+    const previewContainer = document.getElementById("bannerPreviewContainer");
+    if (previewContainer) previewContainer.style.display = "none";
+    const imgPreview = document.getElementById("bannerImgPreview");
+    if (imgPreview) { imgPreview.src = ""; imgPreview.style.display = "none"; }
+    const vidPreview = document.getElementById("bannerVideoPreview");
+    if (vidPreview) { vidPreview.src = ""; vidPreview.style.display = "none"; }
+
+    const progressEl = document.getElementById("bannerUploadProgress");
+    if (progressEl) progressEl.style.display = "none";
+};
+
+window.saveHeroBanner = async function () {
+    const editId = document.getElementById("bannerEditId")?.value.trim();
+    const tag = document.getElementById("bannerTagInput")?.value.trim() || "LIVE PLATFORM";
+    const type = document.getElementById("bannerMediaType")?.value || "image";
+    let mediaUrl = document.getElementById("bannerMediaUrl")?.value.trim();
+    const file = document.getElementById("bannerFileInput")?.files?.[0];
+    const heading = document.getElementById("bannerHeadingInput")?.value.trim();
+    const subtext = document.getElementById("bannerSubtextInput")?.value.trim();
+    const btnText = document.getElementById("bannerBtnTextInput")?.value.trim() || "Explore Our Socials";
+    const order = parseInt(document.getElementById("bannerOrderInput")?.value, 10) || 1;
+    const active = document.getElementById("bannerActiveInput")?.checked ?? true;
+
+    if (!heading) {
+        showToast("Please enter a heading/title for this banner.", "warning");
+        return;
+    }
+
+    const progressEl = document.getElementById("bannerUploadProgress");
+    const saveBtn = document.getElementById("saveBannerBtn");
+
+    try {
+        if (saveBtn) saveBtn.disabled = true;
+
+        // If file provided, upload to Firebase Storage
+        if (file) {
+            if (progressEl) {
+                progressEl.style.display = "block";
+                progressEl.textContent = `Uploading ${file.name} to Storage...`;
+            }
+            const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+            const storagePath = `banners/${Date.now()}_${cleanFileName}`;
+            const fileRef = ref(storage, storagePath);
+            await uploadBytes(fileRef, file);
+            mediaUrl = await getDownloadURL(fileRef);
+        }
+
+        if (!mediaUrl) {
+            showToast("Please provide a media URL or upload an image/video file.", "warning");
+            if (saveBtn) saveBtn.disabled = false;
+            if (progressEl) progressEl.style.display = "none";
+            return;
+        }
+
+        const bannerData = {
+            tag: tag.toUpperCase(),
+            type: type,
+            url: mediaUrl,
+            heading: heading,
+            subtext: subtext || "",
+            btnText: btnText,
+            order: Number(order),
+            active: Boolean(active),
+            updatedAt: serverTimestamp()
+        };
+
+        if (editId) {
+            await updateDoc(doc(db, "hero_banners", editId), bannerData);
+            showToast("Hero banner updated successfully!", "success");
+        } else {
+            bannerData.createdAt = serverTimestamp();
+            await addDoc(collection(db, "hero_banners"), bannerData);
+            showToast("Hero banner published to homepage!", "success");
+        }
+
+        window.resetBannerForm();
+        window.loadAdminBanners();
+    } catch (err) {
+        console.error("Error saving banner:", err);
+        showToast("Failed to save banner: " + (err.message || err), "error");
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+        if (progressEl) progressEl.style.display = "none";
+    }
+};
+
+window.loadAdminBanners = async function () {
+    const container = document.getElementById("adminBannersList");
+    if (!container) return;
+
+    try {
+        const q = query(collection(db, "hero_banners"), orderBy("order", "asc"));
+        const snapshot = await getDocs(q);
+
+        if (snapshot.empty) {
+            container.innerHTML = `
+                <div style="grid-column: 1 / -1; padding: 30px; text-align: center; background: #121824; border-radius: 8px; border: 1px dashed #333;">
+                    <p style="color: #aaa; margin-bottom: 12px; font-size: 14px;">No custom banners found in database. The homepage is currently showing fallback default banners.</p>
+                    <button onclick="window.seedDefaultBanners()" style="background: #00ff88; color: #000; font-weight: bold; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">
+                        ⚡ Populate 4 Starter Banners Now
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        let html = "";
+        snapshot.forEach((docSnap) => {
+            const d = { id: docSnap.id, ...docSnap.data() };
+            const isActive = d.active !== false;
+
+            html += `
+                <div style="background: #141c2b; border: 1px solid ${isActive ? '#1f2d47' : '#3a2020'}; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column;">
+                    <div style="position: relative; height: 160px; background: #000; overflow: hidden;">
+                        ${d.type === 'video' 
+                            ? `<video src="${d.url}" controls muted style="width:100%; height:100%; object-fit:cover;"></video>`
+                            : `<img src="${d.url}" style="width:100%; height:100%; object-fit:cover;" onerror="this.src='https://via.placeholder.com/400x200?text=Invalid+Image+URL'">`
+                        }
+                        <span style="position:absolute; top:10px; left:10px; background:rgba(0,0,0,0.75); color:#00ff88; border:1px solid #00ff88; font-size:10px; font-weight:bold; padding:3px 8px; border-radius:4px; letter-spacing:1px;">
+                            ${d.tag || 'BANNER'}
+                        </span>
+                        <span style="position:absolute; top:10px; right:10px; background:${isActive ? '#00cc66' : '#cc3333'}; color:#fff; font-size:10px; font-weight:bold; padding:3px 8px; border-radius:4px;">
+                            ${isActive ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
+                    </div>
+
+                    <div style="padding: 14px; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
+                        <div>
+                            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+                                <h4 style="margin:0 0 6px 0; color:#fff; font-size:14px; line-height:1.3;">${d.heading || 'Untitled Banner'}</h4>
+                                <span style="background:#222; color:#aaa; font-size:11px; padding:2px 6px; border-radius:4px; white-space:nowrap;">Priority #${d.order || 1}</span>
+                            </div>
+                            <p style="margin:0 0 10px 0; color:#888; font-size:12px; line-height:1.4;">${d.subtext || 'No description'}</p>
+                            <div style="font-size:11px; color:#555; word-break:break-all; margin-bottom:12px;">Type: <strong style="color:#aaa;">${d.type?.toUpperCase()}</strong></div>
+                        </div>
+
+                        <div style="display:flex; gap:8px; border-top:1px solid #222; padding-top:10px;">
+                            <button onclick="window.editHeroBanner('${d.id}')" style="flex:1; background:#25334d; border:none; color:#3b82f6; padding:8px 0; border-radius:4px; font-weight:bold; font-size:12px; cursor:pointer;">
+                                ✏️ Edit
+                            </button>
+                            <button onclick="window.toggleHeroBannerStatus('${d.id}', ${isActive})" style="flex:1; background:#222; border:1px solid #444; color:${isActive ? '#ffaa00' : '#00ff88'}; padding:8px 0; border-radius:4px; font-size:12px; cursor:pointer;">
+                                ${isActive ? 'Disable' : 'Enable'}
+                            </button>
+                            <button onclick="window.deleteHeroBanner('${d.id}')" style="flex:1; background:rgba(255,68,68,0.15); border:1px solid #ff4444; color:#ff4444; padding:8px 0; border-radius:4px; font-size:12px; cursor:pointer;">
+                                🗑️ Delete
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+
+        container.innerHTML = html;
+    } catch (err) {
+        console.error("Error loading banners:", err);
+        container.innerHTML = `<div style="grid-column: 1 / -1; color:#ff4444; padding:20px; text-align:center;">Failed to load banners: ${err.message}</div>`;
+    }
+};
+
+window.editHeroBanner = async function (id) {
+    try {
+        const docRef = doc(db, "hero_banners", id);
+        const docSnap = await getDoc(docRef);
+        if (!docSnap.exists()) return;
+
+        const d = docSnap.data();
+        document.getElementById("bannerEditId").value = id;
+        document.getElementById("bannerFormTitle").textContent = "✏️ Edit Hero Banner";
+        document.getElementById("saveBannerBtn").textContent = "💾 Update & Save Banner";
+
+        document.getElementById("bannerTagInput").value = d.tag || "";
+        document.getElementById("bannerMediaType").value = d.type || "image";
+        document.getElementById("bannerMediaUrl").value = d.url || "";
+        document.getElementById("bannerHeadingInput").value = d.heading || "";
+        document.getElementById("bannerSubtextInput").value = d.subtext || "";
+        document.getElementById("bannerBtnTextInput").value = d.btnText || "Explore Our Socials";
+        document.getElementById("bannerOrderInput").value = d.order || 1;
+        document.getElementById("bannerActiveInput").checked = d.active !== false;
+
+        // Show preview
+        const previewContainer = document.getElementById("bannerPreviewContainer");
+        const imgPreview = document.getElementById("bannerImgPreview");
+        const vidPreview = document.getElementById("bannerVideoPreview");
+
+        if (previewContainer) previewContainer.style.display = "block";
+        if (d.type === "video") {
+            if (imgPreview) imgPreview.style.display = "none";
+            if (vidPreview) { vidPreview.src = d.url; vidPreview.style.display = "block"; }
+        } else {
+            if (vidPreview) vidPreview.style.display = "none";
+            if (imgPreview) { imgPreview.src = d.url; imgPreview.style.display = "block"; }
+        }
+
+        // Scroll to form
+        document.getElementById("bannersSection")?.scrollIntoView({ behavior: "smooth" });
+    } catch (err) {
+        showToast("Error loading banner for edit: " + err.message, "error");
+    }
+};
+
+window.deleteHeroBanner = async function (id) {
+    if (!confirm("Are you sure you want to delete this banner from the homepage?")) return;
+    try {
+        await deleteDoc(doc(db, "hero_banners", id));
+        showToast("Banner deleted successfully!", "success");
+        window.loadAdminBanners();
+    } catch (err) {
+        showToast("Failed to delete banner: " + err.message, "error");
+    }
+};
+
+window.toggleHeroBannerStatus = async function (id, currentActive) {
+    try {
+        await updateDoc(doc(db, "hero_banners", id), {
+            active: !currentActive,
+            updatedAt: serverTimestamp()
+        });
+        showToast(`Banner ${currentActive ? 'disabled' : 'enabled'}!`, "success");
+        window.loadAdminBanners();
+    } catch (err) {
+        showToast("Failed to update banner status: " + err.message, "error");
+    }
+};
+
+window.seedDefaultBanners = async function () {
+    if (!confirm("Seed or restore the 4 starter esports banners to the database?")) return;
+    const defaults = [
+        {
+            tag: "LIVE PLATFORM",
+            type: "image",
+            url: "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1920&q=80",
+            heading: "Daily Competitive Custom Rooms",
+            subtext: "Join Top BGMI & Free Fire Squads",
+            btnText: "Explore Our Socials",
+            order: 1,
+            active: true
+        },
+        {
+            tag: "MEGA TOURNAMENT",
+            type: "image",
+            url: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1920&q=80",
+            heading: "Grand Championship Arena • ₹50,000 Prize Pool",
+            subtext: "Compete for the Title & Instant Cash Rewards",
+            btnText: "Explore Our Socials",
+            order: 2,
+            active: true
+        },
+        {
+            tag: "INSTANT CASHOUT",
+            type: "image",
+            url: "https://images.unsplash.com/photo-1560253023-3ec5d502959f?auto=format&fit=crop&w=1920&q=80",
+            heading: "Automated Room Verification & Fast Payouts",
+            subtext: "Direct UPI, Paytm & Bank Transfers",
+            btnText: "Explore Our Socials",
+            order: 3,
+            active: true
+        },
+        {
+            tag: "PRO SHOWCASE",
+            type: "video",
+            url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+            heading: "Stream Highlights & Pro Tournaments",
+            subtext: "Watch Live Broadcasts & Tournament Recaps",
+            btnText: "Explore Our Socials",
+            order: 4,
+            active: true
+        }
+    ];
+
+    try {
+        const batch = writeBatch(db);
+        defaults.forEach((b, idx) => {
+            const bRef = doc(db, "hero_banners", `starter_banner_${idx + 1}`);
+            batch.set(bRef, {
+                ...b,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+        });
+        await batch.commit();
+        showToast("Successfully seeded 4 starter banners into Firestore!", "success");
+        window.loadAdminBanners();
+    } catch (err) {
+        showToast("Error seeding banners: " + err.message, "error");
+    }
+};

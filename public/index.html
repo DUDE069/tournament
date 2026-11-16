@@ -38,6 +38,7 @@
   <meta name="twitter:description" content="Official competitive platform for daily BGMI and Free Fire esports tournaments. Join custom rooms, compete with top squads, and win real cash prizes with instant withdrawals on NPC Esports.">
   <meta name="twitter:image" content="https://npc-tournament.onrender.com/images/og-preview.jpg">
   <link rel="stylesheet" href="css/style.css?v=1000018">
+  <link rel="stylesheet" href="css/hero-banner.css?v=1.0">
 
   <style>
     /* ══════════════════════════════════════════════════════
@@ -687,9 +688,84 @@
 
   <!-- ══ HERO ══════════════════════════════════════════════ -->
   <section class="hero" id="home">
-    <h2>Join Competitive Esports Tournaments</h2>
-    <p>Play. Compete. Win Rewards.</p>
-    <button class="join-btn" id="heroMainBtn" onclick="handleJoinNowTutorial()">How to Play</button>
+    <!-- Slideshow Background & Video Stage -->
+    <div class="hero-slider" id="heroSlider" aria-label="Featured Esports Banners">
+      <!-- Slide 1: Original Gaming Arena Gamer -->
+      <div class="hero-slide active" data-index="0">
+        <div class="hero-slide-bg" style="background-image: url('https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1920&q=80');"></div>
+        <div class="hero-slide-overlay"></div>
+        <div class="hero-slide-caption">
+          <span class="hero-slide-pill"><span class="live-dot"></span> LIVE PLATFORM</span>
+          <h3 class="hero-slide-heading">Daily Competitive Custom Rooms</h3>
+        </div>
+      </div>
+
+      <!-- Slide 2: Mega Championship Arena -->
+      <div class="hero-slide" data-index="1">
+        <div class="hero-slide-bg" style="background-image: url('https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1920&q=80');"></div>
+        <div class="hero-slide-overlay"></div>
+        <div class="hero-slide-caption">
+          <span class="hero-slide-pill">MEGA CHAMPIONSHIP</span>
+          <h3 class="hero-slide-heading">₹50,000 Grand Prize Pool Tournament</h3>
+        </div>
+      </div>
+
+      <!-- Slide 3: Instant Cashouts & Victory -->
+      <div class="hero-slide" data-index="2">
+        <div class="hero-slide-bg" style="background-image: url('https://images.unsplash.com/photo-1560253023-3ec5d502959f?auto=format&fit=crop&w=1920&q=80');"></div>
+        <div class="hero-slide-overlay"></div>
+        <div class="hero-slide-caption">
+          <span class="hero-slide-pill">INSTANT PAYOUTS</span>
+          <h3 class="hero-slide-heading">Automated Verification & Rapid Cashouts</h3>
+        </div>
+      </div>
+
+      <!-- Slide 4: High Action Video Loop -->
+      <div class="hero-slide video-slide" data-index="3">
+        <video class="hero-slide-video" autoplay muted loop playsinline poster="https://images.unsplash.com/photo-1538481199705-c710c4e965fc?auto=format&fit=crop&w=1920&q=80">
+          <source src="https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" type="video/mp4">
+        </video>
+        <div class="hero-slide-overlay"></div>
+        <div class="hero-slide-caption">
+          <span class="hero-slide-pill">PRO SHOWCASE</span>
+          <h3 class="hero-slide-heading">Live Match Broadcasts & Highlights</h3>
+        </div>
+      </div>
+    </div>
+
+    <!-- Countdown Timer & Showcase HUD -->
+    <div class="hero-timer-hud" id="heroTimerHud">
+      <div class="hero-timer-track">
+        <div class="hero-timer-progress" id="heroTimerProgress"></div>
+      </div>
+      <span class="hero-timer-label" id="heroTimerLabel">Banner showcase starts in <strong>5</strong>s</span>
+    </div>
+
+    <!-- Slide Indicators (Dots) -->
+    <div class="hero-indicators" id="heroIndicators">
+      <button class="hero-indicator-dot active" data-slide="0" aria-label="Slide 1"></button>
+      <button class="hero-indicator-dot" data-slide="1" aria-label="Slide 2"></button>
+      <button class="hero-indicator-dot" data-slide="2" aria-label="Slide 3"></button>
+      <button class="hero-indicator-dot" data-slide="3" aria-label="Slide 4"></button>
+    </div>
+
+    <!-- Slide Navigation Arrows -->
+    <button class="hero-arrow hero-arrow-prev" id="heroPrevBtn" aria-label="Previous Slide">‹</button>
+    <button class="hero-arrow hero-arrow-next" id="heroNextBtn" aria-label="Next Slide">›</button>
+
+    <!-- Main Content Stage (Text & Button animate smoothly to bottom corners after 5s) -->
+    <div class="hero-content-stage" id="heroContentStage">
+      <!-- Animated Text Box: Moves from center to Bottom-Left corner -->
+      <div class="hero-header-box" id="heroHeaderBox">
+        <h2 id="heroMainHeading">Join Competitive Esports Tournaments</h2>
+        <p id="heroMainSubtext">Play. Compete. Win Rewards.</p>
+      </div>
+
+      <!-- Animated Button Box: Moves from center to Bottom-Right corner -->
+      <div class="hero-btn-box" id="heroBtnBox">
+        <button class="join-btn" id="heroMainBtn" onclick="handleJoinNowTutorial()">Explore Our Socials</button>
+      </div>
+    </div>
   </section>
 
   <!-- ══ DOWNLOAD SECTION ═══════════════════════════════════ -->
@@ -1673,7 +1749,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <!-- Your App Scripts -->
-<script type="module" src="./js/main.js?v=1000018"></script>
+<script type="module" src="./js/main.js?v=1000019"></script>
 
 
 
@@ -1783,6 +1859,7 @@ document.addEventListener('DOMContentLoaded', () => {
     </div>
   </div>
   <script src="js/consent.js"></script>
+  <script type="module" src="js/hero-banner.js?v=2.0"></script>
 </body>
 </html>
 
