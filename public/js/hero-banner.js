@@ -2,15 +2,12 @@
  * NPC Esports - Hero Banner Showcase & Dynamic Slideshow Engine
  * -------------------------------------------------------------
  * Features:
- *  - 5-second initial countdown with smooth progress bar
- *  - Cinematic transition: Heading/Subtext -> Bottom-Left corner
- *                          Button ("Explore Our Socials") -> Bottom-Right corner
- *  - Full, unobstructed center stage for banner images and videos
- *  - Dynamic Firestore real-time sync with Admin Panel uploads
- *  - Touch swipe gestures for mobile users
- *  - Slideshow engine supporting both image & video slides
- *  - Interactive indicators, prev/next controls, pause on hover
- *  - Replay Intro button for instant demo re-testing
+ *  - Silent 5-second background countdown (zero HUD clutter)
+ *  - Smooth corner gliding animation: Title/Description -> Bottom-Left, Button -> Bottom-Right
+ *  - Dynamic Slide Text: Heading & Subtext cross-fade on every slide change to reflect the active banner
+ *  - Admin Panel synchronized: Media, Title, and Description entered by admin render live
+ *  - Mobile touch swipe navigation
+ *  - Unobstructed center stage for videos and images
  */
 
 import { db } from "./firebase.js";
@@ -24,27 +21,24 @@ const DEFAULT_BANNERS = [
     id: 'banner-gaming-arena',
     type: 'image',
     url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1920&q=80',
-    tag: 'LIVE PLATFORM',
-    heading: 'Daily Competitive Custom Rooms',
-    subtext: 'Join Top BGMI & Free Fire Squads',
+    heading: 'Join Competitive Esports Tournaments',
+    subtext: 'Play. Compete. Win Rewards.',
     btnText: 'Explore Our Socials'
   },
   {
     id: 'banner-championship',
     type: 'image',
     url: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1920&q=80',
-    tag: 'MEGA TOURNAMENT',
-    heading: 'Grand Championship Arena • ₹50,000 Prize Pool',
-    subtext: 'Compete for the Title & Instant Cash Rewards',
+    heading: 'BGMI & Free Fire Grand Championship',
+    subtext: 'Daily Squad Battles • ₹50,000 Grand Prize Pool',
     btnText: 'Explore Our Socials'
   },
   {
     id: 'banner-cashout',
     type: 'image',
     url: 'https://images.unsplash.com/photo-1560253023-3ec5d502959f?auto=format&fit=crop&w=1920&q=80',
-    tag: 'INSTANT CASHOUT',
     heading: 'Automated Room Verification & Fast Payouts',
-    subtext: 'Direct UPI, Paytm & Bank Transfers',
+    subtext: 'Direct UPI, Paytm & Bank Transfers with Zero Delay',
     btnText: 'Explore Our Socials'
   },
   {
@@ -52,60 +46,39 @@ const DEFAULT_BANNERS = [
     type: 'video',
     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
     poster: 'https://images.unsplash.com/photo-1538481199705-c710c4e965fc?auto=format&fit=crop&w=1920&q=80',
-    tag: 'PRO SHOWCASE',
     heading: 'Stream Highlights & Pro Tournaments',
-    subtext: 'Watch Live Broadcasts & Tournament Recaps',
+    subtext: 'Watch Live Broadcasts & Match Highlights',
     btnText: 'Explore Our Socials'
   }
 ];
 
-const INTRO_DELAY_MS = 5000;    // 5 seconds initial countdown before showcase starts
+const INTRO_DELAY_MS = 5000;    // 5 seconds silent background countdown before showcase starts
 const SLIDE_DURATION_MS = 6000; // 6 seconds per banner slide in showcase mode
 
 let currentSlideIndex = 0;
 let isShowcaseActive = false;
 let introTimerId = null;
-let introIntervalId = null;
 let slideIntervalId = null;
 let isHovered = false;
-let introStartTime = 0;
 let activeBanners = [...DEFAULT_BANNERS];
 
 // DOM Elements cache
-let heroSection, sliderContainer, timerHud, timerProgress, timerLabel, indicatorsContainer, prevBtn, nextBtn, demoReplayBtn;
+let heroSection, sliderContainer, indicatorsContainer, prevBtn, nextBtn, headingEl, subtextEl, heroBtn;
 
 function initHeroBannerEngine() {
   heroSection = document.getElementById('home');
   if (!heroSection) return;
 
   sliderContainer = document.getElementById('heroSlider');
-  timerHud = document.getElementById('heroTimerHud');
-  timerProgress = document.getElementById('heroTimerProgress');
-  timerLabel = document.getElementById('heroTimerLabel');
   indicatorsContainer = document.getElementById('heroIndicators');
   prevBtn = document.getElementById('heroPrevBtn');
   nextBtn = document.getElementById('heroNextBtn');
+  headingEl = document.getElementById('heroMainHeading');
+  subtextEl = document.getElementById('heroMainSubtext');
+  heroBtn = document.getElementById('heroMainBtn');
 
-  // Ensure hero button displays 'Explore Our Socials'
-  const heroBtn = document.getElementById('heroMainBtn');
   if (heroBtn) {
     heroBtn.textContent = 'Explore Our Socials';
-  }
-
-  // Create Replay button in HUD if not existing
-  if (timerHud && !document.getElementById('heroDemoReplayBtn')) {
-    demoReplayBtn = document.createElement('button');
-    demoReplayBtn.id = 'heroDemoReplayBtn';
-    demoReplayBtn.className = 'hero-demo-replay-btn';
-    demoReplayBtn.innerHTML = '↺ Replay Intro';
-    demoReplayBtn.title = 'Replay the 5s intro animation';
-    demoReplayBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      resetToInitialState();
-    });
-    timerHud.appendChild(demoReplayBtn);
-  } else {
-    demoReplayBtn = document.getElementById('heroDemoReplayBtn');
   }
 
   // Attach indicator click events
@@ -132,10 +105,13 @@ function initHeroBannerEngine() {
   heroSection.addEventListener('mouseenter', () => { isHovered = true; });
   heroSection.addEventListener('mouseleave', () => { isHovered = false; });
 
-  // Start real-time Firestore sync with Admin Panel
+  // Start real-time Firestore sync with Admin Panel hero_banners
   listenToFirestoreBanners();
 
-  // Start initial 5-second countdown
+  // Initialize initial banner text
+  updateSlideText(0);
+
+  // Start silent 5-second background countdown
   startIntroCountdown();
 }
 
@@ -159,12 +135,11 @@ function setupMobileTouchGestures() {
     const diffX = touchStartX - e.changedTouches[0].clientX;
     const diffY = touchStartY - e.changedTouches[0].clientY;
 
-    // Detect horizontal swipe (ignore vertical scrolling)
     if (Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY)) {
       if (diffX > 0) {
-        goToNextSlide(); // Swipe left -> Next slide
+        goToNextSlide();
       } else {
-        goToPrevSlide(); // Swipe right -> Previous slide
+        goToPrevSlide();
       }
       if (isShowcaseActive) startSlideShowLoop();
     }
@@ -172,63 +147,37 @@ function setupMobileTouchGestures() {
 }
 
 /**
- * Starts the initial 5-second countdown timer.
+ * Starts the silent 5-second background countdown timer.
+ * No visible HUD or progress bar is displayed.
  */
 function startIntroCountdown() {
-  clearInterval(introIntervalId);
   clearTimeout(introTimerId);
   clearInterval(slideIntervalId);
 
   isShowcaseActive = false;
   heroSection.classList.remove('hero-showcase-active');
 
-  if (timerProgress) timerProgress.style.width = '0%';
-  introStartTime = performance.now();
-
-  const updateTick = () => {
-    const elapsed = performance.now() - introStartTime;
-    const progress = Math.min(100, (elapsed / INTRO_DELAY_MS) * 100);
-    const remainingSeconds = Math.max(0, Math.ceil((INTRO_DELAY_MS - elapsed) / 1000));
-
-    if (timerProgress) {
-      timerProgress.style.width = `${progress}%`;
-    }
-    if (timerLabel) {
-      timerLabel.innerHTML = `Banner showcase starts in <strong style="color:#00ff88;">${remainingSeconds}</strong>s`;
-    }
-
-    if (elapsed >= INTRO_DELAY_MS) {
-      clearInterval(introIntervalId);
-      triggerShowcaseMode();
-    }
-  };
-
-  introIntervalId = setInterval(updateTick, 50);
+  introTimerId = setTimeout(() => {
+    triggerShowcaseMode();
+  }, INTRO_DELAY_MS);
 }
 
 /**
  * Triggers the transition into showcase mode:
  *  - Adds class .hero-showcase-active to .hero
- *  - CSS animates Heading -> Bottom-Left, Button -> Bottom-Right
+ *  - Heading/Subtext glides to Bottom-Left corner
+ *  - Button glides to Bottom-Right corner
+ *  - Center stage is 100% unobstructed
  *  - Slideshow starts auto-rotating
  */
 function triggerShowcaseMode() {
   isShowcaseActive = true;
   heroSection.classList.add('hero-showcase-active');
 
-  if (timerProgress) timerProgress.style.width = '100%';
-  updateHudSlideNumber();
-
-  // Play video on current slide if it is a video slide
   playActiveSlideVideo(currentSlideIndex);
-
-  // Start auto-advancing slides
   startSlideShowLoop();
 }
 
-/**
- * Starts periodic slideshow transition
- */
 function startSlideShowLoop() {
   clearInterval(slideIntervalId);
 
@@ -239,15 +188,32 @@ function startSlideShowLoop() {
   }, SLIDE_DURATION_MS);
 }
 
-function getTotalSlides() {
-  const slides = document.querySelectorAll('.hero-slide');
-  return slides.length || activeBanners.length || 4;
-}
+/**
+ * Smoothly updates the Title and Description in the bottom-left card
+ * to match the currently displayed banner slide (as entered in the Admin Panel)
+ */
+function updateSlideText(index) {
+  if (!headingEl || !subtextEl) return;
+  const banner = activeBanners[index];
+  if (!banner) return;
 
-function updateHudSlideNumber() {
-  if (timerLabel) {
-    timerLabel.innerHTML = `<span style="color:#00ff88;font-weight:700;">Showcase Active</span> • Slide <span id="heroCurrentSlideNum">${currentSlideIndex + 1}</span>/${getTotalSlides()}`;
-  }
+  const targetHeading = banner.heading || banner.title || 'Join Competitive Esports Tournaments';
+  const targetSubtext = banner.subtext || banner.description || 'Play. Compete. Win Rewards.';
+  const targetBtnText = banner.btnText || 'Explore Our Socials';
+
+  // Smooth cross-fade transition
+  headingEl.style.opacity = '0';
+  subtextEl.style.opacity = '0';
+
+  setTimeout(() => {
+    headingEl.textContent = targetHeading;
+    subtextEl.textContent = targetSubtext;
+    if (heroBtn && targetBtnText) {
+      heroBtn.textContent = targetBtnText;
+    }
+    headingEl.style.opacity = '1';
+    subtextEl.style.opacity = '1';
+  }, 220);
 }
 
 function goToSlide(index) {
@@ -275,7 +241,9 @@ function goToSlide(index) {
     }
   });
 
-  updateHudSlideNumber();
+  // Dynamically synchronize the Title & Description to match the active slide
+  updateSlideText(currentSlideIndex);
+
   playActiveSlideVideo(currentSlideIndex);
 }
 
@@ -347,7 +315,7 @@ function listenToFirestoreBanners() {
         }
       }
     }, (err) => {
-      console.debug("[Hero Banner] Firestore sync (using active defaults):", err);
+      console.debug("[Hero Banner] Firestore sync notice:", err);
     });
   } catch (e) {
     console.debug("[Hero Banner] Notice:", e);
@@ -373,10 +341,6 @@ function renderDynamicBanners(banners) {
             <source src="${b.url}" type="video/mp4">
           </video>
           <div class="hero-slide-overlay"></div>
-          <div class="hero-slide-caption">
-            <span class="hero-slide-pill"><span class="live-dot"></span> ${b.tag || 'PRO SHOWCASE'}</span>
-            <h3 class="hero-slide-heading">${b.heading || 'Live Tournament Showcase'}</h3>
-          </div>
         </div>
       `;
     } else {
@@ -384,10 +348,6 @@ function renderDynamicBanners(banners) {
         <div class="hero-slide ${isActive ? 'active' : ''}" data-index="${idx}">
           <div class="hero-slide-bg" style="background-image: url('${b.url}');"></div>
           <div class="hero-slide-overlay"></div>
-          <div class="hero-slide-caption">
-            <span class="hero-slide-pill"><span class="live-dot"></span> ${b.tag || 'FEATURED'}</span>
-            <h3 class="hero-slide-heading">${b.heading || 'Esports Tournament'}</h3>
-          </div>
         </div>
       `;
     }
@@ -404,7 +364,9 @@ function renderDynamicBanners(banners) {
     setupIndicatorEvents();
   }
 
-  updateHudSlideNumber();
+  // Update text with active slide data
+  updateSlideText(currentSlideIndex);
+
   if (isShowcaseActive) {
     playActiveSlideVideo(currentSlideIndex);
   }
