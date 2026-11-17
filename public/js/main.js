@@ -999,7 +999,7 @@ window.showTournamentInfo = function(event) {
                     <span style="font-size:20px;flex-shrink:0;margin-top:1px;">📲</span>
                     <div>
                         <p style="color:#ffd700;font-size:13px;font-weight:700;margin:0 0 3px;">Official Contact</p>
-                        <p style="color:#aaa;font-size:12px;margin:0;line-height:1.6;">For queries, disputes, or support — contact us directly via our <b style="color:#ffd700;">Instagram</b> or our official <b style="color:#ffd700;">Discount & Report</b> channel only.</p>
+                        <p style="color:#aaa;font-size:12px;margin:0;line-height:1.6;">For queries, disputes, or support — contact us directly via our <a href="https://www.instagram.com/npc_universe.esp?utm_source=ig_web_button_share_sheet&vrfl=ZDNlZDc0MzIxNw==" target="_blank" rel="noopener noreferrer" style="color:#ffd700;font-weight:bold;text-decoration:underline;">Instagram (@npc_universe.esp)</a> or our official <a href="https://discord.gg/y9bTnNVh3S" target="_blank" rel="noopener noreferrer" style="color:#5865F2;font-weight:bold;text-decoration:underline;">Discord Community</a> only.</p>
                     </div>
                 </div>
 
@@ -7560,6 +7560,10 @@ window.openPersonalProfile = function(...args) {
         <div style="display:flex; flex-direction:column; gap:10px;">
             <button onclick="openEditProfile()" style="background:#00ff88; color:#000; padding:14px; border:none; border-radius:8px; font-weight:bold; cursor:pointer;">✏️ Edit Profile</button>
             <button onclick="openChangePassword()" style="background:transparent; color:#fff; border:1px solid #333; padding:14px; border-radius:8px; cursor:pointer;">🔐 Change Password</button>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:2px;">
+                <button onclick="window.location.href='about.html'" style="background:#141414; color:#00ff88; border:1px solid rgba(0,255,136,0.3); padding:10px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">🛡️ About & Security</button>
+                <button onclick="window.location.href='privacy.html'" style="background:#141414; color:#aaa; border:1px solid #333; padding:10px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer;">📜 Privacy & Terms</button>
+            </div>
             <button onclick="logout()" style="background:rgba(255,68,68,0.1); color:#ff4444; border:1px solid #ff4444; padding:14px; border-radius:8px; cursor:pointer;">🚪 Logout</button>
         </div>
     `;

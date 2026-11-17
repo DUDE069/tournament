@@ -19,66 +19,91 @@
   <link rel="stylesheet" href="css/style.css">
   <style>
     body { background-color: #0a0a0a; padding: 40px 20px; max-width: 800px; margin: 0 auto; color: #ddd; font-family: 'Inter', sans-serif; line-height: 1.6; }
-    h1 { color: #00ff88; margin-bottom: 30px; font-size: 32px; }
-    h2 { color: #fff; margin-top: 30px; font-size: 20px; }
+    h1 { color: #00ff88; margin-bottom: 10px; font-size: 32px; }
+    h2 { color: #fff; margin-top: 30px; font-size: 20px; border-bottom: 1px solid #222; padding-bottom: 6px; }
     a.back-link { color: #3b82f6; text-decoration: none; display: inline-block; margin-bottom: 20px; font-weight: bold; }
     a.back-link:hover { text-decoration: underline; }
+    .badge { display: inline-block; background: rgba(0, 255, 136, 0.12); color: #00ff88; border: 1px solid rgba(0, 255, 136, 0.3); padding: 4px 10px; border-radius: 20px; font-size: 12px; margin-bottom: 20px; }
+    .card-box { background: #121212; border: 1px solid #262626; border-radius: 10px; padding: 18px 20px; margin: 16px 0; }
   </style>
 </head>
 <body>
   <a href="index.html" class="back-link">← Back to Home</a>
   
   <h1>Privacy Policy</h1>
-  <p><strong>Last Updated: September 2026</strong></p>
+  <div class="badge">Last Updated: November 2026</div>
 
-  <p>NPC's Esports Tournaments ("we," "our," or "us") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, and safeguard your information.</p>
+  <p>NPC's Esports Tournaments ("we," "our," or "us") is dedicated to protecting your personal data and respecting your privacy rights. This Privacy Policy details our data collection, processing, and storage practices under applicable laws including the Digital Personal Data Protection Act (DPDP Act), 2023 of India.</p>
 
   <h2>1. Information We Collect</h2>
   <ul>
-    <li><strong>Personal Information:</strong> Name, email address, phone number, and age (to verify 18+ requirement).</li>
-    <li><strong>Gaming Information:</strong> In-game usernames, player IDs, and team details.</li>
-    <li><strong>Financial Information:</strong> Basic withdrawal details (e.g., UPI ID). <strong>Note:</strong> We do not store complete banking details, credit card numbers, or passwords. All payments are securely processed through UPI networks directly to the NPC Admin Account.</li>
-    <li><strong>Technical Data:</strong> IP address, browser type, and device information.</li>
+    <li><strong>Personal Identifiers:</strong> Account nickname, email address, phone number, and verified age (strictly verifying 18+ requirement).</li>
+    <li><strong>In-Game Telemetry:</strong> In-game usernames, player UIDs (BGMI / Free Fire), team rosters, and match statistics.</li>
+    <li><strong>Financial Data:</strong> UPI ID provided strictly for processing withdrawal payouts. <strong>Note:</strong> We do not store complete bank account numbers, debit/credit card CVVs, or UPI PINs. All payments are verified directly through official UPI networks to the NPC Admin Account.</li>
+    <li><strong>Technical &amp; Device Information:</strong> IP address, browser type, operating system, and push notification tokens (if permitted).</li>
   </ul>
 
   <h2>2. How We Use Your Information</h2>
   <ul>
-    <li>To create and manage your account securely.</li>
-    <li>To organize amateur student tournaments, verify participant identities, and distribute winnings.</li>
-    <li>To process micro-transactions and facilitate withdrawals.</li>
-    <li>To communicate with you regarding tournament match rooms or customer support.</li>
+    <li>To securely authenticate your account and maintain tournament brackets.</li>
+    <li>To verify participant identities and enforce anti-cheat / fair play rules.</li>
+    <li>To process tournament registrations, prize pool allocations, and instant wallet withdrawals.</li>
+    <li>To broadcast match room details, schedule changes, and critical security notices.</li>
   </ul>
 
-  <h2>3. Information Sharing</h2>
-  <p>We do not sell your personal data. We may share information with:</p>
+  <h2>3. Information Sharing &amp; Third Parties</h2>
+  <p>We do not sell, rent, or trade your personal data. Data is shared exclusively with:</p>
   <ul>
-    <li><strong>Service Providers:</strong> Secure database and hosting providers (Firebase, Render).</li>
-    <li><strong>Legal Authorities:</strong> Only if explicitly required by law enforcement or to protect our platform against cheating, fraud, or anti-money laundering (AML) violations.</li>
+    <li><strong>Infrastructure Providers:</strong> Encrypted hosting and cloud database infrastructure (Firebase / Google Cloud, Render).</li>
+    <li><strong>Statutory Authorities:</strong> Disclosed only when strictly mandated by legal subpoenas, court orders, or law enforcement to investigate cheating, financial fraud, or AML violations.</li>
   </ul>
 
-  <h2>4. Data Security</h2>
-  <p>We implement industry-standard database security measures (Firestore secure rules) to protect your personal and financial data from unauthorized access or disclosure.</p>
+  <h2>4. Data Security Standards</h2>
+  <div class="card-box">
+    <p>We implement rigorous multi-layered security controls to protect player information:</p>
+    <ul>
+      <li><strong>Encryption in Transit &amp; at Rest:</strong> All web communication uses industry-standard TLS/HTTPS protocols with modern cipher suites.</li>
+      <li><strong>Database Access Matrices:</strong> Cloud Firestore security rules strictly isolate player documents, preventing unauthorized cross-user reads or tampering.</li>
+      <li><strong>Zero Sensitive Financial Data:</strong> No payment passwords, PINs, or card credentials ever traverse or get stored on our servers.</li>
+      <li><strong>No External Middlemen:</strong> All operations are handled solely through our verified portal and official admin channel.</li>
+    </ul>
+  </div>
 
   <h2>5. Rights Under the DPDP Act 2023 (India)</h2>
-  <p>In compliance with the Digital Personal Data Protection Act, 2023, you have the following rights:</p>
+  <p>In full compliance with India's Digital Personal Data Protection Act, you retain comprehensive rights over your personal data:</p>
   <ul>
-    <li><strong>Right to Information:</strong> You have the right to know what personal data is being processed.</li>
-    <li><strong>Right to Correction & Erasure:</strong> You can request the correction of inaccurate data or the deletion of your account and personal data.</li>
-    <li><strong>Right to Withdraw Consent:</strong> You may withdraw your consent for non-essential data processing at any time by using the "Manage Data Preferences" link at the bottom of our website or by contacting our Grievance Officer. Withdrawal of consent does not affect the lawfulness of processing based on consent before its withdrawal.</li>
+    <li><strong>Right to Access Information:</strong> You may request a summary of personal data being processed by us.</li>
+    <li><strong>Right to Correction &amp; Erasure:</strong> You can request corrections to obsolete profile data or request complete account erasure.</li>
+    <li><strong>Right to Withdraw Consent:</strong> You may adjust or withdraw consent at any time via the "Manage Data Preferences" option or by emailing our Grievance Officer.</li>
   </ul>
 
   <h2>6. Data Fiduciary Identity</h2>
-  <p>NPC's Esports Tournaments acts as the Data Fiduciary under the DPDP Act, determining the purpose and means of processing your personal data for tournament participation and prize distribution.</p>
+  <p>NPC's Esports Tournaments acts as the Data Fiduciary under the DPDP Act, determining the strict purpose and means of data processing for fair competitive tournament operations.</p>
 
-  <h2>7. Grievance Redressal</h2>
-  <p>If you have any grievances regarding the processing of your personal data, or if you wish to exercise your rights under the DPDP Act, please contact our Grievance Officer:</p>
+  <h2>7. Grievance Redressal &amp; Support</h2>
+  <p>If you have any grievances, inquiries, or account requests, contact our Grievance Officer:</p>
   <ul>
     <li><strong>Email:</strong> supportnpcesports@gmail.com</li>
-    <li><strong>Time to Resolve:</strong> We strive to resolve all complaints within the legally mandated timeframe.</li>
+    <li><strong>Phone:</strong> +91 81339 07850</li>
+    <li><strong>Instagram:</strong> <a href="https://www.instagram.com/npc_universe.esp?utm_source=ig_web_button_share_sheet&amp;vrfl=ZDNlZDc0MzIxNw==" target="_blank" rel="noopener noreferrer" style="color:#00ff88;">@npc_universe.esp</a></li>
+    <li><strong>Resolution Commitment:</strong> Acknowledged within 24-48 hours and resolved within statutory guidelines.</li>
   </ul>
 
-  <h2>8. Contact Us Regarding Privacy</h2>
-  <p>If you have general questions about your data or want to request account deletion, please contact us at supportnpcesports@gmail.com.</p>
+  <hr style="border: 0; border-top: 1px solid #222; margin: 40px 0 20px;">
+  <div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; font-size: 13px;">
+    <a href="index.html" style="color: #3b82f6; text-decoration: none;">Home</a>
+    <span style="color:#444;">•</span>
+    <a href="about.html" style="color: #888; text-decoration: none;">About Us &amp; Security</a>
+    <span style="color:#444;">•</span>
+    <a href="terms.html" style="color: #888; text-decoration: none;">Terms &amp; Conditions</a>
+    <span style="color:#444;">•</span>
+    <a href="privacy.html" style="color: #00ff88; text-decoration: none; font-weight: bold;">Privacy Policy</a>
+    <span style="color:#444;">•</span>
+    <a href="refund.html" style="color: #888; text-decoration: none;">Refund Policy</a>
+    <span style="color:#444;">•</span>
+    <a href="contact.html" style="color: #888; text-decoration: none;">Contact Us</a>
+  </div>
+  <p style="text-align: center; color: #555; font-size: 12px; margin-top: 15px;">© 2026 NPC's Esports Tournaments | All Rights Reserved</p>
 
 </body>
 </html>
